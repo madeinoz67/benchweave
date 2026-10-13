@@ -613,6 +613,38 @@
             ]
           },
           "uniqueItems": true
+        },
+        "configuration": {
+          "type": "object",
+          "description": "Static configuration files the adapter reads from its own verified package. Each entry is the contracts item shape verbatim: package-relative, digest-pinned, resolved inside the admitted bundle after symlink resolution. The pin names the bytes that were reviewed; the host verifies at admission and again at activation against the admitted manifest inventory (S21).",
+          "properties": {
+            "files": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": ["id", "path", "sha256"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["files"],
+          "additionalProperties": false
         }
       },
       "required": [

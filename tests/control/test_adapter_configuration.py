@@ -38,7 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from _harness import FIXTURES, ROOT
@@ -84,8 +84,16 @@ def _write_package(package: Path, descriptor: dict[str, Any]) -> Path:
     )
     if configuration:
         triple = configuration["files"][0]
-        target = package / triple["path"]
-        if not target.exists():
+        relative = triple["path"]
+        parts = PurePosixPath(relative).parts
+        contained = (
+            not PurePosixPath(relative).is_absolute()
+            and not relative.startswith("/")
+            and all(part not in (".", "..") and part for part in parts)
+            and ":" not in relative
+        )
+        if contained and not (package / relative).exists():
+            target = package / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(IMAGE_BYTES)
     (package / "descriptor.json").write_text(json.dumps(descriptor, indent=2) + "\n")
@@ -279,13 +287,16 @@ def test_symlinked_target_refuses_no_follow(tmp_path: Path) -> None:
 
 
 def test_absent_file_refuses_missing(tmp_path: Path) -> None:
+    """The declared path names no file in the package (the descriptor is
+    written directly — the helper would helpfully create the file)."""
     package = tmp_path / "absent"
     package.mkdir()
     descriptor = _base_descriptor()
     descriptor["integration"]["adapter"]["configuration"]["files"][0]["path"] = (
         "not-there.bin"
     )
-    slot = _write_package(package, descriptor)
+    slot = package / "descriptor.json"
+    slot.write_text(json.dumps(descriptor, indent=2) + "\n")
     message = _admit_refusal(tmp_path, slot)
     assert "adapter_config_missing:" in message, message
 

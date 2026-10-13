@@ -1038,6 +1038,11 @@
       "sha256": "aff78ac0fb0057daac2cba98d314f633e5c36b5e33e2eb14e792bb63fa76ca06"
     },
     {
+      "path": "otdp/0.2.3/examples/reference-analyzer-config.json",
+      "source": "standards/otdp/0.2.3/examples/reference-analyzer-config.json",
+      "sha256": "ddcc5255a1c84d743667e4eb0bf619a00f9eacbfa3217b6c0d53a0abe8e18dab"
+    },
+    {
       "path": "otdp/0.2.3/examples/reference-can.json",
       "source": "standards/otdp/0.2.2/examples/reference-can.json",
       "sha256": "85d6958d8320c8a797974d01be133c1559d029978390d46863a3f2d9ff3a8dcd"
@@ -1085,7 +1090,7 @@
     {
       "path": "otdp/0.2.3/otdp-device-descriptor.schema.json",
       "source": "standards/otdp/0.2.2/otdp-device-descriptor.schema.json",
-      "sha256": "f3dbe4cc26745d5431b399cff6f09ef0c0f0d44c859f2b3cd8b96113e58f3ca1"
+      "sha256": "a640eb3b2e1f4143a0419546d51b513e7c0ef2a73a1447f70703300337635d1e"
     },
     {
       "path": "otdp/0.2.3/otdp-measurement.schema.json",

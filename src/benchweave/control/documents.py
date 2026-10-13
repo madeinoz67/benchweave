@@ -1109,6 +1109,128 @@ def _validate_provider_contract(
         )
 
 
+def _verify_adapter_configuration(
+    logical: str, descriptor: dict[str, Any], descriptor_path: Path
+) -> None:
+    """Resolve and verify the descriptor's declared adapter configuration.
+
+    Structural sibling of :func:`_verify_provider_pin` with two deliberate
+    differences (design §3.2): NO exact-byte decode — a configuration file
+    is opaque bytes (a bitstream is not a JSON document), so the verify
+    stops at posture + containment + read cap + sha256; this is the
+    inventory posture, not the document posture, and the CON-1 family
+    boundary is exactly here. And uniqueness beyond byte-identity: S21
+    refuses duplicate ids and duplicate paths the schema's uniqueItems
+    cannot see.
+    """
+    integration = descriptor.get("integration")
+    adapter = integration.get("adapter") if isinstance(integration, dict) else None
+    configuration = adapter.get("configuration") if isinstance(adapter, dict) else None
+    if configuration is None:
+        return  # no declaration: nothing to verify, nothing granted
+    if not isinstance(configuration, dict) or not isinstance(
+        configuration.get("files"), list
+    ):
+        raise AdmissionRejected(
+            f"schema: {logical} adapter_config_invalid: the adapter "
+            "configuration declaration is not an object with a files array"
+        )
+    seen_ids: set[str] = set()
+    seen_paths: set[str] = set()
+    package_root = descriptor_path.parent
+    for entry in configuration["files"]:
+        if not isinstance(entry, dict):
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_invalid: a configuration "
+                "file entry is not an object"
+            )
+        config_id = entry.get("id")
+        relative = entry.get("path")
+        pinned = entry.get("sha256")
+        if (
+            not isinstance(config_id, str)
+            or not config_id
+            or not isinstance(relative, str)
+            or not relative
+            or not isinstance(pinned, str)
+            or len(pinned) != 64
+            or any(character not in "0123456789abcdef" for character in pinned)
+        ):
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_invalid: a configuration "
+                "file entry is not an {id, path, sha256} triple"
+            )
+        if config_id in seen_ids:
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_invalid: configuration "
+                f"file id {config_id!r} is not unique (S21)"
+            )
+        if relative in seen_paths:
+            triple = next(
+                item for item in configuration["files"] if item.get("path") == relative
+            )
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_invalid: configuration "
+                f"file path {relative!r} is not unique (S21): ids "
+                f"{triple.get('id')!r} and {config_id!r} name it twice"
+            )
+        seen_ids.add(config_id)
+        seen_paths.add(relative)
+        if (
+            "\\" in relative
+            or ":" in relative
+            or PurePosixPath(relative).is_absolute()
+            or any(part in (".", "..") for part in relative.split("/"))
+            or any(not part for part in relative.split("/"))
+        ):
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_invalid: {relative!r} is not "
+                "a package-relative configuration path"
+            )
+        target = package_root
+        try:
+            for part in PurePosixPath(relative).parts:
+                target = target / part
+                if target.is_symlink():
+                    raise AdmissionRejected(
+                        f"schema: {logical} adapter_config_missing: {relative!r} "
+                        "crosses a symlink; configuration files resolve through "
+                        "a strict no-follow posture"
+                    )
+            if not target.is_file() or not target.resolve().is_relative_to(
+                package_root.resolve()
+            ):
+                raise AdmissionRejected(
+                    f"schema: {logical} adapter_config_missing: {relative!r} "
+                    "does not name a contained regular file in the descriptor's "
+                    "package"
+                )
+            size = target.stat().st_size
+            if size > _PROVIDER_PIN_MAX_BYTES:
+                raise AdmissionRejected(
+                    f"schema: {logical} adapter_config_missing: {relative!r} is "
+                    f"{size} bytes, above the {_PROVIDER_PIN_MAX_BYTES}-byte "
+                    "configuration read cap (the shared bounded-read bound, "
+                    "mirrored so both admission lanes agree on the window)"
+                )
+            raw = target.read_bytes()
+        except OSError as exc:
+            # ENAMETOOLONG, permission-denied, the race faces: pins this check
+            # could not resolve or read. The message names the relative pin and
+            # the errno only — the OSError's own text carries the absolute host
+            # path, which is not ours to print.
+            raise AdmissionRejected(
+                f"schema: {logical} adapter_config_missing: {relative!r} could "
+                f"not be resolved or read (os error {exc.errno})"
+            ) from exc
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest != pinned:
+            raise AdmissionRejected(
+                f"digest_mismatch: {logical} adapter_config_hash_mismatch: "
+                f"{relative!r} hashes to {digest} but the descriptor pins {pinned}"
+            )
+
+
 def _verify_provider_pin(
     logical: str, descriptor: dict[str, Any], descriptor_path: Path
 ) -> None:
@@ -1730,6 +1852,26 @@ def _project_full_form(
             if isinstance(parameter.get("read_policy"), dict)
             and parameter["read_policy"].get("side_effect") == "state_change"
         )
+    configuration = (
+        descriptor.get("integration", {}).get("adapter", {}).get("configuration")
+    )
+    if isinstance(configuration, dict) and isinstance(configuration.get("files"), list):
+        # The adapter-configuration facts (issue #447, the CON-10
+        # amendment in the capture-keys style): the
+        # declared triples, verbatim. The shape is schema-guaranteed when
+        # present; a malformed shape projects nothing (no fact is granted
+        # by a malformed shape — the adapter_permissions posture). The
+        # admission mirror has verified the bytes against these pins by
+        # the time an admitted view reaches a consumer: the projection
+        # runs inside the same device loop the mirror completes before
+        # admission returns.
+        view["adapter_configuration"] = {
+            "files": [
+                dict(entry)
+                for entry in configuration["files"]
+                if isinstance(entry, dict)
+            ]
+        }
     if derived is not None:
         view["derived_variables"] = derived
     return view
@@ -2110,6 +2252,13 @@ def admit_documents(
         # with the gateway-only admission row last: only the gateway can
         # see commissioned state.
         _verify_provider_pin(
+            f"descriptor[{device_id}]", descriptor, descriptor_paths[device_id]
+        )
+        # The adapter-configuration mirror (issue #447): total on a present
+        # `configuration`, no-op on absence (the adapter_permissions
+        # posture — a malformed shape grants nothing and refuses loudly).
+        # Beside the provider pin, before the gateway-only admission row.
+        _verify_adapter_configuration(
             f"descriptor[{device_id}]", descriptor, descriptor_paths[device_id]
         )
         _check_provider_admission(

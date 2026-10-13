@@ -432,6 +432,36 @@ variables `start_s`, `end_s`, `class` and `text`. Every `class` value must resol
 to a declared annotation id, so a generic renderer can draw the decoded output from
 the declaration alone.
 
+### Declared adapter configuration (OTDP 0.2.3)
+
+An adapter that needs a static file — an FPGA image, a calibration blob — can
+declare it. Add a `configuration` object to `integration.adapter`. Each entry in
+`files` uses the contract-reference shape: an `id`, a package-relative `path`, and
+the `sha256` digest of the file bytes:
+
+```json
+"configuration": {
+  "files": [
+    { "id": "bench_image", "path": "assets/image.bin", "sha256": "<64 hex characters>" }
+  ]
+}
+```
+
+Ship the file inside your package. The host verifies each declared file twice
+against your digest: at admission, and again when the package loads, before your
+code runs. A wrong digest, a missing file, a symlinked path, or a path that
+leaves the package refuses the package. Ids are unique and paths are unique.
+
+Read the file at `open` from your own package. Resolve `path` against your
+package root. No host service hands over a path, and the ABI does not change.
+Source descriptor-declared configuration from the descriptor only. Do not read
+action inputs or environment variables for these settings.
+
+The file is opaque bytes. The host checks the digest and the path, not the
+content. A change to the file is a new descriptor version — use the normal
+reviewed release path. The reference example `reference-analyzer-config.json`
+in the corpus shows the full declaration.
+
 ## 5. Implement the adapter lifecycle
 
 The normative factory and methods are in [core specification §8](../standards/otdp/0.2.3/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.

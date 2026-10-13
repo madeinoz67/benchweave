@@ -97,6 +97,7 @@
         "standards/otdp/0.2.3/examples/decoder-uart.json",
         "standards/otdp/0.2.3/examples/derivation-vectors.json",
         "standards/otdp/0.2.3/examples/measurement-vectors.json",
+        "standards/otdp/0.2.3/examples/reference-analyzer-config.json",
         "standards/otdp/0.2.3/examples/reference-can.json",
         "standards/otdp/0.2.3/examples/reference-capture.json",
         "standards/otdp/0.2.3/examples/reference-controller.json",

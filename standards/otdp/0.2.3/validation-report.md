@@ -2,7 +2,7 @@
 
 # OTDP 0.2.3 specification verification
 
-**Result: 705/705 checks passed; 0 failed.**
+**Result: 718/718 checks passed; 0 failed.**
 
 12 class profiles and 51 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side. Protocol-decoder declarations, their digest-pinned documents and the decode_annotated vectors were checked (PD1 through PD5); gateway admission mirrors and binary-class emission are the named follow-on slices.
 
@@ -11,6 +11,9 @@
 ## Checks
 
 - PASS: Accept over-classified read verb
+- PASS: Adapter configuration example census
+- PASS: Adapter configuration per-pin control
+- PASS: Adapter configuration refusal names the files path
 - PASS: Catalog structure
 - PASS: Decoder declaration examples census
 - PASS: Decoder declaration schema present
@@ -28,6 +31,7 @@
 - PASS: Reject duplicate channel
 - PASS: Reject duplicate decoder id
 - PASS: Reject duplicate provider grammar kind
+- PASS: Reject empty adapter configuration files
 - PASS: Reject event end preceding start
 - PASS: Reject incoherent read side effect
 - PASS: Reject incomplete edge trigger
@@ -51,6 +55,7 @@
 - PASS: Reject provider on scoped transport
 - PASS: Reject provider scope beyond commissioned connection
 - PASS: Reject provider without required feature entry
+- PASS: Reject scalar sibling of configuration files
 - PASS: Reject shape mismatch
 - PASS: Reject unknown decode option
 - PASS: Reject unknown dimension
@@ -543,6 +548,14 @@
 - PASS: otdp.vna.fetch/1.0.0 output_schema meta-schema
 - PASS: otdp.vna.trigger/1.0.0 input_schema meta-schema
 - PASS: otdp.vna.trigger/1.0.0 output_schema meta-schema
+- PASS: reference-analyzer-config.json class membership/effects
+- PASS: reference-analyzer-config.json decoder declaration
+- PASS: reference-analyzer-config.json descriptor structure
+- PASS: reference-analyzer-config.json known required features
+- PASS: reference-analyzer-config.json pinned urn:otdp:measurement:0.2.3
+- PASS: reference-analyzer-config.json pinned urn:otdp:profile-catalog:0.2.3
+- PASS: reference-analyzer-config.json provider declaration
+- PASS: reference-analyzer-config.json vector file resolves
 - PASS: reference-can.json decoder declaration
 - PASS: reference-can.json descriptor structure
 - PASS: reference-can.json known required features
