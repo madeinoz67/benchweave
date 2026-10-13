@@ -652,6 +652,23 @@ and remain the reviewer's job.
     twin (`benchweave_sdk_server/env_file.py`) carries the same coupling
     for its two-key allowlist.
 
+29. **The adapter-configuration surfaces** (issue #447; the design record's
+    D6): the three verification legs must move together when any one moves —
+    admission's `adapter_config_hash_mismatch` mirror
+    (`src/benchweave/control/documents.py`, the semantic-mirror pass), the
+    loader's `adapter_config_inventory_conflict` / `adapter_config_not_in_bundle`
+    resolution against the verified inventory
+    (`src/benchweave/registry/otdp_loading.py`, beside
+    `resolve_otdp_contracts`, firing before plugin import), and the CON-10
+    projection row (`adapter_configuration`). The descriptor triple
+    (`integration.adapter.configuration.files`) is digest-pinned, so a byte
+    change re-pins via repin; the drift this row guards is a LEG moving
+    without its siblings — a mirror check weakened while the loader still
+    refuses, or the projection dropping the triple while admission still
+    verifies it. The sibling `decoders` triple (#443) is the same shape with
+    its verification legs not yet landed (D6 of the #443 record — lands with
+    the gateway adapter-configuration mirror when that slice arrives).
+
 ## CI map
 
 | Job | What it catches |
