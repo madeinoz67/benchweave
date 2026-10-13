@@ -77,6 +77,31 @@ pre-release authoring accumulated on a dev head is not a bump and waits for noth
 (see **The dev stage** below) — the floor still bounds everything consumers see, and
 no longer bounds the edit.
 
+> **G-5 (bump window supersession, 2026-10-12, issue #451; supersedes the
+> paragraph above in part).** The #97 time-based window is superseded. A
+> standard may not bump while the same standard's previous released
+> version's SDK leg is outstanding: the commit adding a new version
+> directory of standard S must arrive on a tree whose SDK lock already
+> carries S's previous released version (sync-completion pacing, not wall
+> time). Rationale on the record: under multi-version serving (R-2,
+> VR-47.2) a consumer is bound by its pin, resolved digest-verified from
+> the retained corpus — the window's stated purpose ("the floor still
+> bounds everything consumers see") no longer describes the machinery;
+> what remains priced is the release ledger (the SDK train, the
+> validation-report regen, the in-arc sweep, permanent version-dir
+> retention under copy-never-move), and the sync-completion requirement
+> prices exactly that. Retained unchanged: one bump per (standard,
+> release train); never stack a bump on an unmerged bump (re-copy from
+> the new predecessor); the highest-class batch rule; the per-standard
+> scope; the first-version (admission) and reset-class exemptions (same
+> shape heuristic). Emergency pacing — a bump that must outrun an
+> outstanding SDK leg — is a coordinator exception written into the
+> promotion PR body, successor to the window exception, carrying the same
+> #97 reopen obligation. Enforced mechanically by
+> `benchweave.standards.train_window`, re-anchored at this amendment's own
+> arrival commit (history before it grandfathered by the same
+> self-anchoring mechanism).
+
 **Bump mechanics — copy, never move.** A version bump copies the old version
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
