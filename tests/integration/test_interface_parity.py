@@ -115,6 +115,7 @@ from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
 from benchweave.interfaces.operations import Operations
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
 CONTRACTS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
@@ -135,6 +136,41 @@ def _validate_event_def(event: dict[str, Any]) -> None:
 
     schema = json.loads((CONTRACTS / "interface.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator(schema["$defs"]["event"]).validate(event)
+
+
+def _validate_output_def(op_name: str, envelope: dict[str, Any]) -> None:
+    """Row 4 (issue #450 §3.7): validate a served run/lease success envelope
+    against the vendored ``<op>_output`` def — parity anchors to the corpus,
+    not the sibling transport (CON-5/A13; the WP07 lesson: a seam-shape
+    fault present on BOTH sides passes transport-to-transport comparison).
+    Same Draft202012Validator over ``interface.schema.json`` as
+    ``_validate_event_def``; the schema dir is ``active_contract_family``
+    (derived from the corpus manifest, never a version literal) so the arm
+    survives the interface bump unedited and cannot lag the active corpus.
+    What it does NOT cover: the paged ``*_list``/``events_get`` output defs
+    (row 4's named surface is the run/lease family; pages are D5)."""
+    from jsonschema import Draft202012Validator
+
+    family = active_contract_family("interface")
+    schema = json.loads((family / "interface.schema.json").read_text(encoding="utf-8"))
+    # The ``*_output`` defs carry internal ``$ref``s ("#/$defs/run", ...), so
+    # the def cannot validate standalone (PointerToNowhere — measured); the
+    # synthetic root re-anchors the document's ``$defs`` under the def.
+    subschema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": f"#/$defs/{op_name}_output",
+        "$defs": schema["$defs"],
+    }
+    Draft202012Validator(subschema).validate(envelope)
+
+
+def _validate_corpus_output(op_name: str, envelope: dict[str, Any]) -> None:
+    """The row-4 arm: a served run/lease envelope must satisfy the vendored
+    ``<op>_output`` def, or the suite reds naming the drifted key. The
+    planted-fault arm ``test_corpus_output_mirror_catches_seam_shape_fault``
+    proves the refusal mechanically (issue #450 §8)."""
+    _validate_output_def(op_name, envelope)
+
 
 OPS = {op["name"]: op for op in CATALOG["operations"]}
 SHARED_OPS = [op for op in CATALOG["operations"] if op["mcp_tool"]]
@@ -621,6 +657,10 @@ WRITE_LIFECYCLE_OPS = {"lease_create", "lease_release", "lease_renew", "run_star
 assert set(EXACT_CASES) == {op["name"] for op in SHARED_OPS} - WRITE_LIFECYCLE_OPS, (
     "matrix must cover every shared op except the four write-lifecycle ops"
 )
+# Row 4 (issue #450): the run/lease ops whose served envelopes anchor to the
+# corpus output defs inside the EXACT_CASES matrix. The write-lifecycle ops'
+# dedicated tests carry their own arms; the paged pages are D5's deferral.
+_CORPUS_OUTPUT_OPS = {"run_cancel", "run_check", "run_find", "run_get"}
 
 
 @pytest.mark.parametrize("op_name", sorted(EXACT_CASES))
@@ -649,6 +689,10 @@ def test_rest_and_mcp_agree_per_operation(
     # Contract §2: MCP structuredContent carries the same STG result — the
     # FULL data envelope, field for field, not a shape sample.
     assert mcp_json == rest_json, op_name
+    # Row 4 (issue #450): the run-family envelopes anchor to the corpus
+    # output defs, not only to each other (paged pages are D5's deferral).
+    if op_name in _CORPUS_OUTPUT_OPS:
+        _validate_corpus_output(op_name, rest_json)
 
 
 # --- D1: run_get tier pinned at observe (catalog authority) ------------------
@@ -664,6 +708,7 @@ def test_run_get_catalog_tier_observe_control_hierarchy(
         assert _call(gateway.port, "stg_v1_run_get", {"run_id": gateway.run_id}, token) == (
             rest_json
         )
+        _validate_corpus_output("run_get", rest_json)
 
 
 # --- write-lifecycle parity ---------------------------------------------------
@@ -700,6 +745,7 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
         CONTROL,
     )
     assert mcp_json == rest_json
+    _validate_corpus_output("run_start", rest_json)
 
 
 def test_lease_create_parity(gateway: SimpleNamespace) -> None:
@@ -737,6 +783,8 @@ def test_lease_create_parity(gateway: SimpleNamespace) -> None:
     masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
     assert masked[0] == masked[1]
     assert rest_json["data"]["sequence"] != mcp_json["data"]["sequence"]
+    _validate_corpus_output("lease_create", rest_json)
+    _validate_corpus_output("lease_create", mcp_json)
 
 
 def test_lease_release_parity(gateway: SimpleNamespace) -> None:
@@ -771,6 +819,8 @@ def test_lease_release_parity(gateway: SimpleNamespace) -> None:
         for env in (rest_json, mcp_json)
     ]
     assert masked[0] == masked[1]
+    _validate_corpus_output("lease_release", rest_json)
+    _validate_corpus_output("lease_release", mcp_json)
 
 
 def test_lease_renew_parity(gateway: SimpleNamespace) -> None:
@@ -812,6 +862,8 @@ def test_lease_renew_parity(gateway: SimpleNamespace) -> None:
     masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
     assert masked[0] == masked[1]
     assert mcp_json["data"]["sequence"] == next_sequence + 1
+    _validate_corpus_output("lease_renew", rest_json)
+    _validate_corpus_output("lease_renew", mcp_json)
 
 
 def test_lease_renew_replay_parity(gateway: SimpleNamespace) -> None:
@@ -852,6 +904,57 @@ def test_lease_renew_replay_parity(gateway: SimpleNamespace) -> None:
         if lease.lease_id == gateway.leases["renew"] and lease.state == "active"
     ]
     assert active == [rest_json["data"]["sequence"]]
+    _validate_corpus_output("lease_renew", rest_json)
+
+
+# --- row 4 (#450): the named planted-fault arm ---------------------------------
+
+
+def test_corpus_output_mirror_catches_seam_shape_fault(
+    gateway: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Row 4's planted fault (issue #450 §8): a seam-shape fault — the run
+    projection missing the required ``revision`` — passes the
+    sibling-transport comparison (BOTH transports serve the faulted shape:
+    the measured hole the issue names), and the corpus-output mirror catches
+    it BY NAME. Kill rule (#450 §8): a mirror that passes the planted fault
+    reads the wrong def; this arm reds that state."""
+    from jsonschema.exceptions import ValidationError
+
+    import benchweave.interfaces.operations as operations_module
+
+    original = operations_module.Operations.run_get
+
+    def stripped(self: Operations, identity: Any, run_id: str) -> dict[str, Any]:
+        """The planted fault: serve the run projection minus ``revision``.
+        The seam returns the BARE projection — the ``{ok, data}`` envelope is
+        the adapters' wrapping, so the key is stripped at the seam's level."""
+        projection = original(self, identity, run_id)
+        assert "revision" in projection, "fault target absent — arm mis-aimed"
+        return {
+            key: value for key, value in projection.items() if key != "revision"
+        }
+
+    monkeypatch.setattr(operations_module.Operations, "run_get", stripped)
+
+    status, rest_json = _rest(gateway, "get", f"/v1/runs/{gateway.run_id}", None, ADMIN)
+    assert status == 200 and rest_json["ok"], rest_json
+    mcp_json = _call(gateway.port, "stg_v1_run_get", {"run_id": gateway.run_id}, ADMIN)
+    # The hole, preserved on the record: the sibling transports still agree
+    # on the faulted shape — transport-to-transport parity cannot see it.
+    assert mcp_json == rest_json, (
+        "faulted shapes diverged — transports no longer agree on the fault"
+    )
+    # The corpus anchor refuses the fault, naming the missing key: the
+    # oneOf's top message summarizes ("not valid under any of the given
+    # schemas" — measured); the required-key detail rides the branch errors
+    # in ``context``, so the name-claim reads both.
+    with pytest.raises(ValidationError) as caught:
+        _validate_corpus_output("run_get", rest_json)
+    detail = str(caught.value) + " | " + " | ".join(
+        str(sub) for sub in (caught.value.context or ())
+    )
+    assert "revision" in detail, caught.value
 
 
 # --- failure-class parity ------------------------------------------------------
