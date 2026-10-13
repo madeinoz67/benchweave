@@ -44,6 +44,7 @@ All notable changes to this project will be documented in this file.
 - Issue #446 — invoke binds UI targets to corpus profiles only
 - Issue #444 commissioned-preset firmware gate — localization, fork (b) recommendation, plugin-ui train
 - Fold the #444 refute NIT rows (row-call 1-3)
+- Issue #450 MCP-surface interface revision — design record
 
 ### Features
 
@@ -58,6 +59,7 @@ All notable changes to this project will be documented in this file.
 - #422 inc4 logs + the log_destination journal completion
 - G-5 — sync-completion pacing replaces the bump time window (#451)
 - Commissioned-preset firmware gate — plugin-ui 0.3.1 PATCH, policy-aware validate_preset
+- Server instructions on the MCP surface (row 1a) + green arms
 
 ### Miscellaneous
 
@@ -73,6 +75,7 @@ All notable changes to this project will be documented in this file.
 - #451 RED arms — sync-completion pacing fails the un-amended tree
 - RED — #446 slice 1 invoke-target composition arms
 - RED — #446 slice 1 fold, the corpus digest gate arms (F1)
+- Row-4 corpus-output mirror + row-1a instruction arms (RED state)
 
 ### Build
 
