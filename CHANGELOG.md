@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
 - Doctor and logs triage pair in the operator guide; README names the verbs
 - Record the Q5 ruling — option 2, stdio shim proxies the running host (issue #285)
 - Delivery-scope ruling — the fork-deletion clause closes on our-repo evidence (issue #285)
+- #451 sync-completion pacing — mechanism, acceptance, tier call
 
 ### Features
 
@@ -48,6 +49,7 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 — supervision protocol, stop/start/status/service verbs, worker pickup gate
 - #422 inc4 doctor — the seven-check read-only triage probe
 - #422 inc4 logs + the log_destination journal completion
+- G-5 — sync-completion pacing replaces the bump time window (#451)
 
 ### Testing
 
@@ -56,6 +58,7 @@ All notable changes to this project will be documented in this file.
 - L11 accepts both truthful interleavings — a refused-then-acted stop episode is legal (single-shot is per request, not per episode)
 - G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
 - Outcome-mode scatter for the belt's forced-loose pin — recorded x-values, not input pacing (main-red fix, the #241 wall-time class)
+- #451 RED arms — sync-completion pacing fails the un-amended tree
 
 ### Build
 
