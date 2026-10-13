@@ -510,7 +510,8 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "the commissioned-firmware gate bump (issue #444; three sites move, "
             "count unchanged) under the sanctioned narrow-range crossing — the "
             "bundle lists this live code row in every carried version's row, "
-            "so single-serving is the only honest posture. D2 remains open "
+            "so single-serving is the only honest posture. D2's original reopen "
+            "trigger FIRED with the #244 motion; D2 remains open "
             "with the narrower reopen conditions re-recorded in the #244 "
             "design record (D-1)",
             3,
@@ -520,7 +521,7 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
     "sdk": {
         "src/benchweave_sdk/standards/plugin-ui/contracts.py": (
             "D2 twin of the gateway's registered copy — the same corpus-owned "
-            "code at plugin-ui 0.3.0 bytes (digest-pinned whole, so no value "
+            "code at plugin-ui 0.3.1 bytes (digest-pinned whole, so no value "
             "pin here); same reopen trigger",
             3,
             None,

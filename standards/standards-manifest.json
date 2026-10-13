@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "sdk_compatibility": {
     "main_project": ">=0.1.0",
-    "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance \u2014 checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync \u2014 same-version content drift is refused (standards_version_required), never re-vendored silently.",
-    "sdk": "0.9.0"
+    "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance — checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync — same-version content drift is refused (standards_version_required), never re-vendored silently.",
+    "sdk": "0.11.0"
   },
   "dependency_policy": {
     "policy_version": 1,
@@ -46,7 +46,7 @@
         "range": ">=0.3.1,<0.4.0",
         "yanked": {},
         "retired": [],
-        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying 0.3.0 beside 0.3.1 would serve 0.3.1 code bytes under a 0.3.0 pin \u2014 single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.3.1 commissioned-firmware gate (issue #444). 0.3.0 pins re-stamp to 0.3.1. The owner may overrule to serve 0.3.0's schemas.",
+        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying 0.3.0 beside 0.3.1 would serve 0.3.1 code bytes under a 0.3.0 pin — single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.3.1 commissioned-firmware gate (issue #444). 0.3.0 pins re-stamp to 0.3.1. The owner may overrule to serve 0.3.0's schemas.",
         "versions": {
           "0.3.0": {
             "migration_note": "standards/plugin-ui/0.3.0/MIGRATION.md"
@@ -62,7 +62,7 @@
         "retired": [
           "1.0.0"
         ],
-        "note": "Floor-compliant range (PRD Q3 support-window floor: a declared range covers at least the two most recent released versions \u2014 0.1.1 and 0.2.0): multi-serving is this wire's established shape and it has no live code row to protect. 0.1.0 drops out of the window; 0.1.1 pins stay served.",
+        "note": "Floor-compliant range (PRD Q3 support-window floor: a declared range covers at least the two most recent released versions — 0.1.1 and 0.2.0): multi-serving is this wire's established shape and it has no live code row to protect. 0.1.0 drops out of the window; 0.1.1 pins stay served.",
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-preview/0.2.0/MIGRATION.md"
