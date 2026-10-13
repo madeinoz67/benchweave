@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - CRLF-honest tail rows (windows rollup catch) + windows lane timeout 30->45 (the lifecycle arms outgrew it; split-lane stays the retro row)
 - #446 slice 1 serve the SDK document set at the device page
 - #446 slice 1 fold — digest-gate the served corpus set (F1-F4)
+- Complete the pointer — move the sdk_compatibility mirror to 0.11.0
+- Link the front door's versioned standards pages where they render
 
 ### Documentation
 
@@ -40,6 +42,8 @@ All notable changes to this project will be documented in this file.
 - Delivery-scope ruling — the fork-deletion clause closes on our-repo evidence (issue #285)
 - #451 sync-completion pacing — mechanism, acceptance, tier call
 - Issue #446 — invoke binds UI targets to corpus profiles only
+- Issue #444 commissioned-preset firmware gate — localization, fork (b) recommendation, plugin-ui train
+- Fold the #444 refute NIT rows (row-call 1-3)
 
 ### Features
 
@@ -53,6 +57,11 @@ All notable changes to this project will be documented in this file.
 - #422 inc4 doctor — the seven-check read-only triage probe
 - #422 inc4 logs + the log_destination journal completion
 - G-5 — sync-completion pacing replaces the bump time window (#451)
+- Commissioned-preset firmware gate — plugin-ui 0.3.1 PATCH, policy-aware validate_preset
+
+### Miscellaneous
+
+- Advance the pointer to v0.11.0 — the plugin-ui train's release (#444)
 
 ### Testing
 
