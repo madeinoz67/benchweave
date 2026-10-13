@@ -381,7 +381,7 @@ def test_vr28_an_opt_in_for_one_standard_affects_only_that_standard(
     assert (rows["otdp"]["stage"], rows["otdp"]["version"]) == ("dev", HEAD_LABEL)
     assert (rows["plugin-ui"]["stage"], rows["plugin-ui"]["version"]) == (
         "released",
-        "0.3.0",
+        "0.3.1",
     )
 
 

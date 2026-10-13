@@ -823,7 +823,10 @@ STAMP_TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
 # `stg-sdk` derives from the sdk_compatibility mirror, never from a standards
 # entry: an entry id `sdk` would silently shadow the mirror's key (the mirror
 # write wins) and be invisible to every coverage arm (review fold F4).
-RESERVED_STAMP_IDS = frozenset({"sdk", "versions", "stg-versions"})
+# `docs-prefix` is reserved for the same reason: the map overwrites it with
+# the regime-derived docs path, so a manifest entry id colliding with it
+# would be silently shadowed (issue #456).
+RESERVED_STAMP_IDS = frozenset({"sdk", "versions", "stg-versions", "docs-prefix"})
 
 
 def website_stamp_map(root: Path) -> dict[str, str]:
@@ -831,12 +834,18 @@ def website_stamp_map(root: Path) -> dict[str, str]:
 
     ``stg-<id>`` -> the standard's active version from the standards manifest;
     ``stg-sdk`` -> the ``sdk_compatibility`` mirror's SDK version (CON-12's
-    authority chain). One authoritative parse: the loaders' closed-world
-    refusals (``standards_entry_duplicate``, ``standards_entry_version_invalid``,
+    authority chain); ``stg-docs-prefix`` -> the assembled-tree path the
+    current tree's docs live at (issue #456): ``docs/`` in the zero-tag
+    regime, ``docs/v/dev/`` once release tags exist — the root serves the
+    latest tag's released docs there, so a front-door link naming the active
+    version must reach the dev bucket to resolve. Derives from the same
+    committed state the selector rows derive from (``release_tags()``). One
+    authoritative parse: the loaders' closed-world refusals
+    (``standards_entry_duplicate``, ``standards_entry_version_invalid``,
     ``sdk_compatibility_invalid``) apply here for free, and dev heads never
     stamp — only each entry's active version is read. An entry id colliding
-    with the reserved ``sdk`` key refuses (``stamp_reserved_key:``) rather
-    than silently shadowing the mirror.
+    with a reserved key refuses (``stamp_reserved_key:``) rather than
+    silently shadowing a derived key.
     """
     stamps: dict[str, str] = {}
     for entry in load_manifest(root).standards:
@@ -847,6 +856,7 @@ def website_stamp_map(root: Path) -> dict[str, str]:
             )
         stamps[f"stg-{entry.id}"] = entry.version
     stamps["stg-sdk"] = load_sdk_compatibility(root).sdk
+    stamps["stg-docs-prefix"] = "docs/v/dev/" if release_tags() else "docs/"
     return stamps
 
 
