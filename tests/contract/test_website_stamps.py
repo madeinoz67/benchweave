@@ -92,11 +92,31 @@ def _spec_cards(html: str) -> list[str]:
 
 
 def _assert_cards_agree(html: str) -> None:
-    """T4's scanner: each card carries exactly one token, exactly twice."""
+    """T4's scanner: each card carries its version token exactly twice —
+    badge and link agree at the value level — and every VERSIONED
+    in-assembled-tree link (a non-external href naming a standards
+    version) is prefixed with the shared ``stg-docs-prefix`` token;
+    external links (the preview card's GitHub href) and unversioned links
+    (the panel note's GOVERNANCE/standards-index hrefs, which resolve at
+    the root in both regimes) carry none (issue #456)."""
     for card in _spec_cards(html):
         tokens = _tokens(card)
-        assert len(tokens) == 2, f"card does not carry one token twice: {tokens}"
-        assert len(set(tokens)) == 1, f"card mixes tokens: {sorted(set(tokens))}"
+        ids = [token for token in tokens if token != "stg-docs-prefix"]
+        assert len(ids) == 2, f"card does not carry one token twice: {tokens}"
+        assert len(set(ids)) == 1, f"card mixes tokens: {sorted(set(ids))}"
+        hrefs = re.findall(r'href="([^"]+)"', card)
+        versioned = [
+            h for h in hrefs
+            if not h.startswith(("https://", "http://", "#"))
+            and re.search(r"standards/[a-z-]+/(?:\d+\.\d+\.\d+|\{\{stg-)", h)
+        ]
+        for href in versioned:
+            assert href.startswith("{{stg-docs-prefix}}"), (
+                f"a versioned card link names no regime-derived docs prefix: {href}"
+            )
+        assert tokens.count("stg-docs-prefix") == len(versioned), (
+            f"card's docs-prefix token count disagrees with its versioned links: {tokens}"
+        )
 
 
 def test_source_carries_no_version_literals() -> None:
@@ -131,6 +151,7 @@ def test_stamp_map_derives_from_committed_state() -> None:
 
     expected = {f"stg-{entry.id}": entry.version for entry in load_manifest(ROOT).standards}
     expected["stg-sdk"] = load_sdk_compatibility(ROOT).sdk
+    expected["stg-docs-prefix"] = "docs/v/dev/" if _assembler().release_tags() else "docs/"
     assert _assembler().website_stamp_map(ROOT) == expected
 
 
@@ -248,7 +269,11 @@ def test_stamped_output_carries_the_active_versions(tmp_path: Path) -> None:
     assert f"SDK {compatibility.sdk} · OTDP {stamps['stg-otdp']} baseline" in stamped
 
     for standard_id, version, page in re.findall(
-        r'href="docs/standards/([a-z-]+)/([0-9.]+)/([a-z-]+)\.html"', stamped
+        # The grammar tolerates both stamped shapes — zero-tag `docs/` and
+        # tagged `docs/v/dev/` (issue #456's regime-derived docs prefix) —
+        # and keeps resolving every named version dir against the in-tree
+        # corpus, so the pin's teeth survive the prefix.
+        r'href="(?:docs/v/dev/)?standards/([a-z-]+)/([0-9.]+)/([a-z-]+)\.html"', stamped
     ):
         source = ROOT / "standards" / standard_id / version
         assert source.is_dir(), f"href names no in-tree version: {standard_id}/{version}"
@@ -534,6 +559,7 @@ def test_stamp_map_control_unknown_id_reaches_the_unused_key_arm(tmp_path: Path)
     assert assembler.website_stamp_map(_fake_root(tmp_path, "frob")) == {
         "stg-frob": "9.9.9",
         "stg-sdk": "0.2.0",
+        "stg-docs-prefix": "docs/v/dev/" if assembler.release_tags() else "docs/",
     }
     stamps = assembler.website_stamp_map(ROOT) | {"stg-frob": "9.9.9"}
     copy = tmp_path / "index.html"
