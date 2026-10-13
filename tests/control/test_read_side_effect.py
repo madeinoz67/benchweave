@@ -32,6 +32,11 @@ import pytest
 from _harness import Graph, readmit_mutated
 
 from benchweave.control.documents import AdmissionRejected
+from benchweave.control.semantics import check_semantics
+
+#: Inside the fixture lattice's commissioning window (expires 2030-01-01):
+#: the deadline checks must not fire before the mirror under test does.
+NOW = "2026-10-12T00:00:00Z"
 
 
 def _pin_023(descriptor: dict[str, Any]) -> None:
@@ -60,8 +65,9 @@ def test_state_changing_read_refused(tmp_path: Path) -> None:
         _pin_023(controller)
         _declare_state_changing_reads(controller)
 
+    docs = readmit_mutated(tmp_path, mutate)
     with pytest.raises(AdmissionRejected, match="state_changing_read:"):
-        readmit_mutated(tmp_path, mutate)
+        check_semantics(docs, now_wall=NOW)
 
 
 def test_overclassified_verb_refused_equally(tmp_path: Path) -> None:
@@ -75,8 +81,9 @@ def test_overclassified_verb_refused_equally(tmp_path: Path) -> None:
         controller["operations"]["read"]["side_effect"] = "state_change"
         # No parameter declares side_effect: the verb alone must refuse.
 
+    docs = readmit_mutated(tmp_path, mutate)
     with pytest.raises(AdmissionRejected, match="state_changing_read:"):
-        readmit_mutated(tmp_path, mutate)
+        check_semantics(docs, now_wall=NOW)
 
 
 def test_none_verb_read_step_still_admits(tmp_path: Path) -> None:
@@ -84,6 +91,7 @@ def test_none_verb_read_step_still_admits(tmp_path: Path) -> None:
     ``none``, the ``model`` read step on the controller) admits unchanged."""
 
     docs = readmit_mutated(tmp_path, lambda graph: None)
+    check_semantics(docs, now_wall=NOW)  # no raise — the whole pass is clean
     assert "controller" in docs.descriptors
 
 
@@ -140,8 +148,9 @@ def test_refusal_message_names_step_device_and_set(tmp_path: Path) -> None:
         _pin_023(controller)
         _declare_state_changing_reads(controller)
 
+    docs = readmit_mutated(tmp_path, mutate)
     with pytest.raises(AdmissionRejected) as record:
-        readmit_mutated(tmp_path, mutate)
+        check_semantics(docs, now_wall=NOW)
     message = str(record.value)
     assert message.startswith("state_changing_read: step 'model'")
     assert "'controller'" in message

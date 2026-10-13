@@ -1119,7 +1119,11 @@ class Executor:
         event["resolved_input_sha256"] = _sha256_hex({"parameter": parameter})
         operation_id = _operation_id(body.run_id, step_id, index_path)
         event["operation_id"] = operation_id
-        # Core reads are non-state-changing observation: no allow rule applies.
+        # Core reads are non-state-changing observation: no allow rule
+        # applies. Admission is the backstop (issue #445): a device whose
+        # read verb declares side_effect state_change is refused at
+        # semantic admission (``state_changing_read:``), so execution sees
+        # only non-state-changing core reads here.
         request = OperationRequest.read(operation_id, parameter=parameter)
         return self._dispatch(self._plugins[device_id], request, step, body, event)
 

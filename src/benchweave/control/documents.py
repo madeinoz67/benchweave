@@ -1713,6 +1713,23 @@ def _project_full_form(
             for key in ("max_samples", "max_bytes")
             if key in capture_limits
         }
+    read_operation = descriptor.get("operations", {}).get("read")
+    if isinstance(read_operation, dict):
+        # The read side-effect facts (issue #445, the CON-10 amendment in
+        # the capture-keys style): the verb's declared class — the
+        # machine-consumed surface, the MAXIMUM across parameters per S20
+        # — and the sorted names of parameters declaring a state-changing
+        # read. Present iff the read verb is; absent means consumers treat
+        # the class as none (a device with no read verb grants no read
+        # surface at all), and the set is always a list, possibly empty —
+        # the over-classified-verb shape the refusal still fires on.
+        view["read_side_effect"] = read_operation.get("side_effect")
+        view["state_changing_reads"] = sorted(
+            parameter["name"]
+            for parameter in descriptor["parameters"]
+            if isinstance(parameter.get("read_policy"), dict)
+            and parameter["read_policy"].get("side_effect") == "state_change"
+        )
     if derived is not None:
         view["derived_variables"] = derived
     return view

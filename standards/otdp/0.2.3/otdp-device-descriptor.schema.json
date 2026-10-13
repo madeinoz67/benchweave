@@ -1022,6 +1022,13 @@
             },
             "destructive": {
               "type": "boolean"
+            },
+            "side_effect": {
+              "enum": [
+                "none",
+                "state_change"
+              ],
+              "description": "Optional; absent means none. The side-effect class of reading THIS parameter. Any readable parameter declaring state_change forces operations.read.side_effect to state_change — the verb policy is the maximum across parameters, the dual of the write-minimum rule. Conservative over-classification at the verb remains legal; under-classification is refused (S20)."
             }
           },
           "required": [
@@ -1031,7 +1038,8 @@
           "patternProperties": {
             "^x-[a-z0-9]+-[a-z0-9_-]+$": {}
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "max_age_ms bounds acceptable sample age (zero requests a newly acquired value); destructive names data consumption; side_effect (0.2.3) names incidental state change — a mux select, a consuming poll — distinct from destructive, and the verb-maximum rule's input."
         },
         "write_policy": {
           "type": "object",
@@ -3090,6 +3098,58 @@
             }
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "parameters": {
+            "contains": {
+              "properties": {
+                "read_policy": {
+                  "properties": {
+                    "side_effect": {
+                      "const": "state_change"
+                    }
+                  },
+                  "required": [
+                    "side_effect"
+                  ]
+                }
+              },
+              "required": [
+                "read_policy"
+              ]
+            }
+          }
+        },
+        "required": [
+          "parameters"
+        ]
+      },
+      "then": {
+        "properties": {
+          "operations": {
+            "properties": {
+              "read": {
+                "properties": {
+                  "side_effect": {
+                    "const": "state_change"
+                  }
+                },
+                "required": [
+                  "side_effect"
+                ]
+              }
+            },
+            "required": [
+              "read"
+            ]
+          }
+        },
+        "required": [
+          "operations"
+        ]
       }
     }
   ]

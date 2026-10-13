@@ -254,6 +254,62 @@
           "dispatch_state": "dispatched"
         }
       }
+    },
+    {
+      "id": "mux-counter-select-read",
+      "descriptor": "reference-mux-counter.json",
+      "request": {
+        "operation_id": "op-9",
+        "verb": "read",
+        "arguments": {
+          "parameter": "mux_count_a"
+        }
+      },
+      "wire_request_utf8": "CH A\nCNT?\n",
+      "wire_response_utf8": "1024\n",
+      "result": {
+        "operation_id": "op-9",
+        "verb": "read",
+        "status": "ok",
+        "data": {
+          "parameter": "mux_count_a",
+          "value": 1024,
+          "unit": "1",
+          "observed_at": "2026-09-09T00:00:00Z",
+          "age_ms": 0,
+          "quality": "valid",
+          "source": "device"
+        }
+      },
+      "note": "The select frame (CH A) mutates the multiplexer before the count returns — the per-parameter state_change class declared in read_policy (S20)."
+    },
+    {
+      "id": "mux-counter-supply-read",
+      "descriptor": "reference-mux-counter.json",
+      "request": {
+        "operation_id": "op-10",
+        "verb": "read",
+        "arguments": {
+          "parameter": "supply_v"
+        }
+      },
+      "wire_request_utf8": "SUP?\n",
+      "wire_response_utf8": "4980\n",
+      "result": {
+        "operation_id": "op-10",
+        "verb": "read",
+        "status": "ok",
+        "data": {
+          "parameter": "supply_v",
+          "value": 4.98,
+          "unit": "V",
+          "observed_at": "2026-09-09T00:00:00Z",
+          "age_ms": 0,
+          "quality": "valid",
+          "source": "device"
+        }
+      },
+      "note": "A clean read on the same device: no side effect declared, none performed."
     }
   ]
 }

@@ -30,7 +30,7 @@
 | [Protocol decoders](../standards/otdp/0.2.3/protocol-decoders.md) | Declarative decoder surface: pinned declarations, the decode_annotated action and annotation event logs |
 | [Measurement model](../standards/otdp/0.2.3/measurement-model.md) | Units, axes, channels, complex and digital data, timing, calibration and uncertainty |
 | [Profile catalog](../standards/otdp/0.2.3/device-profile-catalog.json) | 51 actions with exact input and output schemas |
-| [Validation report](../standards/otdp/0.2.3/validation-report.md) | 692 document and schema checks that pass, and their limits |
+| [Validation report](../standards/otdp/0.2.3/validation-report.md) | 705 document and schema checks that pass, and their limits |
 
 The package also includes these artefact types:
 
@@ -101,4 +101,4 @@ From the 0.1.0 baseline forward, the corpus retains superseded versions digest-f
 
 ## Baseline verification
 
-1184 document and schema checks and selected semantic and coverage checks passed: OTDP 692, registry 68, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).
+1197 document and schema checks and selected semantic and coverage checks passed: OTDP 705, registry 68, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).

@@ -526,10 +526,10 @@ else:
     d = copy.deepcopy(descriptors["reference-controller.json"])
     d["operations"]["read"]["side_effect"] = "state_change"
     check("Accept over-classified read verb", dv.is_valid(d))
-    local_actions = list(mux.get("actions", {}).values())
     check(
-        "Read side-effect example local action declares state_change",
-        len(local_actions) == 1 and local_actions[0]["side_effect"] == "state_change",
+        "Read side-effect example declares a state_change invoke",
+        mux["actions"]["otdp.embedded_controller.set_control/1.0.0"]["side_effect"]
+        == "state_change",
     )
 
 

@@ -2,7 +2,7 @@
 
 # OTDP 0.2.3 specification verification
 
-**Result: 692/692 checks passed; 0 failed.**
+**Result: 705/705 checks passed; 0 failed.**
 
 12 class profiles and 51 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side. Protocol-decoder declarations, their digest-pinned documents and the decode_annotated vectors were checked (PD1 through PD5); gateway admission mirrors and binary-class emission are the named follow-on slices.
 
@@ -10,11 +10,15 @@
 
 ## Checks
 
+- PASS: Accept over-classified read verb
 - PASS: Catalog structure
 - PASS: Decoder declaration examples census
 - PASS: Decoder declaration schema present
 - PASS: Device constraints narrow standard contract
 - PASS: Every standard action has a positive contract vector
+- PASS: Read side-effect example census
+- PASS: Read side-effect example declares a state_change invoke
+- PASS: Read side-effect refusal names the operations path
 - PASS: Reject absent action feature structurally
 - PASS: Reject absent profile feature semantically
 - PASS: Reject arbitrary command field
@@ -25,6 +29,7 @@
 - PASS: Reject duplicate decoder id
 - PASS: Reject duplicate provider grammar kind
 - PASS: Reject event end preceding start
+- PASS: Reject incoherent read side effect
 - PASS: Reject incomplete edge trigger
 - PASS: Reject incomplete optional sweep group
 - PASS: Reject known uncertainty without value
@@ -563,6 +568,14 @@
 - PASS: reference-hid-meter.json provider grammar disjoint from generic kinds
 - PASS: reference-hid-meter.json provider identity coherence
 - PASS: reference-hid-meter.json vector file resolves
+- PASS: reference-mux-counter.json class membership/effects
+- PASS: reference-mux-counter.json decoder declaration
+- PASS: reference-mux-counter.json descriptor structure
+- PASS: reference-mux-counter.json known required features
+- PASS: reference-mux-counter.json pinned urn:otdp:measurement:0.2.3
+- PASS: reference-mux-counter.json pinned urn:otdp:profile-catalog:0.2.3
+- PASS: reference-mux-counter.json provider declaration
+- PASS: reference-mux-counter.json vector file resolves
 - PASS: reference-psu.json decoder declaration
 - PASS: reference-psu.json descriptor structure
 - PASS: reference-psu.json known required features

@@ -101,6 +101,7 @@
         "standards/otdp/0.2.3/examples/reference-capture.json",
         "standards/otdp/0.2.3/examples/reference-controller.json",
         "standards/otdp/0.2.3/examples/reference-hid-meter.json",
+        "standards/otdp/0.2.3/examples/reference-mux-counter.json",
         "standards/otdp/0.2.3/examples/reference-provider.json",
         "standards/otdp/0.2.3/examples/reference-psu.json",
         "standards/otdp/0.2.3/examples/reference-rawlink.json",
