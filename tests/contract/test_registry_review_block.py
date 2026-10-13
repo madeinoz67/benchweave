@@ -49,10 +49,13 @@ def _valid(raw: dict[str, object]) -> bool:
     return True
 
 
-def test_active_registry_version_is_0_1_2() -> None:
-    assert (ACTIVE_DIR.name) == "0.1.2", (
-        f"the publishing lane's review block requires the 0.1.2 corpus (active is "
-        f"{ACTIVE_DIR.name})"
+def test_active_registry_version_carries_the_review_block_corpus() -> None:
+    """The active registry corpus is the review-block corpus — derived
+    from the manifest, never a hand-listed version (the #443 orphan-literal
+    shape, applied at the 0.1.3 bump)."""
+    assert ACTIVE_DIR.name == ACTIVE_VERSION, (
+        f"the publishing lane's review block requires the review-block corpus "
+        f"(active is {ACTIVE_DIR.name}, manifest says {ACTIVE_VERSION})"
     )
 
 

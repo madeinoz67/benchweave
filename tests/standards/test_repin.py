@@ -31,7 +31,7 @@ from benchweave.standards.manifest import (
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_MANIFEST = "standards/corpus-manifest.json"
 # One regenerable (normative) row and one frozen (superseded otdp/0.1.0) row.
-REGENERABLE = "registry/0.1.2/examples/package-lock.json"
+REGENERABLE = "registry/0.1.3/examples/package-lock.json"
 FROZEN = "otdp/0.1.0/device-profile-catalog.json"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -149,7 +149,7 @@ def test_repin_matches_the_hand_splice(tmp_path: Path) -> None:
     # bump legitimately produces byte-identical examples whose digests appear
     # twice (0.1.2 cites the 0.1.1 source), and the control below assumes
     # uniqueness.
-    target = "registry/0.1.2/release-manifest.schema.json"
+    target = "registry/0.1.3/release-manifest.schema.json"
     root = _repo(tmp_path)
     raw = _manifest_bytes(root)
     _flip(root, target)
@@ -406,7 +406,7 @@ def _dev_head_repo(tmp_path: Path, *, with_block: bool = True) -> Path:
     block. ``with_block=False`` plants the rows and directory WITHOUT the
     block — the §4.4 orphan state a botched teardown leaves."""
     root = _repo(tmp_path)
-    active = "registry/0.1.2"
+    active = "registry/0.1.3"
     head = "registry/0.2.0-dev"
     for source in sorted((root / "standards" / active).glob("*.json")) + sorted(
         (root / "standards" / active / "examples").glob("*.json")

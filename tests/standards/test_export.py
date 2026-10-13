@@ -100,6 +100,7 @@ def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
         ("registry", "0.1.0"),
         ("registry", "0.1.1"),
         ("registry", "0.1.2"),
+        ("registry", "0.1.3"),
         ("execution", "0.1.0"),
         ("execution", "0.2.0"),
         ("interface", "0.1.0"),

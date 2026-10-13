@@ -105,6 +105,28 @@ x["review"]["outcome"] = "rubber-stamped"
 check("review outcome enum closed", not v.is_valid(x))
 x["review"] = {**REVIEW_BLOCK, "extra": "refuses"}
 check("review block closed to five fields", not v.is_valid(x))
+# Registry 0.1.3 arms (issue #447, the slice-3 rider): the review-block
+# requirement widens to the union (0.1.3 manifests require it too), and
+# the inventory's role enum gains `configuration` for opaque, digest-
+# pinned configuration assets (an image or calibration blob) — additive
+# only: no previously-valid manifest is refused.
+x = copy.deepcopy(m)
+x["manifest_version"] = "0.1.3"
+check("0.1.3 requires review block", not v.is_valid(x))
+x = copy.deepcopy(m)
+x["manifest_version"] = "0.1.3"
+x["review"] = dict(REVIEW_BLOCK)
+check("0.1.3 with review block valid", v.is_valid(x))
+x = copy.deepcopy(m)
+x["payload"]["files"].append(
+    {
+        "path": "assets/reference-image.bin",
+        "role": "configuration",
+        "bytes": 277,
+        "sha256": "f" * 64,
+    }
+)
+check("configuration role admits", v.is_valid(x))
 
 
 def semantic(x):

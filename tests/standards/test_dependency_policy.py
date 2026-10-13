@@ -119,13 +119,13 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
     }
     assert served == {
         "otdp": ("0.2.0", "0.2.2", "0.2.3"),
-        "registry": ("0.1.0", "0.1.1", "0.1.2"),
+        "registry": ("0.1.0", "0.1.1", "0.1.2", "0.1.3"),
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0",),
         "plugin-ui": ("0.3.0",),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 12
+    assert sum(len(versions) for versions in served.values()) == 13
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:

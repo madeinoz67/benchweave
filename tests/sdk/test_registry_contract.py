@@ -145,4 +145,4 @@ def test_registry_standard_version_tracks_the_bump() -> None:
     current version post-sync (predecessors ride beside it, carried). The
     0.1.2 active row is the publishing lane's review-block bump (issue #223
     slice 1)."""
-    assert _registry_standard()["version"] == "0.1.2"
+    assert _registry_standard()["version"] == "0.1.3"

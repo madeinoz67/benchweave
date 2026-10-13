@@ -129,19 +129,19 @@ def test_manifest_identity_pins_admitted_versions() -> None:
     """Obligation 8's identity touch-set member: the identity block's
     otdp key follows the manifest's active entry — derived, never a literal
     (the orphan-literal shape this test replaced retired at the 0.2.3
-    bump)."""
+    bump; the registry key joined it at the 0.1.3 bump)."""
     identity = _manifest()["identity"]
     assert identity["architecture"] == "STG 1.5"
     assert identity["interface"] == "0.1.0"
-    assert identity["registry"] == "0.1.2"
     assert identity["execution"] == "0.2.0"
     standards_manifest = json.loads(
         (ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
     )
-    active_otdp = next(
-        entry["version"] for entry in standards_manifest["standards"] if entry["id"] == "otdp"
-    )
-    assert identity["otdp"] == active_otdp
+    active_versions = {
+        entry["id"]: entry["version"] for entry in standards_manifest["standards"]
+    }
+    assert identity["otdp"] == active_versions["otdp"]
+    assert identity["registry"] == active_versions["registry"]
     assert identity["mcp"] == "2026-07-28"
 
 

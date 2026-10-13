@@ -76,7 +76,12 @@ class TestActiveVersionFromCorpus:
             entry["version"] for entry in committed["standards"] if entry["id"] == "otdp"
         )
         assert active_version_from_corpus(corpus, "otdp") == expected_otdp
-        assert active_version_from_corpus(corpus, "registry") == "0.1.2"
+        expected_registry = next(
+            entry["version"]
+            for entry in committed["standards"]
+            if entry["id"] == "registry"
+        )
+        assert active_version_from_corpus(corpus, "registry") == expected_registry
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
         assert active_version_from_corpus(corpus, "interface") == "0.1.0"
         assert active_version_from_corpus(corpus, "plugin-ui") == "0.3.0"
@@ -174,7 +179,7 @@ class TestVendoringHelpers:
         validated, by construction."""
         assert active_contract_family("execution") == contract_family("execution/0.2.0")
         assert active_contract_family("interface") == contract_family("interface/0.1.0")
-        assert active_contract_family("registry") == contract_family("registry/0.1.2")
+        assert active_contract_family("registry") == contract_family("registry/0.1.3")
 
     def test_active_contract_family_refuses_an_unknown_standard(self) -> None:
         with pytest.raises(StandardsError, match="standards_entry_absent: nosuch"):
@@ -976,17 +981,19 @@ class TestScriptsScope:
         return scratch
 
     def test_the_scripts_ledger_holds_over_the_real_tree(self) -> None:
-        """The 23 sites are accounted: 20 registered across the 7 authored
-        rows holding exactly, the 3 former literals DERIVED (no site —
-        textual or assembled — in the adc control or the docs site), the
-        counter self-exempted (census 18 since the #347 drift gate joined;
-        the registered sites below are unchanged)."""
+        """The 26 registered sites are accounted: 26 across the 9 authored
+        rows holding exactly (measured 2026-10-13 at the #447 rider —
+        check_registry grew 1 -> 3 and check_devices 1 -> 3, sum 22 -> 26),
+        the 3 former literals DERIVED (no site — textual or assembled —
+        in the adc control or the docs site), the counter self-exempted
+        (census 18 since the #347 drift gate joined; the file set below
+        is unchanged)."""
         result = _counter_run("--scope", "scripts", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
         assert report["scanned"] == 18
-        assert report["count"] == 22
+        assert report["count"] == 26
         carried = {row["file"] for row in report["sites"]}
         assert carried == {
             "scripts/architecture/check_closure.py",

@@ -174,7 +174,7 @@ runs need the repository on GitHub, with Actions enabled.
 
 ## Documentation baseline
 
-`docs/` retains architecture 1.5, OTDP 0.2.3, interface 0.1.0, registry 0.1.2,
+`docs/` retains architecture 1.5, OTDP 0.2.3, interface 0.1.0, registry 0.1.3,
 execution 0.2.0, decisions, acceptance reviews and implementation planning.
 Superseded versions and ZIP copies were removed from the project.
 Keep future documentation here. Use Git history for superseded revisions.
