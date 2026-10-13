@@ -3,7 +3,7 @@
 	url = https://github.com/madeinoz67/benchweave-sdk.git
 	# The declared pin (gateway #408's checker reads this): the released
 	# tag whose bytes this branch's pointer names. A pointer move updates
-	# this line in the same commit. v0.11.0 = the plugin-ui 0.3.1 +
-	# commissioned-preset gate release (#444's train), cut at the
-	# registration commit b771867.
-	pin = v0.11.0
+	# this line in the same commit. v0.11.1 = the #446 slice-2 twin
+	# (profile_shadow + merge guard), cut at the registration commit
+	# 0586a90.
+	pin = v0.11.1

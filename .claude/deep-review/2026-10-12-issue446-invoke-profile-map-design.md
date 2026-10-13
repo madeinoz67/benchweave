@@ -480,3 +480,51 @@ diffs and report actual counts; the tier cannot drop below 3 either way.
 standards corpus of this branch. Gortex reads served the gateway repo; the SDK standalone
 checkout is outside the daemon's indexed roots and was read natively (disclosed per-path);
 the device-plugin tree was read natively as instructed.*
+
+---
+
+## 14. Fold-in addendum (2026-10-13 — slice 2 onto the plugin-ui 0.3.1 train)
+
+1. **Train / one-bump.** Slice 2 lands on the plugin-ui 0.3.1 bump that the
+   #444 commissioned-preset train already cut on
+   `feat/issue444-commissioned-preset-firmware` (fc6a0d63): the 0.3.1 tree,
+   corpus rows, served range and version-literal sweep are done. This rider
+   cuts NO second bump — the `profile_shadow` checker semantics, the
+   pinned-`$id` merge guard and the prose amendments ride 0.3.1 in place.
+   The PATCH class still holds: `profile_shadow` fires only on divergent
+   duplicate profile declarations, which a corpus-only 0.3.0-valid document
+   set cannot contain (§2 verified the carried catalogs' profile rows
+   identical; re-verified 2026-10-13 for `otdp.dc_psu/1.0.0` between the
+   carried 0.2.0/0.2.2 catalogs), so the §5 falsifier ("any 0.3.0-valid
+   presentation that 0.3.1 refuses flips the class to MINOR") does not trip.
+
+2. **Slice-boundary ruling at build time.** The gateway read-side
+   composition (§3.2: "`compose_device_presentation` ... merges them into
+   `_presentation_documents()`") requires slice 1's `_presentation_documents()`
+   (§3.1), which is parked on `feat/issue446-invoke-profile-map` (967f00f5)
+   and absent from the 0.3.1 train tip (fc6a0d63 serves `_plugin_ui_schemas`
+   only). The same applies to the SDK leg (`pinned_contract_documents`,
+   benchweave-sdk repo). These composition parts are STOPPED here; the
+   landing order becomes slice 1 → slice 2. What lands in this arc: the
+   `profile_shadow` check, the merge guard as a checker-level seam, and the
+   corpus prose.
+
+3. **Deviation (disclosed).** §3.2 places the `$id` merge guard inside the
+   SDK helper and the gateway read side. This arc implements the guard as a
+   checker-level function `merge_pinned_documents` in the live code object so
+   the rule exists at exactly one enforcement point and both composition
+   points compose through it when their slices land. Refusal surface:
+   `DocumentError` carrying code `pinned_id_shadow` — the design's
+   `pinned_id_shadow:` refusal prefix.
+
+4. **`profile_shadow` semantics.** The §3.2 anchor `path targets.<id>` is
+   read as: the finding fires for a target that BINDS a divergently-declared
+   profile id — the binding is where the last-wins map makes the result
+   order-dependent, and a shadowed id no target binds stays unobserved (the
+   corpus sets have no divergent duplicates today, so this reading cannot
+   over-fire on M-D's no-regression rule). Identical duplicates remain
+   benign last-wins dedup, byte-identical to 0.3.0 behavior.
+
+5. **Slate reference.** The train's 0.3.1 evidence record is
+   `standards/plugin-ui/0.3.1/validation-report.md` (issue #444); this
+   rider appends its own section there in the feat arc.

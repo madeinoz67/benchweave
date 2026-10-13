@@ -118,3 +118,33 @@ None on the gate itself. Render-time firmware resolution for commissioned
 devices stays deferred (design D1): the read-only UI renders all
 structurally-valid presets and availability is decided at apply, where the
 established-firmware gate refuses before any write.
+
+## Rider (2026-10-13): issue #446 slice 2 — plugin-authored profiles back UI targets
+
+Rides the same 0.3.1 version (no second bump; one-live-object rule keeps a
+single served 0.3.1). Adds, on top of the #444 record above:
+
+- Checker (`validate_presentation`/`_target_findings`): a profile id declared
+  by two documents in the served set with divergent rows yields finding
+  `profile_shadow` on each target that binds it (path `targets.<id>`,
+  message names the id). Identical duplicates stay benign last-wins dedup —
+  byte-identical to 0.3.0 behavior on corpus-only sets (the PATCH class
+  argument holds: no 0.3.0-valid set contains a divergent duplicate; the
+  carried OTDP catalogs' profile rows are identical across versions,
+  re-verified 2026-10-13 for `otdp.dc_psu/1.0.0` between 0.2.0/0.2.2).
+- Composition guard (`merge_pinned_documents`): a pinned contract document
+  whose own `$id` or an action-schema `$id` equals a served schema `$id`
+  (corpus or sibling pinned) refuses with `DocumentError` code
+  `pinned_id_shadow`. One shared enforcement point for the SDK helper and
+  the gateway read side (design record fold-in addendum §14.3); the
+  composition points themselves land with slice 1 → slice 2 ordering.
+- Prose: this README's target/trust sections name the profile supply rule
+  and both shadow refusals; OTDP `extension-contract.md` §2 names
+  plugin-authored pinned catalogs and the `otdp.*` namespace rule (companion
+  prose, no OTDP bump).
+
+RED-first evidence (junitxml): tests=7 failures=5 errors=0 before the
+mechanism (the divergent-shadow arm showed `ValidationReport(findings=())`
+valid=True — the silent last-wins shadow; 4 merge-guard arms ImportError on
+the missing symbol), tests=7 failures=0 errors=0 after. Full arms:
+tests/unit/test_presentation_profiles.py.
