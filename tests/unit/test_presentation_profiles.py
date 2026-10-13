@@ -81,7 +81,8 @@ def base_descriptor() -> JsonObject:
 
 def corpus_profile_row() -> JsonObject:
     row = [p for p in corpus_catalog()["profiles"] if p["id"] == CORPUS_PROFILE_ID][0]
-    return json.loads(json.dumps(row))  # deep copy
+    copy: JsonObject = json.loads(json.dumps(row))  # deep copy
+    return copy
 
 
 def pinned_catalog(
