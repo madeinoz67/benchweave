@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 - Template header names all three placeholders; non-darwin --plist-output refuses typed (#422 inc3 fix wave 2)
 - #422 inc4 fold the critic/gw1/l2 review wave into doctor+logs
 - CRLF-honest tail rows (windows rollup catch) + windows lane timeout 30->45 (the lifecycle arms outgrew it; split-lane stays the retro row)
+- #446 slice 1 serve the SDK document set at the device page
+- #446 slice 1 fold — digest-gate the served corpus set (F1-F4)
 
 ### Documentation
 
@@ -37,6 +39,7 @@ All notable changes to this project will be documented in this file.
 - Record the Q5 ruling — option 2, stdio shim proxies the running host (issue #285)
 - Delivery-scope ruling — the fork-deletion clause closes on our-repo evidence (issue #285)
 - #451 sync-completion pacing — mechanism, acceptance, tier call
+- Issue #446 — invoke binds UI targets to corpus profiles only
 
 ### Features
 
@@ -59,6 +62,8 @@ All notable changes to this project will be documented in this file.
 - G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
 - Outcome-mode scatter for the belt's forced-loose pin — recorded x-values, not input pacing (main-red fix, the #241 wall-time class)
 - #451 RED arms — sync-completion pacing fails the un-amended tree
+- RED — #446 slice 1 invoke-target composition arms
+- RED — #446 slice 1 fold, the corpus digest gate arms (F1)
 
 ### Build
 
