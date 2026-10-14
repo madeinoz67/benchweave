@@ -378,7 +378,7 @@ _DPS150_V1_LOCK: dict[str, Any] = {
         'otdp-runtime.schema.json':
             'd2e62a22a118aad11e247c7a087947b24cf8fcf7c1cc3c77a71b5a249f8342ea',
         'otdp-specification.md': '6469e40d9e98a2e52857c0165091fd639e47475893e66a6cc593ed4452c427e6',
-        'extension-contract.md': '3595b6655b012af350ccda1a4715c3515cdfbe8163120cc6f369d08922e5e627',
+        'extension-contract.md': 'ccbcc2a94bd5a78e9bf4e57354d19d66826b7308582f14d775762ceeeeee773a',
         'device-classes.md': '712ec652c85033f84e79b4679e6756d9bf0eab93af319c55ca45b5962b0a3860',
         'measurement-model.md': '1d40f0c32676149d360c127c6c974a2e227b2dfd190d9044fec24d8c3312305e',
         'otdp-measurement.schema.json':
@@ -436,7 +436,7 @@ def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
     rows = _rows(raw)
     assert [row["version"] for row in (rows["otdp"], rows["plugin-ui"], rows["registry"])] == [
         "0.2.0",
-        "0.3.0",
+        "0.3.1",
         "0.1.3",
     ]
     again = _run(root, "pin", "--package", "plugins/acme/widget")
@@ -590,7 +590,7 @@ def test_b2_upgrade_plugin_ui_to_its_only_served_version_is_a_no_op(tmp_path: Pa
         "upgrade",
         "plugin-ui",
         "--precise",
-        "0.3.0",
+        "0.3.1",
         "--package",
         "plugins/acme/widget",
     )
