@@ -97,10 +97,13 @@ Admission mechanics (what Landing 1 physically does):
 - Identity block: **no change** — CON-8's closed-world enumeration requires only
   otdp/registry/execution/interface; plugin-ui and plugin-ui-preview sit outside it, and
   the new family joins them there.
-- Cross-constraints (`standards/cross-constraints.json`): **no row in this increment.**
-  The reference carries its plugin-ui target inside the document (§2) and the expander
-  enforces it; a resolve-time cross-constraint row is vacuous while plugin-ui serves a
-  single version. Deferred (D-6 in §8).
+- Cross-constraints (`standards/cross-constraints.json`): the reference carries its
+  plugin-ui target inside the document (§2) and the expander enforces it; a resolve-time
+  cross-constraint row is vacuous while plugin-ui serves a single version. Originally
+  ruled "no row in this increment" and deferred (D-6); the 2026-10-14 all-in owner
+  ruling rolled RC-5 into this increment (§7A-L1; the RC-5 row in §8), and the row
+  landed at admission — naming the family's plugin-ui floor, cited to this record, and
+  documented vacuous while plugin-ui serves a single version.
 - Standards-governor mandate applies (any `standards/` touch); the compatibility matrix
   and website stamps regenerate from the manifest by their own mechanisms (CON-12/CON-13)
   — verified by `matrix --check` and the site assembly in CI, never hand-swept.

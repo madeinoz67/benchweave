@@ -388,7 +388,7 @@ locks). Never SDK-first, never consumer-side edits to corpus bytes.
 Sub-capability ids (`otdp:dc_psu:*` profiles, `otdp.*/*/` action ids),
 registry fixture package versions, plugin release versions, the architecture
 document edition (STG 1.5), and the MCP date. These carry their own versions;
-only the six standards above are governed by this file.
+only the standards above are governed by this file.
 
 The adapter API version is declared in the corpus-manifest identity block
 (`identity.adapter_api`); its authority is the active OTDP descriptor schema's
