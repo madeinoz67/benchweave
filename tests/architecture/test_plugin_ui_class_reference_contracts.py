@@ -480,15 +480,26 @@ def test_the_reference_binds_the_catalogued_class_actions() -> None:
 def test_reference_numbers_are_structural_only() -> None:
     """D2: the only numeric literals in the reference are the structural
     instantiations - group_size 8, the capture-page plot_index 0, and the
-    layout grid spans (12, the vocabulary's own structural bound)."""
+    layout grid spans (12, the vocabulary's own structural bound). The
+    census covers string-encoded numerics too (lane 1 F4): pure-numeric
+    strings carry only the count-arity literal "1" from the closed
+    expression vocabulary; version strings like 0.3.1 and the URNs are not
+    pure numerics and never were."""
     document = json.loads(REFERENCE.read_bytes())
     numbers: list[int | float] = []
+    numeric_strings: list[str] = []
 
     def walk(node: Any) -> None:
         if isinstance(node, bool):
             return
         if isinstance(node, (int, float)):
             numbers.append(node)
+        elif isinstance(node, str):
+            try:
+                float(node)
+            except ValueError:
+                return
+            numeric_strings.append(node)
         elif isinstance(node, dict):
             for value in node.values():
                 walk(value)
@@ -498,6 +509,7 @@ def test_reference_numbers_are_structural_only() -> None:
 
     walk(document)
     assert set(numbers) == {0, 8, 12}
+    assert set(numeric_strings) == {"1"}
 
 
 def test_reference_layouts_carry_no_text_nodes() -> None:
@@ -677,3 +689,97 @@ def test_depth_is_bounded_at_three() -> None:
         ],
     }
     assert not layout_validator().is_valid(four_deep)
+
+
+# --- the admission fold: adversary lanes 1 and 2 (RED-first batch) ---------------
+
+
+def test_slot_variables_key_is_removed() -> None:
+    """Lane 1 F1 probe 1 (D2 smuggling): the per-slot variable template was
+    dropped at admission - nothing authored it and lane variables derive
+    from the descriptor. A slot carrying a free-form variables object (the
+    adversary's {default, unit, maximum} probe) must refuse."""
+    document = minimal_reference(
+        slots={
+            "arm": {
+                "kind": "procedure",
+                "action": "otdp.logic_analyser.arm/1.0.0",
+                "variables": {"default": 1.8, "unit": "V", "maximum": 5.0},
+            }
+        }
+    )
+    assert not reference_validator().is_valid(document)
+
+
+def test_component_attribute_is_a_closed_selector_map() -> None:
+    """Lane 1 F1 probe 2 (D2 smuggling): attribute maps count expressions
+    onto the closed lane-kind selectors only - a data-bearing key such as
+    the adversary's voltage_limit:{maximum:3.3} must refuse."""
+    document = minimal_reference(
+        expect={
+            "components": {
+                "digital-lanes": {
+                    "count": "1",
+                    "attribute": {"voltage_limit": {"maximum": 3.3}},
+                }
+            }
+        }
+    )
+    assert not reference_validator().is_valid(document)
+
+
+def test_attribute_selectors_are_the_lane_kinds() -> None:
+    """The F1 closure keeps the designed vocabulary: the three lane-kind
+    selectors with count-expression values still admit."""
+    document = minimal_reference(
+        expect={
+            "components": {
+                "digital-lanes": {
+                    "count": "1",
+                    "attribute": {"data-bw-lane-kind=channel": "{n_lanes}"},
+                }
+            }
+        }
+    )
+    assert reference_validator().is_valid(document)
+
+
+@pytest.mark.parametrize(
+    "target",
+    [">=0.3.1,garbage!!", ">=0.3.1 ", "=0.3.1"],
+    ids=["trailing-garbage", "trailing-space", "bare-equals"],
+)
+def test_target_grammar_is_exact(target: str) -> None:
+    """Lane 1 F8: the target grammar is anchored - the prefix-only pattern
+    admitted arbitrary trailing bytes."""
+    document = minimal_reference(targets={"plugin_ui": target})
+    assert not reference_validator().is_valid(document), target
+
+
+def test_seventeen_layout_pages_refuse_both_ways() -> None:
+    """Lane 1 F7: the seam block's page cap (16) is the binding one - the
+    reference-side layouts bound must match it, so seventeen pages refuse
+    as a standalone block AND as reference layouts."""
+    pages = [minimal_layout_page() for _ in range(17)]
+    assert not layout_validator().is_valid(
+        {"contract_version": "0.1.0", "pages": pages}
+    )
+    assert not reference_validator().is_valid(minimal_reference(layouts=pages))
+
+
+def test_sixteen_layout_pages_admit_both_ways() -> None:
+    """The F7 alignment is a tightening to the seam cap, not a new ceiling:
+    sixteen pages admit on both writers."""
+    pages = [minimal_layout_page() for _ in range(16)]
+    assert layout_validator().is_valid(
+        {"contract_version": "0.1.0", "pages": pages}
+    )
+    assert reference_validator().is_valid(minimal_reference(layouts=pages))
+
+
+def test_the_reference_declares_the_intermediation_forbid() -> None:
+    """Lane 1 F2 (D7): the forbid arm extends past bw-confirm ancestors to
+    any intermediating control on an energy-removing action; the class
+    reference declares the check."""
+    document = json.loads(REFERENCE.read_bytes())
+    assert "intermediated-energy-removing-action" in document["expect"]["forbid"]

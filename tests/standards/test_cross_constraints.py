@@ -176,6 +176,17 @@ def test_the_exemption_is_root_scoped_not_basename_scoped(tmp_path: Path) -> Non
         _check_coverage(root, set())
 
 
+def test_the_side_table_keeps_its_single_line_form() -> None:
+    """Governance byte-form pin (adversary lane 1 F9): cross-constraints.json
+    is a single-line compact document; pretty-printing it is a reflow the
+    machinery does not refuse (repin's canonical-form gate covers
+    corpus-manifest.json only). Pinned until repin widens."""
+    raw = CROSS.read_bytes()
+    assert raw.count(b"\n") == 1 and raw.endswith(b"\n"), (
+        "the side table left its single-line compact form"
+    )
+
+
 def test_the_baseline_listing_admits_the_governance_file() -> None:
     """``_all_corpus_json_files`` and ``_contract_files`` both exclude the
     governance files by ROOT-RELATIVE path: cross-constraints.json is not a
