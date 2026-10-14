@@ -14,7 +14,10 @@ gate's always-on coverage arm (§5); both move the schema (§2.2), the fixtures 
 and the acceptance rules (A1, A4, A9, A10). A second owner ruling the same day rolls
 the **recipe vocabulary IN** (supersedes the D-2 deferral; mechanism in §2.6), and a
 third makes every deferral an **owner row-call** (§8's table is the candidate list;
-the numbered row-call list lives on the tracker).
+the numbered row-call list lives on the tracker). A fourth ruling the same day calls
+every row **IN** — RC-1..RC-10 roll into THIS train (§7A carries the program
+sequence; §8 becomes the scope-and-landing table, with the D11 and D4 constraint
+amendments recorded as owner rulings of 2026-10-14).
 
 ## 0. Summary
 
@@ -291,7 +294,7 @@ to the descriptor or the group pattern.
 | `thresholds` | safe `threshold_v` range for the logic family | a class reference cannot know a bench's acceptable thresholds (A02: qualification is per bench) | constrain the settings schema (`input_constraints`) on the descriptor |
 | `arm-safety` | safe trigger/arm sequencing | device- and DUT-specific; the reference binds the buttons, not the sequence | procedure/policy at commissioning; AI-GUIDE notes |
 | `lane-names` | lane names beyond descriptor labels | the descriptor owns channel identity | label channels in the descriptor |
-| `presets` | preset settings values | presets are commissioned evidence, never derived | author `ui/presets/*.json` via check-preset |
+| `presets` | preset settings values | presets are commissioned evidence, never derived (A02 unamended) | author `ui/presets/*.json` via check-preset - the expander emits the SCAFFOLD (structure + `preset_asset_ids` wiring, Landing 2 / A12); commissioning values stay authored |
 | `decode-settings` | decode options beyond the closed unions | the closed trio unions are the contract; anything else is a named extension | descriptor `decoders[]` declarations |
 
 ### 2.4 D13 — Effective capability, not catalogue
@@ -354,9 +357,11 @@ D2-clean.
 **The §E.1 inventory has no text-input, select or boolean component** (verified
 census: button, numeric-input, rotary-control, reading-tile, alert-bubble,
 engineering-plot, digital-lanes, data-table, panel, mode-banner, confirm-action).
-That vocabulary gap is recorded as deferral D-10; closing it is a ui-contract §E
-addition on the contract's own lane — NOT this increment (D4's no-renderer-change
-line and D12d's §E-only rule both hold).
+That vocabulary gap ships in the train's Landing 5 (a plugin-ui contract bump;
+**D4 is amended for this row only** — owner ruling 2026-10-14 — so the §E.1 additions
+and their `contracts.py` consumption land sequenced AFTER the gateway landing, paying
+the version-literal edit and the single-serving wall exactly once). Until Landing 5,
+D4's no-renderer-change line and D12d's §E-only rule hold unchanged.
 
 **Device features.** The `vendor_actions` slot resolves every declared action URN not
 claimed by a named class slot — vendor profiles resolve from the descriptor's
@@ -376,7 +381,8 @@ commissioned presets yet; `cannot_derive.presets`); `arm` is L2
 deviation at birth — while its decoder LANES still render as capture-plot annotations
 (declaration-level, not invocation).
 
-**Frequency counter — deferred, with the promotion criterion (D-9).** Default lane
+**Frequency counter — the criterion IS the scope (owner ruling 2026-10-14: rolled
+in as the train's built-in evidence trigger, slot E-1 in §7A).** Default lane
 TODAY: vendor profile — a descriptor pins a vendor catalog carrying a
 vendor-namespaced frequency-counter profile and action; D14 renders it in Device
 features; no corpus motion. Promotion to a **dmm optional action**: evidence = at
@@ -453,7 +459,9 @@ rotary-control, reading-tile, data-table, engineering-plot, digital-lanes); grid
 placement is host CSS-grid composition of panels (the styleguide's own layout
 rule), not a new component. §6.1 items with NO §E.1 component — tabs, splits,
 sliders, switches, selectors, keypads, text inputs — stay OUT of the vocabulary
-(their absence is structural: §E.1 ships no such component; row-call D-10).
+until §E components exist for them (Landing 5 adds the input trio — text, select,
+boolean — under the D4 amendment scoped to that row; tabs, splits and sliders join
+only if the same bump adds §E components for them).
 
 **D12a parity holds by construction:** the reference's layout sections and a
 hand-authored block are the SAME vocabulary under the SAME family schema — one
@@ -461,10 +469,10 @@ vocabulary, two writers, identical validation (A11). The reference's layouts
 carry structure only (panels, controls, binding and field references); `text`
 nodes are the author's (overlay or hand-written), never the reference's.
 
-**The honest gap, row-called (D-11):** the GATEWAY production host is as
-  extension-blind as the validator — it will ignore the block until gateway-side
-  consumption work lands. That work is structurally excluded from THIS increment
-  by D11 itself (no `src/benchweave` change); it is a row-call, not a silent cut.
+**The gateway gap (D-11, ROLLED IN — D11 amended by owner ruling 2026-10-14):** the
+  GATEWAY production host is as extension-blind as the validator — it ignores the
+  block until the gateway landing (Landing 4, §7A) ships consumption alongside the
+  no-manifest fallback and the panel-registration surface, as one landing.
 
 ## 3. Expansion semantics (SDK side)
 
@@ -768,6 +776,7 @@ D13/D14 and vocabulary folds, still before any gate output existed.
 | A9 | D13 pair: F3a (narrow) — `threshold_v` renders as a fixed read-only display (**0** numeric-inputs for it), **0** trigger button, **0** decoder lanes, gate PASS; F3b (programmable, 34 channels) — bounded numeric-inputs whose asserted min/max EQUAL the fixture's constraint values (bounds from the intersection), trigger button **1/1**, decoder lanes per pinned decoder, **1/1** partial group `D33–D34`; the two manifests' inventories differ exactly on the capability-derived controls | any bound not matching the constraint bytes, or a narrow-only control appearing in F3b (or vice versa) |
 | A10 | D14 coverage: class fixture **7/7** actions covered (**5** rendered + **2** declared: configure-preset-deviation, decode-enum-deviation), gate PASS with both REPORTED; deleting the decode declaration ⇒ FAIL (`classref_gate_uncovered:`); the vendor-action fixture renders in Device features at its ladder level and is covered; the scalar scaffold: coverage PASSES, class arm skips | any undeclared action passing, or a declared one still failing |
 | A11 | Layout parity and render (§2.6): a HAND-AUTHORED layout-bearing manifest (fixture) and the EXPANDED manifest both validate **identically** — canonical validator `valid=true` for both (extension-blindness) AND family `layout.schema.json` `valid=true` for both; the SDK host renders the block — census asserts the Run-group `bw-panel` contains arm+abort buttons in declaration order (DOM order, not count alone); a layout block naming a page id absent from the manifest refuses `classref_layout_invalid:` | either writer validating where the other fails (parity break), or the composed order differing from the declared order |
+| A12 | preset scaffold (RC-6, A02 unamended): the expander emits a scaffold preset document per declared configuration action, wired through `preset_asset_ids` (**N/N** claimed, zero `unreferenced_preset` findings), carrying `synthetic` provenance and author-fill placeholder settings; `check-preset` REFUSES each scaffold until the author supplies commissioned values | any scaffold carrying a commissionable value (an A02 breach), or check-preset accepting an unfilled scaffold |
 
 Underpowered rather than conclusive: if the census cannot be keyed on contract-pinned
 surfaces (parser cannot resolve a §E.1 surface the render actually emits), the gate's
@@ -775,6 +784,9 @@ expect vocabulary needs redesign — that is a measurement-instrument failure, r
 not a pass/fail on the increment.
 
 ## 7. Three-landing sequence
+
+Landings 1-3 are the train's head (unchanged by the all-in ruling); §7A extends the
+sequence through the rolled-in rows.
 
 **Landing 1 — gateway main: the standard.** Family dir + schemas + reference +
 README — now TWO machine schemas (`class-reference.schema.json` and
@@ -814,27 +826,56 @@ encode a private component tree in extension fields" guidance now names the one
 governed exception; workbench-design stays historical-rationale).
 A8 rides here.
 
-## 8. Deferral table — OWNER ROW-CALLS (nothing defers by default)
+### 7A. Program sequence - the "all in" train (owner ruling 2026-10-14)
 
-**Process rule (owner, 2026-10-14):** every row below is a CANDIDATE the owner
-decides — roll in or defer; nothing defers by default and nothing rolls in by
-default. The numbered row-call list (what / structural reason or "effort only" /
-recommendation) is returned to the tracker with this record; the owner's calls fold
-back into this table before the design is final. The former D-2 (recipe vocabulary)
-is REMOVED — the owner rolled it in (§2.6).
+| # | landing | one-line scope |
+|---|---|---|
+| L1 | gateway: the standard | family corpus (two schemas + the logic_analyser reference + README), admission, dependency_policy, corpus rows, cross-constraints row, this record |
+| L2 | SDK: expander + gate | effective schema, ladder, coverage, Device features, layout emission + host consumption, decode_annotated overlay, preset scaffolds, docs, release cut |
+| L3 | gateway: pointer + pattern page + docs | submodule pin advance, capture-page composition, mockup analyzer composition, styleguide reconciliation |
+| L4 | gateway: the D11-amended landing | no-manifest fallback + production-host layout consumption + panel-registration surface with the analyser class_panel |
+| L5 | plugin-ui 0.3.1→0.4.0 | §E.1 text/select/boolean input components; contracts.py edited once; the layout vocabulary and ladder widen to use them |
+| L6–L10 | the slotted issues | #460, #461, #463 rows 3/7/8 - each its own design record when its turn comes; slotted, not scoped here |
+| L11–L21 | the class sweep | L11 dc_psu (validated against the existing mockup), then the workbench §8 order: L12 dmm, L13 oscilloscope, L14 function_generator, L15 electronic_load, L16 smu, L17 daq, L18 embedded_controller, L19 switch_matrix, L20 spectrum_analyser, L21 vna |
+| E-1 | standing evidence slot | frequency-counter promotion per §2.5 - the dmm-optional / new-class landings mint when the registry evidence fires |
 
-| id | deferred | home | reopen trigger |
-|---|---|---|---|
-| D-1 | the other 11 OTDP classes' references (dc_psu first — it has the existing mockup) | follow-on issue (gateway #463 remains open for the class sweep; the sweep issue names dc_psu next) | this slice's gate PASSes on logic_analyser and lands (the train closing) |
-| D-3 | host-owned analyser `class_panel` (D1) | follow-on issue | a registered host panel id exists (a panel admission lands in the gateway UI surface) |
-| D-4 | gateway-side fallback for plugins shipping no manifest | follow-on issue (gateway) | a gateway G-team issue asking for the reference-derived default page |
-| D-5 | decode-annotation overlay (`decode_annotated` spans beyond the closed trio) | follow-on issue | a descriptor pins a decoder declaration exercising the annotation form (an arrival on the registry) |
-| D-6 | `cross-constraints.json` row for the family (plugin-ui floor) | documentation in the family README at the next family bump | plugin-ui's served range widens past one version (a plugin-ui bump landing) |
-| D-7 | preset derivation (`preset_asset_ids` wiring) | follow-on issue | an author supplies a commissioned preset through check-preset (a published preset on the registry) |
-| D-8 | #460 (upgrade artifact migration), #461 (venv symlink damage), #463 rows 3/7/8 | their own issues (already filed) | per those issues |
-| D-9 | frequency-counter support | follow-on issue (OTDP catalog lane) | the first registry arrival of a plugin descriptor declaring a frequency-measurement action; the promotion criterion is §2.5's three-way rule (vendor-profile default; dmm-optional on 1:1 scalar-model evidence; new class on two-plugin divergence) |
-| D-10 | §E.1 input vocabulary for non-numeric action fields (text input, select, boolean toggle) | follow-on issue (ui-contract §E lane — a contract addition, not this increment) | a D14 deviation ledger entry whose reason names an inexpressible field type arrives on the SDK tracker (the ledger itself is the observable surface) |
-| D-11 | GATEWAY production-host consumption of the `plugin-ui-class-reference:layout` block (the SDK preview host renders it; the gateway host is extension-blind until this lands) | follow-on issue (gateway G-lane) | this slice's Landing 3 merges (the pointer advance + docs land, making the gateway consumption the only missing half) |
+Sequencing note: the slotted issues precede the sweep by rationale, not by owner
+decree - the upgrade and venv fixes and the workflow polish serve every project the
+sweep scaffolds; the owner may redirect the order without amending this record's
+mechanism sections. The umbrella tracker stays gateway #463 (open) across the train.
+
+## 8. Scope-and-landing table - owner ruling "all in" (2026-10-14)
+
+Every row-call row RC-1..RC-10 ROLLS IN. Nothing defers; no row goes to an indefinite
+someday - each has a named landing slot and an order in the train (§7A). The
+constraint amendments this ruling carries, recorded as owner rulings of 2026-10-14:
+
+- **D11 AMENDED** - gateway `src/benchweave` work is in scope for the gateway landing
+  (Landing 4): the no-manifest fallback, production-host layout consumption, and the
+  panel-registration surface with the host-owned analyser `class_panel` land together.
+- **D4 AMENDED FOR RC-9 ONLY** - the §E.1 non-numeric input components ship as a
+  plugin-ui contract bump sequenced AFTER Landing 4, so the `contracts.py`
+  version-literal edit (lines 20/247/372) and the single-serving wall are paid exactly
+  once. Tabs, splits and sliders join only if the same bump adds §E components for
+  them. D4's plain-manifest and no-renderer-change line holds for Landings 1-3
+  unchanged.
+- **A02 NOT AMENDED** (constitutional) - RC-6 rolls in as preset SCAFFOLD derivation:
+  the expander generates the preset document structure with `preset_asset_ids` wiring;
+  commissioning values remain authored through check-preset (A12 pins the line).
+- **RC-8's criterion is the scope** - the §2.5 three-way promotion rule is wired as
+  the train's built-in evidence trigger (slot E-1): the dmm-optional and new-class
+  landings mint when their evidence conditions fire on the registry.
+
+| former row | landing | what it builds |
+|---|---|---|
+| RC-5 (D-6) | L1 | the `cross-constraints.json` row naming the family's plugin-ui floor - written at admission, documented vacuous while plugin-ui serves a single version (the row costs nothing and satisfies the call) |
+| RC-4 (D-5) | L2 | `decode_annotated` overlay: decoder-lane derivation extended to the annotation form when the descriptor pins decoder declarations (same code surface as the expander) |
+| RC-6 (D-7) | L2 | preset scaffold derivation (A12): structure + `preset_asset_ids` wiring emitted; commissioning values authored via check-preset (A02 unamended) |
+| RC-3 (D-4) + RC-10 (D-11) + RC-2 (D-3) | L4 | the gateway landing (D11 amended): reference-derived default page for plugins shipping no manifest; production-host consumption of the `plugin-ui-class-reference:layout` block; panel-registration surface with the host-owned analyser `class_panel` |
+| RC-9 (D-10) | L5 | plugin-ui 0.3.1→0.4.0: §E.1 text/select/boolean input components and their validator consumption (D4 amended for this row only; the layout vocabulary and ladder widen to use them) |
+| RC-7 (D-8) | L6–L10 | the slotted issues - L6 #460 (upgrade artifact migration), L7 #461 (venv symlink damage), L8 #463 row 3 (custom-styleguide discoverability), L9 #463 row 7 (check-preset usage errors), L10 #463 row 8 (fixture-generation command exposure); each keeps its own design record, this record does not scope them |
+| RC-1 (D-1) | L11–L21 | the class sweep: dc_psu first (mockup-validated), then the workbench §8 order through vna |
+| RC-8 (D-9) | E-1 (standing) | frequency-counter promotion: vendor-profile Device-features coverage is live from L2 (D14); the dmm-optional / new-class landings mint when the §2.5 evidence conditions fire |
 
 ## 9. Review tier and Step-1 keyword scan (#254)
 
