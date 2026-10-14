@@ -22,7 +22,7 @@ SDK_SRC = Path(__file__).resolve().parents[2] / "packages/sdk/src"
 if str(SDK_SRC) not in sys.path:
     sys.path.insert(0, str(SDK_SRC))
 
-from benchweave_sdk.validation import validate  # noqa: E402
+from benchweave_sdk.validation import contract_documents, validate  # noqa: E402
 
 SDK_ROOT = Path(__file__).resolve().parents[2] / "packages/sdk"
 LOCK = json.loads((SDK_ROOT / "standards-lock.json").read_text(encoding="utf-8"))
@@ -50,6 +50,27 @@ def _manifest_schema_key() -> str:
     registry_files = _registry_standard()["files"]
     entry = next(f for f in registry_files if f["path"].endswith("release-manifest.schema.json"))
     return str(entry["path"])
+
+
+def _review_required_versions() -> frozenset[str]:
+    """The manifest versions whose schema conditional requires ``review``.
+
+    Read from the ACTIVE schema's own ``allOf`` (``if manifest_version in
+    enum then required: review``), so the fixture tracks the lane's signed
+    form across bumps instead of pinning the version that carried it first
+    - the 0.1.2 pin went stale at the 0.1.3 bump, which is the red this
+    helper retires.
+    """
+    schema = contract_documents()[_manifest_schema_key()]
+    for clause in schema.get("allOf", ()):
+        if "review" in ((clause.get("then") or {}).get("required") or ()):
+            enum = (
+                ((clause.get("if") or {}).get("properties") or {})
+                .get("manifest_version", {})
+                .get("enum", ())
+            )
+            return frozenset(enum)
+    return frozenset()
 
 
 def _manifest(role: str) -> dict[str, Any]:
@@ -113,9 +134,11 @@ def _manifest(role: str) -> dict[str, Any]:
         "migration_notes_path": "MIGRATION.md",
         "limitations": [],
     }
-    if manifest["manifest_version"] == "0.1.2":
-        # The lane's signed form: the review block is required exactly when
-        # the version is 0.1.2 (registry standard 0.1.2's conditional).
+    if manifest["manifest_version"] in _review_required_versions():
+        # The lane's signed form: the review block is required exactly for
+        # the versions the active schema's conditional names (0.1.2 and
+        # 0.1.3 today), read from the schema so the fixture tracks the
+        # bump instead of pinning the first signed version.
         manifest["review"] = {
             "checklist_id": "review-checklist",
             "checklist_version": "1",
@@ -145,4 +168,4 @@ def test_registry_standard_version_tracks_the_bump() -> None:
     current version post-sync (predecessors ride beside it, carried). The
     0.1.2 active row is the publishing lane's review-block bump (issue #223
     slice 1)."""
-    assert _registry_standard()["version"] == "0.1.2"
+    assert _registry_standard()["version"] == "0.1.3"

@@ -16,8 +16,8 @@ Pure functions over the admitted documents: no I/O, and the wall clock is a
 parameter. Rejections raise the document-admission
 :class:`~benchweave.control.documents.AdmissionRejected` with
 machine-matchable prefixes: ``duplicate_step_id:``, ``scope:``,
-``issue_placement:``, ``capture_undeclared:``, ``body_budget:``,
-``energised_budget:`` and ``expired:``.
+``issue_placement:``, ``capture_undeclared:``, ``state_changing_read:``,
+``body_budget:``, ``energised_budget:`` and ``expired:``.
 """
 
 from __future__ import annotations
@@ -193,6 +193,8 @@ def _check_step(
 
     if kind == "capture":
         _check_capture_declared(step, sid, where, descriptors, device_by_role)
+    if kind == "read":
+        _check_read_side_effect(step, sid, where, descriptors, device_by_role)
     if kind in ("invoke", "write"):
         field = "input" if kind == "invoke" else "value"
         for path, directive in _ref_sites(step[field], field):
@@ -311,6 +313,53 @@ def _check_capture_declared(
             f"{step['max_bytes']} bytes, above device {device_id!r} "
             f"capture_limits.max_bytes {max_bytes}"
         )
+
+
+def _check_read_side_effect(
+    step: dict[str, Any],
+    sid: str,
+    where: str,
+    descriptors: dict[str, dict[str, Any]],
+    device_by_role: dict[str, str],
+) -> None:
+    """The admission-time descriptor mirror for the read kind (CTL-7).
+
+    Mechanises the execution contract's exclusion of state-changing core
+    reads from procedures (its allow-rules paragraph — normative prose
+    with no enforcement before this mirror): a read step bound to a
+    device whose read verb declares ``side_effect: state_change`` is
+    refused with ``state_changing_read:`` naming the step, the device
+    and the declared set. The refusal triggers on the VERB flag (the
+    design's F2, faithful to the contract's sentence — an
+    over-classified verb declares state-changing behaviour and is
+    excluded equally; the per-parameter set rides the message for
+    precision). Reads on a ``none``-verb device — every in-tree fixture
+    — are unaffected: no allow-rule kind is added (the CTL-4 posture
+    stands; per-parameter read allow rules are the D4 deferral).
+
+    A role that resolves to no bound device is left to binding's
+    ``unbound_role:``; a role bound to a device with no projected
+    descriptor carries no ``read_side_effect`` and is not refused here
+    — this mirror judges declaredness only, and misattributing a
+    binding-shaped defect would hide it (the capture mirror's posture).
+    """
+    device_id = device_by_role.get(str(step["role"]))
+    if device_id is None:
+        return
+    descriptor = descriptors.get(device_id)
+    if descriptor is None:
+        return
+    if descriptor.get("read_side_effect") != "state_change":
+        return
+    names = descriptor.get("state_changing_reads")
+    declared = f" (declared state-changing parameters: {names})" if names else ""
+    raise AdmissionRejected(
+        f"state_changing_read: step {sid!r} at {where} reads device "
+        f"{device_id!r} whose read operation declares side_effect "
+        "state_change; the execution contract excludes state-changing core "
+        "reads from procedures — use an admitted typed invoke action with "
+        f"an explicit allow rule{declared}"
+    )
 
 
 def _check_body_budget(docs: AdmittedDocuments) -> None:

@@ -69,6 +69,16 @@ rather than rewriting the history — that is how this file earns trust.
   procedure language out of JSON (A12); a reference that can see sideways or forwards is
   an unreviewable one, and a capture an unqualified device cannot serve is refused at
   admission rather than at dispatch.*
+  Amendment (2026-10-12, issue #445): the admission-time descriptor mirror family gains
+  the read row — `state_changing_read:` refuses a read step bound to a device whose
+  read verb declares `side_effect: state_change` (the projected
+  `read_side_effect`/`state_changing_reads` facts, CON-10's amendment), mechanising
+  the execution contract's prose exclusion of state-changing core reads from
+  procedures. The refusal triggers on the verb flag (an over-classified verb is
+  excluded equally); the per-parameter set rides the message. The capture mirror's
+  posture carries over: an unbound role is left to `unbound_role:` and no allow-rule
+  kind is added (CTL-4 stands; per-parameter read allow rules are the #445 design's
+  D4 deferral, riding a future execution-contract revision).
 - **[CTL-8]** Monitoring wraps every plugin dispatch with a tick before and after, slices
   every monotonic wait at the bench poll cadence, and stays single-threaded and
   deterministic on the injected clocks. A condition violation during the body blocks the
@@ -659,6 +669,48 @@ rather than rewriting the history — that is how this file earns trust.
   (`tests/contract/test_plugin_descriptor_dialect.py`) goes within-range
   (`lock == descriptor == a-served-pin`, VR-45) with the retired `== active`
   form kept visibly failing against an advanced fixture.
+  Amendment (2026-10-12, issue #445): the projected view gains the read
+  side-effect facts, in the capture-keys style — `read_side_effect` (the
+  read verb's declared `side_effect`, the S20 maximum across parameters)
+  and `state_changing_reads` (the sorted parameter names declaring
+  `read_policy.side_effect: state_change`, always a list), both present iff
+  the read verb is (absent ⇒ consumers treat the class as none). The
+  semantic stage's mirror family gains the read row: `state_changing_read:`
+  refuses a read step bound to a device whose read verb declares
+  `state_change` — mechanising the execution contract's prose exclusion of
+  state-changing core reads from procedures (`semantics.py`
+  `_check_read_side_effect`, the `capture_undeclared:` posture: unbound
+  roles left to `unbound_role:`, no allow-rule kind added — CTL-4 stands,
+  per-parameter read allow rules are the design's D4 deferral). The
+  coherence rule itself is corpus-side (S20, the OTDP 0.2.3 root
+  conditional), so both per-pin checkers inherit it for free; the
+  `state_changing_read:` refusal is gateway-only like `issued_map:` (the
+  SDK has no procedure surface).
+  Amendment (2026-10-13, issue #447): the projected view gains
+  `adapter_configuration` — the declared `{id, path, sha256}` triples
+  verbatim, present iff the descriptor declares the field (the
+  capture-keys posture; a malformed shape projects nothing, no fact is
+  granted by a malformed shape). The wire device object is unchanged
+  (the interface contract does not move; the projection is internal).
+  The admission-time mirror family gains the configuration row:
+  `_verify_adapter_configuration` (a `_verify_provider_pin` sibling
+  minus the exact-byte decode — configuration files are hash-verified
+  opaque bytes, the inventory posture, NOT decoded documents; the CON-1
+  family seam) refuses `adapter_config_invalid:` (shape, posture,
+  duplicate id/path beyond byte-identity — S21), `adapter_config_missing:`
+  (absent, symlink-crossing, uncontained, oversized, unresolvable) and
+  `adapter_config_hash_mismatch:` (bytes vs the descriptor's pin). The
+  loader gains the second gate: `_resolve_adapter_configuration` resolves
+  every triple against the manifest-verified inventory before any plugin
+  import — `adapter_config_not_in_bundle:` (the path the inventory does
+  not carry) and `adapter_config_inventory_conflict:` (triple ≠
+  inventory digest; the inventory bytes are already manifest-verified,
+  so this IS the descriptor-vs-manifest double-pin drift — the §14
+  addendum's fire-point reading of the design's §3.2/§3.3 prefix overlap).
+  What it does NOT catch: a reviewed plugin still reads its own
+  environment at runtime (the env sentence is authoring/review surface —
+  design §3.1, risk 5's disclosed residual); the mirror verifies declared
+  files only.
 
 - **[CON-11]** The OTDP validation report of the active version — its path is
   derived, never hardcoded: the live pin resolves

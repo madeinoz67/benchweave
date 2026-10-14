@@ -32,7 +32,7 @@ from benchweave.standards.dependency import (
     resolve_package,
 )
 from benchweave.standards.export import canonical_json
-from benchweave.standards.manifest import StandardsError, load_dependency_policy
+from benchweave.standards.manifest import StandardsError, load_dependency_policy, served_versions
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -242,7 +242,8 @@ def test_b4_refusals_carry_the_five_vr37_fields(
     assert "otdp" in message
     assert version in message
     assert ">=0.2.0,<0.3.0" in message  # the supported range, verbatim
-    assert "move-to: 0.2.2" in message  # the derived move-to (highest served)
+    move_to = max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert f"move-to: {move_to}" in message  # the derived move-to (highest served)
     assert "migration guidance pending" in message
 
 
@@ -282,7 +283,9 @@ def test_b4_yanked_pin_classifies_with_a_deprecation_warning(tmp_path: Path) -> 
     classification = classify_pin(policy, root, "otdp", "0.2.1")
     assert classification.state == "yanked"
     assert classification.warning is not None
-    assert "0.2.2" in classification.warning
+    assert max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp")) in (
+        classification.warning
+    )
 
 
 def test_b4_served_pin_classifies_clean(tmp_path: Path) -> None:
@@ -434,7 +437,7 @@ def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
     assert [row["version"] for row in (rows["otdp"], rows["plugin-ui"], rows["registry"])] == [
         "0.2.0",
         "0.3.1",
-        "0.1.2",
+        "0.1.3",
     ]
     again = _run(root, "pin", "--package", "plugins/acme/widget")
     assert again.returncode == 0, again.stderr
@@ -575,8 +578,8 @@ def test_b2_upgrade_registry_moves_only_the_registry_row(tmp_path: Path) -> None
 
 
 def test_b2_upgrade_plugin_ui_to_its_only_served_version_is_a_no_op(tmp_path: Path) -> None:
-    """plugin-ui's served set is {0.3.1} (the F1 narrow range): the design's
-    `upgrade plugin-ui --precise 0.3.1` control is the no-op arm — the lock
+    """plugin-ui's served set is {0.3.0} (the F1 narrow range): the design's
+    `upgrade plugin-ui --precise 0.3.0` control is the no-op arm — the lock
     stays byte-identical (the DPS-150 0.2.2->0.2.2 pin is the same shape)."""
     root = _copy_standards(tmp_path)
     package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
@@ -1068,7 +1071,8 @@ def test_b1_prior_yanked_retention(tmp_path: Path) -> None:
     document = json.loads(_lock_path(package).read_bytes())
     assert document["otdp_version"] == "0.2.1"
     assert "deprecation warning" in result.stdout
-    assert "move-to: 0.2.2" in result.stdout
+    move_to = max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert f"move-to: {move_to}" in result.stdout
 
 
 # --- issue #288 LOW 7: reversed or equal interval bounds refuse at parse ------------
@@ -1119,29 +1123,32 @@ def test_yanked_pin_above_served_set_warns_of_downgrade(tmp_path: Path) -> None:
     # .gitmodules ride along (test_matrix._repo_copy's shape).
     shutil.copy2(ROOT / "pyproject.toml", root / "pyproject.toml")
     shutil.copy2(ROOT / ".gitmodules", root / ".gitmodules")
-    _set_policy(
-        root,
-        yanked={
-            "0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"},
-            "0.2.2": {"reason": "synthetic sweep", "since": "2026-10-01"},
-        },
-    )
+    # Every served version above the pin is yanked — a literal sweep list
+    # named only the then-top and stopped forcing the downgrade when the
+    # served set grew past it (the 0.2.3 bump's finding). The floor and the
+    # downgrade label are derived with it.
+    real = {"0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"}}
+    ordered = sorted(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    floor = ordered[0]
+    sweep = {
+        version: {"reason": "synthetic sweep", "since": "2026-10-01"}
+        for version in ordered[1:]
+    }
+    _set_policy(root, yanked={**real, **sweep})
     policy = load_dependency_policy(root)
     classification = classify_pin(policy, root, "otdp", "0.2.1")
     assert classification.state == "yanked"
     assert classification.warning is not None
-    assert (
-        "move-to: 0.2.0 (a downgrade — no served version is newer)"
-        in classification.warning
-    ), classification.warning
+    downgrade = f"move-to: {floor} (a downgrade — no served version is newer)"
+    assert downgrade in classification.warning, classification.warning
     note = str(classify_descriptor_pin("0.2.1", corpus=root / "standards").note)
-    assert "move-to: 0.2.0 (a downgrade — no served version is newer)" in note, note
+    assert downgrade in note, note
     cell = next(
         line
         for line in render_matrix(root).splitlines()
         if line.startswith("| otdp | 0.2.1 |")
     )
-    assert "move-to 0.2.0 (a downgrade — no served version is newer)" in cell, cell
+    assert downgrade.replace("move-to: ", "move-to ") in cell, cell
 
 
 def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
@@ -1158,38 +1165,45 @@ def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
 
     real = {"0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"}}
     synthetic = {"reason": "synthetic yank", "since": "2026-10-01"}
+    # The corpus-tracking rows derive their versions from the real served
+    # set — the literals retired when 0.2.3 joined it (the downgrade row
+    # must yank EVERYTHING above the pin, not just the then-top).
+    ordered = sorted(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert len(ordered) >= 2, ordered
+    floor, top = ordered[0], ordered[-1]
+    above_floor = ordered[1:]
     table = [
         # (name, yanked map, pin, version, label, downgrade, guidance_only)
         # — the flag tuples are the twin-pinned shapes (SDK PR #73): the
         # guidance branch carries downgrade False (its label is guidance).
         (
             "pin below all served",
-            {**real, "0.2.0": synthetic},
-            "0.2.0",
-            "0.2.2",
+            {**real, floor: synthetic},
+            floor,
+            top,
             "",
             False,
             False,
         ),
         (
             "yanked pin above all served",
-            {**real, "0.2.2": synthetic},
+            {**real, **{version: synthetic for version in above_floor}},
             "0.2.1",
-            "0.2.0",
+            floor,
             " (a downgrade — no served version is newer)",
             True,
             False,
         ),
         (
             "served empty",
-            {**real, "0.2.0": synthetic, "0.2.2": synthetic},
+            {**real, **{version: synthetic for version in ordered}},
             "0.2.1",
-            "0.2.0",
+            floor,
             " (guidance only — no version is served)",
             False,
             True,
         ),
-        ("yanked pin mid-set", dict(real), "0.2.1", "0.2.2", "", False, False),
+        ("yanked pin mid-set", dict(real), "0.2.1", top, "", False, False),
     ]
     for name, yanked, pin, version, label, downgrade, guidance_only in table:
         base = tmp_path / name.replace(" ", "-")
@@ -1249,11 +1263,12 @@ def test_m4_twin_reconciliation_the_downgrade_label_rides_the_refusal_too(
     with pytest.raises(StandardsError, match="retired_identifier") as raised:
         classify_pin(policy, root, "otdp", "0.3.0")
     message = str(raised.value)
-    assert "move-to: 0.2.2 (a downgrade — no served version is newer)" in message, (
+    _move_to = max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert f"move-to: {_move_to} (a downgrade — no served version is newer)" in message, (
         message
     )
     note = str(classify_descriptor_pin("0.3.0", corpus=root / "standards").note)
-    assert "move-to: 0.2.2 (a downgrade — no served version is newer)" in note, note
+    assert f"move-to: {_move_to} (a downgrade — no served version is newer)" in note, note
 
 
 # --- fold wave 2, R8: the refusal corners ------------------------------------------

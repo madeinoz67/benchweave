@@ -239,6 +239,14 @@ def load_otdp_plugin(
     # code is imported; an incomplete pair yields no controller (the soft
     # both-or-neither arm — invoke's verb-level UNSUPPORTED).
     resolved = resolve_otdp_contracts(descriptor.get("contracts"), inventory=inventory)
+    # Issue #447: the adapter-configuration triples resolve against the
+    # same verified inventory — the path must be inventory-present (S21)
+    # and the triple's pin must equal the manifest-verified digest for
+    # that path. The inventory bytes were digest-verified against the
+    # manifest in the loop above, so a disagreement here is by
+    # construction the descriptor-vs-manifest double-pin drift; it
+    # refuses, never resolves silently. Before any plugin import.
+    _resolve_adapter_configuration(descriptor, inventory)
     # Fix wave item 8 (R22): the descriptor's own declared
     # input_constraints join the probe — present descriptor bytes that
     # lie (a dangling $ref/$dynamicRef I5's bare compile cannot resolve)
@@ -309,3 +317,64 @@ def _descriptor_capabilities(descriptor: dict[str, Any]) -> list[Any]:
     discipline)."""
     capabilities = descriptor.get("capabilities")
     return capabilities if isinstance(capabilities, list) else []
+
+
+def _resolve_adapter_configuration(
+    descriptor: dict[str, Any], inventory: dict[str, bytes]
+) -> None:
+    """Resolve the descriptor's declared adapter configuration against the
+    verified bundle inventory (issue #447, beside the #146 contracts seam).
+
+    For each triple: the path must name an entry in the verified inventory
+    (``adapter_config_not_in_bundle:`` — S21's inventory-presence clause)
+    and the triple's sha256 must equal that entry's digest
+    (``adapter_config_inventory_conflict:``). The inventory bytes were
+    manifest-verified in the load loop above, so a digest disagreement is
+    by construction the descriptor-vs-manifest double-pin drift: refuse,
+    never resolve silently. Present bytes that lie (a malformed shape)
+    refuse ``adapter_config_invalid:`` — the resolve_otdp_contracts
+    posture. Every refusal fires before any plugin code is imported.
+    """
+    integration = descriptor.get("integration")
+    adapter = integration.get("adapter") if isinstance(integration, dict) else None
+    configuration = adapter.get("configuration") if isinstance(adapter, dict) else None
+    if configuration is None:
+        return  # no declaration: nothing to resolve
+    files = configuration.get("files") if isinstance(configuration, dict) else None
+    if not isinstance(files, list):
+        raise ActivationRejected(
+            "adapter_config_invalid: the adapter configuration declaration "
+            "is not an object with a files array"
+        )
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise ActivationRejected(
+                "adapter_config_invalid: a configuration file entry is not "
+                "an object"
+            )
+        relative = entry.get("path")
+        declared = entry.get("sha256")
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or not isinstance(declared, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", declared)
+        ):
+            raise ActivationRejected(
+                "adapter_config_invalid: a configuration file entry is not "
+                "an {id, path, sha256} triple"
+            )
+        data = inventory.get(relative)
+        if data is None:
+            raise ActivationRejected(
+                f"adapter_config_not_in_bundle: {relative!r} is not present "
+                "in the admitted manifest inventory (S21)"
+            )
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != declared:
+            raise ActivationRejected(
+                f"adapter_config_inventory_conflict: {relative!r} is pinned "
+                f"{declared} by the descriptor but {digest} by the admitted "
+                "manifest inventory (the double-pin drift refuses; it never "
+                "resolves silently)"
+            )

@@ -10,7 +10,7 @@ Prefer independent repositories and externally hosted releases for new device pl
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
-**Baseline:** architecture 1.5 · OTDP 0.2.2 · adapter API 1.1 · registry 0.1.2 · execution 0.2.0 · interface 0.1.0.
+**Baseline:** architecture 1.5 · OTDP 0.2.3 · adapter API 1.1 · registry 0.1.3 · execution 0.2.0 · interface 0.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, architecture CI (continuous integration), a simulator-first proof of concept (PoC) through its acceptance gate, and the **gateway side of the registry contract**. The gateway side covers: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader. It also provides an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published application binary interface (ABI) now. You can package and run them locally through the development loop. You can exercise admission against the committed signed catalogue. Host hardware qualification needs the corresponding implementation and bench evidence.
 
@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](../standards/otdp/0.2.2/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.2.2/extension-contract.md), [device classes](../standards/otdp/0.2.2/device-classes.md) and [measurement model](../standards/otdp/0.2.2/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp/0.2.3/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.2.3/extension-contract.md), [device classes](../standards/otdp/0.2.3/device-classes.md) and [measurement model](../standards/otdp/0.2.3/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -126,11 +126,11 @@ Use uv for Python dependencies. Keep its lockfile and the exact tested runtime a
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.2/examples/class-dc_psu.json) as references. If you copy a fixture, its evidence does not transfer to your hardware.
+Use the [descriptor schema](../standards/otdp/0.2.3/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.3/examples/class-dc_psu.json) as references. If you copy a fixture, its evidence does not transfer to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use a served OTDP version (0.2.2 is active; 0.2.0 remains served), a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use a served OTDP version (0.2.3 is active; 0.2.0 and 0.2.2 remain served), a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
@@ -265,7 +265,7 @@ configuration binding, settings schema and presets. Its layout:
 
 ```text
 src/benchweave_sim_scope/
-  descriptor.json                                  # full OTDP form (0.2.2 active; 0.2.0 remains served)
+  descriptor.json                                  # full OTDP form (0.2.3 active; 0.2.0 and 0.2.2 remain served)
   presentation.json                                # envelope: resource_root ui, manifest pinned by sha256
   binding-catalogue.json                           # one configuration target
   ui/manifest.json                                 # sha256-pinned assets, binding, configuration page
@@ -400,9 +400,81 @@ legend) with a visible "no preview data" row. A declared plot is never
 silently dropped. Plots never fabricate a limit line: `$defs.plot` carries
 no threshold, and the preview adds none.
 
+### Declared protocol decoders (OTDP 0.2.3)
+
+A logic-analyser descriptor may declare protocol decoders. A declaration is a JSON
+document that states what a decoder can emit: the channels it reads, the options
+that steer it, the annotation classes it produces, and the rows that group those
+classes for display. The schema is `otdp-decoder.schema.json`. The rules are in
+[protocol decoders](../standards/otdp/0.2.3/protocol-decoders.md). Extracted
+reference declarations for I2C, SPI and UART, plus a 1-Wire link control, are in the
+corpus examples.
+
+To declare decoders, add a `decoders` array to the descriptor. Each entry uses the
+contract-reference shape — an `id`, a package-relative `path`, and the `sha256`
+digest of the declaration bytes:
+
+```json
+"decoders": [
+  { "id": "i2c", "path": "decoders/i2c.json", "sha256": "<64 hex characters>" }
+]
+```
+
+Admission of a declaration needs three things: the digest must match the bytes, the
+document must pass the schema, and the semantic checks PD1 to PD6 must hold. No
+operator commissioning step exists. A decoder declaration gates no physical access;
+the action that uses it works on a completed, retained acquisition and has no side
+effect. This is lighter than transport-provider admission, and the difference is a
+recorded decision.
+
+Give annotation rows class ids, not positions. Keep the class ids stable when you
+revise a declaration; a change to class ids, row membership or option meaning is a
+new declaration version. The `version` field is the declaration's own version, and
+dataset context records the decoder as `<id>/<version>`.
+
+A declared decoder is used through the optional
+`otdp.logic_analyser.decode_annotated/1.0.0` action. Its input carries the
+acquisition id, the decoder id, a `channel_map` from decoder channels to your
+descriptor's channels, and `options`. Map every required decoder channel. Optional
+channels may stay unmapped; the decoder reads them as absent. Option keys and value
+types must agree with the declaration. The output is an annotation event log:
+variables `start_s`, `end_s`, `class` and `text`. Every `class` value must resolve
+to a declared annotation id, so a generic renderer can draw the decoded output from
+the declaration alone.
+
+### Declared adapter configuration (OTDP 0.2.3)
+
+An adapter that needs a static file — an FPGA image, a calibration blob — can
+declare it. Add a `configuration` object to `integration.adapter`. Each entry in
+`files` uses the contract-reference shape: an `id`, a package-relative `path`, and
+the `sha256` digest of the file bytes:
+
+```json
+"configuration": {
+  "files": [
+    { "id": "bench_image", "path": "assets/image.bin", "sha256": "<64 hex characters>" }
+  ]
+}
+```
+
+Ship the file inside your package. The host verifies each declared file twice
+against your digest: at admission, and again when the package loads, before your
+code runs. A wrong digest, a missing file, a symlinked path, or a path that
+leaves the package refuses the package. Ids are unique and paths are unique.
+
+Read the file at `open` from your own package. Resolve `path` against your
+package root. No host service hands over a path, and the ABI does not change.
+Source descriptor-declared configuration from the descriptor only. Do not read
+action inputs or environment variables for these settings.
+
+The file is opaque bytes. The host checks the digest and the path, not the
+content. A change to the file is a new descriptor version — use the normal
+reviewed release path. The reference example `reference-analyzer-config.json`
+in the corpus shows the full declaration.
+
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](../standards/otdp/0.2.2/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp/0.2.3/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -570,7 +642,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document the behaviour of boot, reset and serial control lines, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](../standards/otdp/0.2.2/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.2/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.2/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp/0.2.3/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.3/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.3/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -600,7 +672,7 @@ The manifest's bytes are charged to the dataset byte quota (routed through the s
 
 Payload creation and writing need `artifact_writer`. Reading authorised upload inputs needs `artifact_reader`. Finalisation of bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written. The capture-lane services are for capture dispatches: a capture-stamped resource condition that surfaces during an `invoke` dispatch is not yours to satisfy. The host treats it as an uncorrelated failure and poisons the session (the stamp's operation-binding rule).
 
-See the [measurement model](../standards/otdp/0.2.2/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.2/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp/0.2.3/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.3/extension-contract.md) for host method signatures.
 
 ### Declare derived variables (optional)
 
@@ -629,9 +701,9 @@ derived variables — backward-only references; a forward or circular
 reference is an admission failure (measurement-model.md §8.2 is the
 normative home). The full grammar, the
 static checks and the failure semantics are normative in
-[measurement-model.md §8](../standards/otdp/0.2.2/measurement-model.md);
+[measurement-model.md §8](../standards/otdp/0.2.3/measurement-model.md);
 the machine census lives at
-[derivation-vectors.json](../standards/otdp/0.2.2/examples/derivation-vectors.json).
+[derivation-vectors.json](../standards/otdp/0.2.3/examples/derivation-vectors.json).
 A declaration is validated when the descriptor is admitted (malformed
 expressions cannot reach a run) and evaluated by the host after each
 dataset-returning invoke: the derived variable gains computed `values`,
@@ -726,13 +798,13 @@ Choose the correct registry kind:
 
 Avoid a descriptor/implementation dependency cycle. The normal shape is a profile consumed by an implementation bundling its descriptors; a separate downstream descriptor may depend on that implementation. A descriptor-free generic library is an ordinary language dependency, not a new registry kind.
 
-Supply the [release manifest](../standards/registry/0.1.2/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need a software bill of materials (SBOM), build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
+Supply the [release manifest](../standards/registry/0.1.3/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need a software bill of materials (SBOM), build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
 
 Emit the manifest bytes as canonical JSON, byte-identical to Python `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"`. The bytes are ASCII-escaped: a literal em-dash or any other literal non-ASCII character is refused even when it looks perfect in an editor. The bytes use LF line endings with the trailing newline, and Python's number spellings. This is the exact serialization the pin lattice's single digest is keyed by.
 
 A manifest that merely parses the same (pretty-printed, re-serialized by another library, carrying literal non-ASCII or CRLF line endings) is refused until republished in that exact form. A re-serialized manifest is a broken release, not a formatting preference. The gateway refuses a non-canonical serve at resolution with the reason `manifest_not_canonical` (rendered at the exception as `manifest_not_canonical (detail)` with the package named, reason-only at the admission surface as `registry refused: manifest_not_canonical`). Pin the digest of the served bytes as published. Whether an inconsistent publication surfaces as `digest_mismatch` or as `manifest_not_canonical` depends on which digest convention the publisher used: a two-reason surface over one underlying defect.
 
-Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.2/registry-specification.md). Once a release is published it appears in the plugin catalogue, generated and served from the registry repository of record itself, linked from the website's plugins page. Publication never authorises control; installation stays local admission.
+Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.3/registry-specification.md). Once a release is published it appears in the plugin catalogue, generated and served from the registry repository of record itself, linked from the website's plugins page. Publication never authorises control; installation stays local admission.
 
 ### Registry operator
 
@@ -758,7 +830,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: a served OTDP version (0.2.2 active; 0.2.0 remains served), adapter API 1.1, architecture 1.5.
+Target: a served OTDP version (0.2.3 active; 0.2.0 and 0.2.2 remain served), adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.

@@ -567,10 +567,13 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
         ),
         "scripts/architecture/check_devices.py": (
-            "authored synthetic probe — the identity-disagreement fixture's "
-            "invented version is test data",
-            1,
-            ("2.0.0",),
+            "authored synthetic probes — the identity-disagreement fixture's "
+            "invented version is test data, and the two 0.2.2 literals are "
+            "the S21 census's per-pin dead-shape control (issue #447): the "
+            "prior-version corpus dir and the amended body's otdp_version "
+            "mutation",
+            3,
+            ("0.2.2", "0.2.2", "2.0.0"),
         ),
         "scripts/architecture/check_interface.py": (
             "authored self-test payload — a synthetic clientInfo version in "
@@ -579,11 +582,13 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             ("0.1.0",),
         ),
         "scripts/architecture/check_registry.py": (
-            "authored self-test payload — the review-block arm's 0.1.2 "
-            "manifest-version mutation (issue #223 slice 1); the suite's "
-            "corpus directory is manifest-derived, never a literal",
-            1,
-            ("0.1.2",),
+            "authored self-test payload — the review-block arms' "
+            "manifest-version mutations: the 0.1.2 arm (issue #223 slice 1) "
+            "and the two 0.1.3 arms (issue #447's rider: the union "
+            "requirement plus the configuration-role admission); the "
+            "suite's corpus directory is manifest-derived, never a literal",
+            3,
+            ("0.1.2", "0.1.3", "0.1.3"),
         ),
         "scripts/registry/sign_release.py": (
             "authored lane constant — the recorded form's manifest version "

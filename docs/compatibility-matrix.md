@@ -16,12 +16,12 @@ committed file is stale. Commit SHAs are not pinned here — run
 
 | Standard | Schema/protocol version | Status | SDK version | Main-project range | Migration guidance | Sources |
 | --- | --- | --- | --- | --- | --- | --- |
-| otdp | 0.2.2 | stable | 0.11.1 | >=0.1.0 | Supersedes 0.2.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| registry | 0.1.2 | stable | 0.11.1 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| execution | 0.2.0 | stable | 0.11.1 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| interface | 0.1.0 | stable | 0.11.1 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui | 0.3.1 | stable | 0.11.1 | >=0.1.0 | Supersedes 0.3.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui-preview | 0.2.0 | stable | 0.11.1 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| otdp | 0.2.3 | stable | 0.12.0 | >=0.1.0 | Supersedes 0.2.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| registry | 0.1.3 | stable | 0.12.0 | >=0.1.0 | Supersedes 0.1.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| execution | 0.2.0 | stable | 0.12.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| interface | 0.1.0 | stable | 0.12.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui | 0.3.1 | stable | 0.12.0 | >=0.1.0 | Supersedes 0.3.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui-preview | 0.2.0 | stable | 0.12.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 
 ## Retained versions
 
@@ -38,11 +38,13 @@ adoption, design record D6).
 | otdp | 0.1.1 | released | out of range | — | — |
 | otdp | 0.1.2 | released | out of range | — | — |
 | otdp | 0.2.0 | released | in range | — | — |
-| otdp | 0.2.1 | released | in range | yanked (since 2026-09-26) — superseded re-roll of the #171 fold; see #174; move-to 0.2.2 | — |
+| otdp | 0.2.1 | released | in range | yanked (since 2026-09-26) — superseded re-roll of the #171 fold; see #174; move-to 0.2.3 | — |
 | otdp | 0.2.2 | released | in range | — | — |
+| otdp | 0.2.3 | released | in range | — | — |
 | registry | 0.1.0 | released | in range | — | — |
 | registry | 0.1.1 | released | in range | — | — |
 | registry | 0.1.2 | released | in range | — | — |
+| registry | 0.1.3 | released | in range | — | — |
 | execution | 0.1.0 | released | in range | — | — |
 | execution | 0.2.0 | released (promoted from 0.2.0-dev) | in range | — | — |
 | interface | 0.1.0 | released | in range | — | — |

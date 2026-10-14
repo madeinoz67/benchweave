@@ -1,6 +1,6 @@
 # Smart Test Gateway: Architecture and device-class contract
 
-**Design baseline:** STG 1.5 · OTDP 0.2.2 · Python adapter API 1.1  
+**Design baseline:** STG 1.5 · OTDP 0.2.3 · Python adapter API 1.1  
 **Scope:** The architecture and the contracts for plugin authors for a qualified embedded-controller bench, including unattended procedures and a separate future mains qualification boundary.
 
 **Status:** Consolidated architecture at the stated scope. Design review is complete. Implementation, live interoperability and bench qualification were not done.
@@ -10,8 +10,8 @@
 | File | Purpose |
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
-| [Central registry](../standards/registry/0.1.2/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry/0.1.2/validation-report.md) | 68 metadata-contract checks that pass (registry contract 0.1.2) |
+| [Central registry](../standards/registry/0.1.3/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
+| [Registry checks](../standards/registry/0.1.3/validation-report.md) | 71 metadata-contract checks that pass (registry contract 0.1.3) |
 | [Procedure and bench contracts](../standards/execution/0.2.0/execution-contract.md) | Bounded execution, wiring and resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.2.0/validation-report.md) | 151 document and schema checks that pass; 6 linked synthetic examples |
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | 20 REST operations, 17 MCP (Model Context Protocol) tools, authentication and recovery |
@@ -23,13 +23,14 @@
 | [Registry composition review](acceptance/registry-composition-review.md) | 16 package reuse and compatibility scenarios |
 | [Integrated review](acceptance/end-to-end-review.md) | 26 end-to-end cases and resolved cross-contract findings |
 | [Decisions](smart-test-gateway-decisions.md) | Selected architectural trade-offs |
-| [Device classes](../standards/otdp/0.2.2/device-classes.md) | 12 class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
-| [Core specification](../standards/otdp/0.2.2/otdp-specification.md) | Plugin authoring, runtime and host contracts |
-| [Extension contract](../standards/otdp/0.2.2/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
-| [Transport providers](../standards/otdp/0.2.2/transport-providers.md) | Provider contracts for non-scoped transports: declaration, review tiers and the grant boundary |
-| [Measurement model](../standards/otdp/0.2.2/measurement-model.md) | Units, axes, channels, complex and digital data, timing, calibration and uncertainty |
-| [Profile catalog](../standards/otdp/0.2.2/device-profile-catalog.json) | 50 actions with exact input and output schemas |
-| [Validation report](../standards/otdp/0.2.2/validation-report.md) | 616 document and schema checks that pass, and their limits |
+| [Device classes](../standards/otdp/0.2.3/device-classes.md) | 12 class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
+| [Core specification](../standards/otdp/0.2.3/otdp-specification.md) | Plugin authoring, runtime and host contracts |
+| [Extension contract](../standards/otdp/0.2.3/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
+| [Transport providers](../standards/otdp/0.2.3/transport-providers.md) | Provider contracts for non-scoped transports: declaration, review tiers and the grant boundary |
+| [Protocol decoders](../standards/otdp/0.2.3/protocol-decoders.md) | Declarative decoder surface: pinned declarations, the decode_annotated action and annotation event logs |
+| [Measurement model](../standards/otdp/0.2.3/measurement-model.md) | Units, axes, channels, complex and digital data, timing, calibration and uncertainty |
+| [Profile catalog](../standards/otdp/0.2.3/device-profile-catalog.json) | 51 actions with exact input and output schemas |
+| [Validation report](../standards/otdp/0.2.3/validation-report.md) | 717 document and schema checks that pass, and their limits |
 
 The package also includes these artefact types:
 
@@ -39,7 +40,7 @@ The package also includes these artefact types:
 - 13 dataset examples
 - 6 reference descriptors
 
-Of the 6 reference descriptors, 4 have protocol vectors. 1 descriptor pins a provider contract. 1 descriptor uses an unbacked custom transport. Current normative device contracts are in `otdp/0.2.2/`.
+Of the 6 reference descriptors, 4 have protocol vectors. 1 descriptor pins a provider contract. 1 descriptor uses an unbacked custom transport. Current normative device contracts are in `otdp/0.2.3/`.
 
 ## Device-class coverage
 
@@ -81,10 +82,10 @@ Supply this entire package together with the instrument's protocol manual, model
 > **WARNING:** DO NOT ENERGISE EQUIPMENT WHEN YOU AUTHOR CODE. DO NOT MODIFY BENCH SAFETY LIMITS.
 >
 > 1. Search configured registries first for compatible existing integrations. Then reuse, contribute or fork with attribution.
-> 2. For a new integration, create an STG device integration for OTDP 0.2.2 and adapter API 1.1.
+> 2. For a new integration, create an STG device integration for OTDP 0.2.3 and adapter API 1.1.
 > 3. Read these documents: the core specification, the extension contract, the applicable device classes, the measurement model and the schemas.
 > 4. Select supported class profiles. Declare real channels and device constraints. Implement all claimed actions with verified protocol evidence.
-> 5. For registry publication, also supply the release manifest and the evidence required by registry contract 0.1.2.
+> 5. For registry publication, also supply the release manifest and the evidence required by registry contract 0.1.3.
 > 6. Bundle the pinned local contracts. Then deliver the descriptor, the adapter where it is needed, the dependencies, the tests and the evidence.
 > 7. Apply the semantic and conformance obligations of the specification and the applicable class and dataset checks.
 > 8. Report missing device facts. Do not invent commands or unsupported capabilities.
@@ -100,4 +101,4 @@ From the 0.1.0 baseline forward, the corpus retains superseded versions digest-f
 
 ## Baseline verification
 
-1108 document and schema checks and selected semantic and coverage checks passed: OTDP 616, registry 68, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).
+1213 document and schema checks and selected semantic and coverage checks passed: OTDP 718, registry 71, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).

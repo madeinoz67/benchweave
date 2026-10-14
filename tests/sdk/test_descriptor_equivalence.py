@@ -1158,10 +1158,16 @@ def test_the_provider_pin_cap_mirrors_the_sdk_bound() -> None:
 
 def _served_otdp_versions() -> list[str]:
     """The served otdp versions from the committed policy block."""
-    from benchweave.standards.manifest import load_dependency_policy, served_versions
+    from benchweave.standards.manifest import (
+        active_version_from_corpus,
+        load_dependency_policy,
+        served_versions,
+    )
 
     versions = list(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
-    assert "0.2.2" in versions, "the active version must be served"
+    assert (
+        active_version_from_corpus(ROOT / "standards", "otdp") in versions
+    ), "the active version must be served"
     return versions
 
 
@@ -1331,7 +1337,10 @@ def test_the_sweep_bites_on_a_planted_disagreement(
         documents_module, "_descriptor_validator", lambda version=None: real(None)
     )
 
-    version = next(v for v in _served_otdp_versions() if v != "0.2.2")
+    from benchweave.standards.manifest import active_version_from_corpus
+
+    active = active_version_from_corpus(ROOT / "standards", "otdp")
+    version = next(v for v in _served_otdp_versions() if v != active)
     name = _native_example_names(version)[0]
     document = json.loads(
         (ROOT / "standards" / "otdp" / version / "examples" / name).read_text()
@@ -1341,4 +1350,4 @@ def test_the_sweep_bites_on_a_planted_disagreement(
         f"the sabotaged active-only gateway admitted the {version} example — "
         "the teeth arm expects the const refusal"
     )
-    assert "$.otdp_version" in message and "0.2.2" in message, message
+    assert "$.otdp_version" in message and active in message, message

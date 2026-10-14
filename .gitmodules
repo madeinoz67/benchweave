@@ -3,7 +3,7 @@
 	url = https://github.com/madeinoz67/benchweave-sdk.git
 	# The declared pin (gateway #408's checker reads this): the released
 	# tag whose bytes this branch's pointer names. A pointer move updates
-	# this line in the same commit. v0.11.1 = the #446 slice-2 twin
-	# (profile_shadow + merge guard), cut at the registration commit
-	# 0586a90.
-	pin = v0.11.1
+	# this line in the same commit. v0.12.0 = the OTDP 0.2.3 + registry
+	# 0.1.3 sync release (#458's SDK leg), cut at the registration
+	# commit b7f8881.
+	pin = v0.12.0

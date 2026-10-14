@@ -61,7 +61,7 @@ The requesting developer or maintainer supplies:
 
 If inputs are missing, ask for specific evidence. Missing inputs need not stop independent static review. Record missing inputs in the verdict for the affected stage.
 
-The current project baseline is architecture 1.5, OTDP 0.2.2, adapter API 1.1, registry 0.1.2, execution 0.2.0 and interface 0.1.0. If a candidate declares another version, get the corresponding contract. Do not judge it silently against a different one.
+The current project baseline is architecture 1.5, OTDP 0.2.3, adapter API 1.1, registry 0.1.3, execution 0.2.0 and interface 0.1.0. If a candidate declares another version, get the corresponding contract. Do not judge it silently against a different one.
 
 ## Review matrix
 
@@ -92,7 +92,7 @@ Normative references:
 - [Architecture](smart-test-gateway-architecture-v1.5.md)
 - [Execution contract](../standards/execution/0.2.0/execution-contract.md)
 - [Interface contract](../standards/interface/0.1.0/interface-contract.md)
-- [Registry contract](../standards/registry/0.1.2/registry-specification.md)
+- [Registry contract](../standards/registry/0.1.3/registry-specification.md)
 
 ## SDK maintenance surface
 

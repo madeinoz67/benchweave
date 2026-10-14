@@ -103,21 +103,38 @@ def test_dps150_declared_dialect_matches_its_evidence_lock() -> None:
     )
 
 
-def _advanced_fixture(tmp_path: Path) -> Path:
-    """A standards tree whose otdp ACTIVE version has advanced past 0.2.2.
+def _next_patch(version: str) -> str:
+    """The next patch version after ``version`` (the fixture's hypothetical).
 
-    ``otdp/0.2.3/`` is byte-copies of 0.2.2's files (the corpus example of a
-    version-strings-only successor — the B6 pair's shape), with corpus rows
-    appended and the manifest entry re-pointed, all inside tmp: the fixture
-    advances active WITHOUT moving a single committed byte. The policy range
-    (>=0.2.0,<0.3.0) already covers 0.2.3, so the served set grows to
-    {0.2.0, 0.2.2, 0.2.3}.
+    Derived, never a literal: a hypothetical that names a version the corpus
+    later ships for real (the 0.2.3 case, retired by issue #443's bump)
+    collides with the real directory and crashes the fixture at copy time.
     """
+    major, minor, patch = (int(part) for part in version.split("."))
+    return f"{major}.{minor}.{patch + 1}"
+
+
+def _advanced_fixture(tmp_path: Path) -> Path:
+    """A standards tree whose otdp ACTIVE version has advanced one patch.
+
+    ``otdp/<next>/`` is byte-copies of the active version's files (the corpus
+    example of a version-strings-only successor — the B6 pair's shape), with
+    corpus rows appended and the manifest entry re-pointed, all inside tmp:
+    the fixture advances active WITHOUT moving a single committed byte. The
+    policy range already covers the next patch, so the served set grows by
+    exactly that version.
+    """
+    from benchweave.standards.manifest import load_manifest
+
+    active = next(
+        entry.version for entry in load_manifest(REPO).standards if entry.id == "otdp"
+    )
+    advanced = _next_patch(active)
     root = tmp_path / "root"
     root.mkdir()
     shutil.copytree(REPO / "standards", root / "standards")
     shutil.copytree(
-        root / "standards" / "otdp" / "0.2.2", root / "standards" / "otdp" / "0.2.3"
+        root / "standards" / "otdp" / active, root / "standards" / "otdp" / advanced
     )
     corpus_path = root / "standards" / "corpus-manifest.json"
     corpus = json.loads(corpus_path.read_bytes())
@@ -127,7 +144,7 @@ def _advanced_fixture(tmp_path: Path) -> Path:
         if not path.is_file():
             continue
         relative = path.relative_to(standards).as_posix()
-        if relative.startswith("otdp/0.2.3/") and relative not in existing:
+        if relative.startswith(f"otdp/{advanced}/") and relative not in existing:
             corpus["files"].append(
                 {
                     "path": relative,
@@ -139,9 +156,9 @@ def _advanced_fixture(tmp_path: Path) -> Path:
     manifest = json.loads(manifest_path.read_bytes())
     for entry in manifest["standards"]:
         if entry["id"] == "otdp":
-            entry["version"] = "0.2.3"
+            entry["version"] = advanced
             entry["normative"] = [
-                pinned.replace("0.2.2/", "0.2.3/") for pinned in entry["normative"]
+                pinned.replace(f"{active}/", f"{advanced}/") for pinned in entry["normative"]
             ]
     manifest_path.write_text(json.dumps(manifest, indent=1))
     return root
@@ -151,15 +168,15 @@ def test_vr45_the_old_active_assertion_fails_the_advanced_fixture(
     tmp_path: Path,
 ) -> None:
     """VR-45's control: the RETIRED ``== active`` form, re-derived red on
-    every run. Against the advanced fixture (active 0.2.3) the old
-    assertion fails all four in-tree descriptors — the forced-restamp
-    invariant this lane removes, kept visible so the retirement is pinned
-    rather than assumed."""
+    every run. Against the advanced fixture the old assertion fails all
+    four in-tree descriptors — the forced-restamp invariant this lane
+    removes, kept visible so the retirement is pinned rather than
+    assumed."""
     from benchweave.standards.manifest import load_manifest
 
     root = _advanced_fixture(tmp_path)
     entries = [e for e in load_manifest(root).standards if e.id == "otdp"]
-    assert len(entries) == 1 and entries[0].version == "0.2.3"
+    assert len(entries) == 1
     active = entries[0].version
     stale = {
         path: doc["otdp_version"]
@@ -181,7 +198,14 @@ def test_vr45_the_within_range_form_passes_the_advanced_fixture(
     descriptor both stay put."""
     root = _advanced_fixture(tmp_path)
     served = _served_otdp(root)
-    assert served >= {"0.2.0", "0.2.2", "0.2.3"}, served
+    committed = next(
+        entry["version"]
+        for entry in json.loads(
+            (REPO / "standards" / "standards-manifest.json").read_bytes()
+        )["standards"]
+        if entry["id"] == "otdp"
+    )
+    assert served >= {"0.2.0", "0.2.2", committed}, served
     for path, doc in _plugin_descriptors().items():
         assert doc["otdp_version"] in served, (
             f"{path} pins {doc['otdp_version']}, outside the advanced fixture's "

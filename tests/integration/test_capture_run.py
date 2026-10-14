@@ -190,6 +190,7 @@ def _descriptor(path: Path) -> dict[str, Any]:
     descriptor: dict[str, Any] = json.loads(
         (EXECUTION_FIXTURES / "descriptor-sim-psu.json").read_text()
     )
+    activation._repoint_contracts_to_active(descriptor)
     adapter = descriptor["integration"]["adapter"]
     adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
     adapter["permissions"] = ["scoped_transport", "artifact_writer"]

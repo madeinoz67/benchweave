@@ -118,14 +118,14 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         entry.id: served_versions(policy, ROOT, entry.id) for entry in manifest.standards
     }
     assert served == {
-        "otdp": ("0.2.0", "0.2.2"),
-        "registry": ("0.1.0", "0.1.1", "0.1.2"),
+        "otdp": ("0.2.0", "0.2.2", "0.2.3"),
+        "registry": ("0.1.0", "0.1.1", "0.1.2", "0.1.3"),
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0",),
         "plugin-ui": ("0.3.1",),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 11
+    assert sum(len(versions) for versions in served.values()) == 13
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:
@@ -223,8 +223,17 @@ def test_yanked_entry_with_an_impossible_calendar_date_refuses(
 def test_retired_entry_naming_the_active_version_refuses(tmp_path: Path) -> None:
     root = _copy_standards(tmp_path)
 
+    # The retired entry names the DERIVED active version — a literal here
+    # named a retained version instead the day the active advanced past it
+    # (the 0.2.3 bump's finding: the refusal became policy_status_conflict).
+    active = next(
+        entry.version
+        for entry in load_manifest(root).standards
+        if entry.id == "otdp"
+    )
+
     def mutate(block: dict[str, Any]) -> dict[str, Any]:
-        block["standards"]["otdp"]["retired"] = ["0.2.2"]
+        block["standards"]["otdp"]["retired"] = [active]
         return block
 
     _edit_policy(root, mutate)

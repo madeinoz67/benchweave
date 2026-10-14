@@ -354,17 +354,26 @@ def test_range_narrowing_that_drops_a_carried_version_reports_it_removed(
         if r["id"] == "otdp" and r.get("active")
     )
     del active_row["active"]
-    new_row = {**active_row, "version": "0.2.3", "active": True}
+    # The fake successor is the active row's version with the patch bumped:
+    # a literal here collides with the real corpus the day it ships that
+    # version (the 0.2.3 case, retired by issue #443's bump).
+    major, minor, patch = (int(part) for part in active_row["version"].split("."))
+    successor = f"{major}.{minor}.{patch + 1}"
+    new_row = {**active_row, "version": successor, "active": True}
     new_row["files"] = [
         {
-            "path": file["path"].replace("otdp/0.2.2/", "otdp/0.2.3/", 1),
+            "path": file["path"].replace(
+                f"otdp/{active_row['version']}/", f"otdp/{successor}/", 1
+            ),
             "sha256": file["sha256"],
         }
         for file in active_row["files"]
     ]
     for file in active_row["files"]:
         source = bundle / "files" / file["path"]
-        target = bundle / "files" / file["path"].replace("otdp/0.2.2/", "otdp/0.2.3/", 1)
+        target = bundle / "files" / file["path"].replace(
+            f"otdp/{active_row['version']}/", f"otdp/{successor}/", 1
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     otdp_rows = [
@@ -377,7 +386,7 @@ def test_range_narrowing_that_drops_a_carried_version_reports_it_removed(
     report = sync(bundle, sdk)
     assert report.removed == ("otdp@0.2.0",)
     assert report.changed == ()
-    assert report.added == ("otdp@0.2.3",)
+    assert report.added == (f"otdp@{successor}",)
     assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())
 
 
@@ -390,13 +399,18 @@ def test_active_repoint_without_an_sdk_bump_is_refused(tmp_path: Path) -> None:
     ``sdk_bump_class_invalid:`` naming both ends — the derived constants
     (OTDP_VERSION/ADAPTER_API_VERSION) move with the active row, so one SDK
     version covering both states is the #166 defect class."""
-    bundle = _export(tmp_path)  # the real export marks otdp 0.2.2 active
+    bundle = _export(tmp_path)  # the real export marks the active otdp row
     sdk = _versioned_sdk(tmp_path, "0.3.1")
     sync(bundle, sdk)
     document = _manifest(bundle)
+    active = next(
+        row["version"]
+        for row in document["standards"]
+        if row["id"] == "otdp" and row.get("active")
+    )
     for row in document["standards"]:
         if row["id"] == "otdp":
-            if row["version"] == "0.2.2":
+            if row["version"] == active:
                 row["active"] = False
             if row["version"] == "0.2.0":
                 row["active"] = True  # the re-point: rollback inside the range
@@ -404,7 +418,7 @@ def test_active_repoint_without_an_sdk_bump_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="^sdk_bump_class_invalid: ") as refusal:
         sync(bundle, sdk)
     message = str(refusal.value)
-    assert "0.2.2" in message and "0.2.0" in message, "the refusal names both ends"
+    assert active in message and "0.2.0" in message, "the refusal names both ends"
 
 
 def test_active_repoint_is_named_in_the_report(tmp_path: Path) -> None:
@@ -414,9 +428,14 @@ def test_active_repoint_is_named_in_the_report(tmp_path: Path) -> None:
     sdk = _versioned_sdk(tmp_path, "0.3.1")
     sync(bundle, sdk)
     document = _manifest(bundle)
+    active = next(
+        row["version"]
+        for row in document["standards"]
+        if row["id"] == "otdp" and row.get("active")
+    )
     for row in document["standards"]:
         if row["id"] == "otdp":
-            if row["version"] == "0.2.2":
+            if row["version"] == active:
                 row["active"] = False
             if row["version"] == "0.2.0":
                 row["active"] = True
@@ -425,6 +444,6 @@ def test_active_repoint_is_named_in_the_report(tmp_path: Path) -> None:
         '[project]\nname = "benchweave-sdk"\nversion = "0.3.2"\n', encoding="utf-8"
     )
     report = sync(bundle, sdk)
-    assert report.active_changes == ("otdp@0.2.2->0.2.0",)
+    assert report.active_changes == (f"otdp@{active}->0.2.0",)
     assert report.added == () and report.removed == () and report.changed == ()
     assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())

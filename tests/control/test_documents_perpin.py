@@ -40,6 +40,17 @@ CORPUS = ROOT / "standards"
 EXECUTION_010 = CORPUS / "execution" / "0.1.0"
 
 
+def _highest_served_otdp() -> str:
+    """The derived move-to for a yanked pin: the highest served version.
+
+    Never a literal — the move-to follows the served set, so a corpus bump
+    that admits a newer version moves it (the 0.2.3 bump's finding; the
+    yanked-0.2.1 warning now points at 0.2.3)."""
+    from benchweave.standards.manifest import load_dependency_policy, served_versions
+
+    return max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+
+
 def _lattice(tmp_path: Path, *, execution: str = "0.2.0") -> dict[str, Path]:
     """Spool the fixture lattice; return writable paths for the five documents.
 
@@ -270,8 +281,8 @@ def test_yanked_pin_conforms_with_deprecation_warning_naming_the_move_to(
 ) -> None:
     """Q6 row 2 (the Q10 ruling): 0.2.1 is retained, in-interval, yanked —
     the pin stays conforming, validates against 0.2.1's own bytes, and the
-    admission record carries the deprecation warning naming 0.2.2 as the
-    derived move-to (highest served version >= the pin)."""
+    admission record carries the deprecation warning naming the highest
+    served version as the derived move-to (>= the pin)."""
     psu = _psu_document()
     psu["otdp_version"] = "0.2.1"
     docs = _admit(tmp_path, {"psu": psu})
@@ -279,7 +290,7 @@ def test_yanked_pin_conforms_with_deprecation_warning_naming_the_move_to(
     assert pin.conformance == "conforming"
     assert pin.deprecated is True
     assert "yanked" in str(pin.note)
-    assert "0.2.2" in str(pin.note)
+    assert _highest_served_otdp() in str(pin.note)
 
 
 def test_c4_out_of_range_pin_is_nonconforming_and_requires_an_ack(
@@ -417,7 +428,7 @@ def test_classify_descriptor_pin_is_pure_over_committed_state() -> None:
     assert (served.conformance, served.deprecated) == ("conforming", False)
     yanked = classify_descriptor_pin("0.2.1")
     assert (yanked.conformance, yanked.deprecated) == ("conforming", True)
-    assert "0.2.2" in str(yanked.note)
+    assert _highest_served_otdp() in str(yanked.note)
     nonconforming = classify_descriptor_pin("0.1.2")
     assert nonconforming.conformance == "non-conforming"
     assert "supported: >=0.2.0,<0.3.0" in str(nonconforming.note)
@@ -609,11 +620,15 @@ def test_vr37_names_the_move_tos_note_pointer_when_the_policy_carries_one(
 
     _set_otdp_policy(
         corpus,
-        versions={"0.2.2": {"migration_note": "docs/migration/otdp-0.2.2.md"}},
+        versions={
+            _highest_served_otdp(): {
+                "migration_note": "docs/migration/otdp-move-to.md"
+            }
+        },
     )
     record = classify_descriptor_pin("0.1.2", corpus=corpus)
     note = str(record.note)
-    assert "docs/migration/otdp-0.2.2.md" in note, note
+    assert "docs/migration/otdp-move-to.md" in note, note
     assert "migration guidance pending" not in note, note
     policy = load_dependency_policy(root)
     row = policy.standards["otdp"]

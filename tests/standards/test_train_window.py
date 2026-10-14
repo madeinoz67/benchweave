@@ -508,11 +508,18 @@ def test_dev_directory_addition_is_invisible_to_the_window(tmp_path: Path) -> No
 
 
 def test_real_tree_post_anchor_sequence_is_clean() -> None:
-    # The real tree correctly collects zero post-anchor bumps (the anchor is
-    # this amendment's own arrival in THIS repository's history — G-5
-    # re-anchored the clock). The scratch family above carries the
-    # non-vacuity burden; this row pins the deployment state — grandfathering
-    # by mechanism, not a silent empty read.
+    # The real tree's post-anchor deployment state, pinned: the anchor is
+    # this amendment's own arrival (#451, first marker commit fe9dc169,
+    # committer ts 1791819485). otdp 0.2.3's earliest landing (1f27c92d,
+    # ts 1791810199) predates the anchor and is grandfathered by mechanism;
+    # registry 0.1.3's bump (9135626, ts 1791873156) is the tree's first
+    # judged post-anchor bump and is compliant — the standards-lock.json
+    # pinned at that commit's gitlink (b17f0214) carries registry 0.1.2.
+    # The scratch family above carries the non-vacuity burden; this row
+    # pins the deployment state — the judged set's shape, and a
+    # non-compliant future bump still refuses by name below.
     entries = collect_bump_entries(ROOT)
-    assert entries == ()
+    assert [(entry.standard, entry.version, entry.predecessor) for entry in entries] == [
+        ("registry", "0.1.3", "0.1.2")
+    ]
     assert check_train_windows(ROOT) == ()
