@@ -7,6 +7,11 @@ composition). Out of scope: #460, #461, #463 rows 3/7/8.
 same gateway issue (single issue stream; the SDK PR notes no SDK-side issue exists by design).
 **Evidence baseline:** SDK v0.12.0 (`7063a88`), gateway `origin/main` (`e1b1bf84`),
 plugin-ui 0.3.1 both sides, OTDP 0.2.3, `benchweave-ui-html==0.2.1`.
+**Binding design points:** D1–D12 from the original brief, plus **D13 (effective
+capability)** and **D14 (action coverage)** folded 2026-10-14 as first-class owner
+points of the same rank — D13 lands in §2.4 and §3.7–§3.8, D14 in §2.5, §3.9 and the
+gate's always-on coverage arm (§5); both move the schema (§2.2), the fixtures (§3.5)
+and the acceptance rules (A1, A4, A9, A10).
 
 ## 0. Summary
 
@@ -173,7 +178,16 @@ Admission mechanics (what Landing 1 physically does):
           "action": {"$ref": "#/$defs/action_urn"},
           "when_declared": {"type": "boolean"},           // optional-slot switch (default false)
           "schema_source": {"enum": ["input_schema", "output_measurement"]},
-          "variables": {"type": "object"} } }             // per-slot variable template (below)
+          "variables": {"type": "object"},               // per-slot variable template (below)
+          "host_supplied": {"type": "array",             // D13: input field names the HOST
+            "items": {"type": "string"}}                 // owns (acquisition_id, active
+                                                         // configuration_id) — structural
+        } },
+      { "type": "object", "additionalProperties": false, "required": ["kind"],
+        "properties": {"kind": {"const": "vendor_actions"}}
+                                                        // D14: every declared action URN
+                                                        // not claimed by a named slot (§2.5)
+        }
     ]},
     "page_template": {
       "type": "object", "additionalProperties": false,
@@ -182,6 +196,8 @@ Admission mechanics (what Landing 1 physically does):
         "id": {"type": "string"}, "title": {"type": "string"},
         "kind": {"enum": ["configuration", "readings", "dataset"]},
         "binding_slots": {"type": "array", "items": {"type": "string"}},   // slot keys
+        "vendor_features": {"type": "boolean"},          // D14: this page hosts the
+                                                         // Device-features section (§2.5)
         "plot": { "type": "object", "additionalProperties": false,
           "required": ["kind", "over_slot"],
           "properties": {
@@ -196,6 +212,9 @@ Admission mechanics (what Landing 1 physically does):
       "properties": {
         "components": { "type": "object",
           "additionalProperties": {"$ref": "#/$defs/component_expect"} },
+        "controls": {"type": "object",                    // D14: per-action reachability
+          "additionalProperties": {"enum": ["button", "staging", "preset",
+                                            "deviation"]} },
         "forbid": {"type": "array", "items": {"type": "string"}} } },
     "component_expect": {
       "type": "object", "additionalProperties": false,
@@ -268,6 +287,100 @@ to the descriptor or the group pattern.
 | `lane-names` | lane names beyond descriptor labels | the descriptor owns channel identity | label channels in the descriptor |
 | `presets` | preset settings values | presets are commissioned evidence, never derived | author `ui/presets/*.json` via check-preset |
 | `decode-settings` | decode options beyond the closed unions | the closed trio unions are the contract; anything else is a named extension | descriptor `decoders[]` declarations |
+
+### 2.4 D13 — Effective capability, not catalogue
+
+The expander never offers what the device does not admit. For every action, the
+**effective schema** = OTDP catalogue `input_schema` ∧ descriptor
+`input_constraints` ∧ bench policy **where available at preview**:
+
+- The descriptor schema types `input_constraints` as a FREE-FORM object
+  (`otdp-device-descriptor.schema.json` `properties.actions.additionalProperties.
+  properties.input_constraints` = `{"type": "object"}` — verified), so the expander
+  owns a **closed intersection vocabulary** applied per property: `type` (within the
+  same JSON type family), `enum`, `const`, `minimum`/`maximum`/
+  `exclusiveMinimum`/`exclusiveMaximum`, `multipleOf`. A constraint fragment using
+  anything else refuses `classref_constraint_unsupported:` naming action and field —
+  degrade loudly: silently DROPPING a constraint would offer a value the device does
+  not admit, which is precisely the failure D13 exists to prevent.
+- Enum options, bounds, steps and fixed values for rendered controls come from the
+  intersection. A `const` renders a read-only fixed display, never an editable offer.
+  Steps: neither catalogue nor constraints carry a step vocabulary — the host-derived
+  step stays the host's own rule (the `staged_control_html` precedent derives step
+  from the declared range; presentation granularity is host territory).
+- Bench policy: the SDK standalone host has none (no commissioned policy exists at
+  preview, and A02 forbids inventing one) — the intersection there is catalogue ∧
+  constraints, DISCLOSED in the gate output. Where policy exists (gateway admission),
+  it narrows further; the record names that seam without implementing it.
+- Optional-action slots resolve on the actions the descriptor ACTUALLY declares
+  (`when_declared`, §3.1) — the effective-capability statement of slot resolution.
+- The same AND-wise composition the preset lane already applies at validation time
+  (plugin-ui README, "Configuration presets": the canonical action input schema and
+  the descriptor's input constraints apply AND-wise in both SDK lanes) is applied
+  here at DERIVATION time, so the expander-materialised `ui/settings/*.schema.json`
+  IS the effective schema and check-preset stays consistent by construction.
+
+Multi-profile devices and the capability fixture pair are §3.8 and §3.5.
+
+### 2.5 D14 — Coverage rule independent of class
+
+Every key of `descriptor.actions` — any URN; the descriptor schema's actions map is
+`additionalProperties` with no key pattern (verified) — must be **reachable through
+a rendered control, or carry a declared deviation** (the D12c ledger). The rule binds
+every plugin, with or without a class reference.
+
+**Reachability ladder** (derived from the effective schema; the expander computes it,
+the gate asserts it):
+
+| level | condition | rendered control |
+|---|---|---|
+| L1 | no required inputs after removing `host_supplied` names | bare procedure `button` |
+| L2 | required inputs all numeric | staging pair (`numeric-input` + rotary, the host staging precedent) + invoke button |
+| L3 | configuration-shaped (`state_change`, complete-document nature) | preset selection + Apply (the sanctioned preset lane; the host's `preset_list`/`preset-apply` routes) |
+| L4 | dataset (`side_effect: none`, dataset output) | dataset binding + plot/table |
+| L0 | required inputs include types §E.1 cannot express, and no preset covers it | DECLARED deviation required; undeclared ⇒ gate fails |
+
+`host_supplied` names the acquisition-lifecycle fields the OTDP model assigns to
+host ownership — `acquisition_id` (arm/fetch/abort/trigger) and the active
+`configuration_id` (arm). It is structural knowledge (field NAMES), not data —
+D2-clean.
+
+**The §E.1 inventory has no text-input, select or boolean component** (verified
+census: button, numeric-input, rotary-control, reading-tile, alert-bubble,
+engineering-plot, digital-lanes, data-table, panel, mode-banner, confirm-action).
+That vocabulary gap is recorded as deferral D-10; closing it is a ui-contract §E
+addition on the contract's own lane — NOT this increment (D4's no-renderer-change
+line and D12d's §E-only rule both hold).
+
+**Device features.** The `vendor_actions` slot resolves every declared action URN not
+claimed by a named class slot — vendor profiles resolve from the descriptor's
+digest-pinned catalogs (pinned vendor catalogs are admitted shape-wise at the
+composition seam; the plugin-ui README's "pinned contract documents" clause). It
+renders as a "Device features" page (`vendor_features: true`) composed of §E
+components only, at each action's ladder level. The SDK derives this page even
+WITHOUT a class reference — D14 binds every plugin; the reference may declare the
+section's placement when one exists.
+
+**Class-slice consequences (honest):** `configure` is L3 — its `configuration_id`
+string, `channels` array and `trigger` object are inexpressible at L2 — so the
+configuration page is preset-mediated with a declared deviation at birth (no
+commissioned presets yet; `cannot_derive.presets`); `arm` is L2
+(`max_duration_ms` numeric; ids host-supplied); `abort` and `trigger` are L1;
+`fetch` is L4; `decode`'s invocation carries enum settings (inexpressible) — declared
+deviation at birth — while its decoder LANES still render as capture-plot annotations
+(declaration-level, not invocation).
+
+**Frequency counter — deferred, with the promotion criterion (D-9).** Default lane
+TODAY: vendor profile — a descriptor pins a vendor catalog carrying a
+vendor-namespaced frequency-counter profile and action; D14 renders it in Device
+features; no corpus motion. Promotion to a **dmm optional action**: evidence = at
+least one real admitted plugin whose frequency surface's action I/O maps 1:1 onto
+the dmm profile's scalar measurement model (scalar numeric observation, no new
+dataset shape) — lands as an OTDP catalog revision with vectors. Promotion to a **new
+class** `otdp.frequency_counter`: evidence = at least two independent real plugins
+whose frequency surfaces DISAGREE on action shapes such that one profile cannot
+express both (the A10 bounded-classes logic: classes are minted on demonstrated
+divergence, not anticipation).
 
 ## 3. Expansion semantics (SDK side)
 
@@ -343,6 +456,20 @@ two-lane remainder) — expands and validates through the canonical validator
   itself contains no numeric literals outside the structural trio (8, 64, pattern arity)
   — grep-level, machine-checked.
 
+**Fixture plan under D13/D14 (attribution isolation).** D2 varies NAMES holding
+capability fixed; D13 varies CAPABILITY holding the class fixed. One fixture cannot
+serve both proofs without confounding attribution — a failure could be name-caused
+or capability-caused. The plan is therefore FOUR descriptors over THREE proof axes:
+F1 (2-channel, class-shaped — the A1 primary), F2 (the 34-channel d-series rename —
+the D2 proof), F3a narrow (fixed `threshold_v` via `const`, single-value
+`sample_rate_hz` enum, no optional actions) and F3b programmable (bounded
+`threshold_v` range, `sample_rate_hz` bounds, `trigger` + `decode` declared) — the
+D13 pair. F3b MAY reuse F2's 34-channel naming (the capability and name axes
+combine cleanly there), which the build may take; the axes stay independently
+attributed either way. A fifth fixture — a vendor action (invented
+`com.veridian-labs.auto-threshold/1.0.0` through a pinned vendor-catalog fixture) —
+serves A10's Device-features arm.
+
 ### 3.6 Version stamping (D4)
 
 All three generated documents (`ui/manifest.json`, `presentation.json`,
@@ -354,6 +481,44 @@ presentation.py`). No renderer change is needed or made: the preview host alread
 authors no lane markup"). **If implementation discovers a renderer gap, work stops and
 reports** (the dispatch's stop condition; nothing found in evidence — the declaration-only
 lanes render exists at ui-html 0.2.1).
+
+### 3.7 Effective-schema intersection (D13)
+
+Algorithm, per action: start from the catalogue `input_schema`; for each property
+named in the descriptor's `input_constraints`, intersect over the closed vocabulary
+(§2.4); policy narrows further only where commissioned. Outputs feed three
+consumers: ladder placement (§2.5), the rendered control's bounds/enums/consts, and
+the expander-materialised settings schema. Fail-closed cases (typed, joining §3.3's
+table):
+
+| condition | refusal prefix |
+|---|---|
+| a constraint narrows a field to a different JSON type family than the catalogue's | `classref_effective_schema_conflict:` (names action + field + both types) |
+| a REQUIRED field's enum/bounds narrow to an empty admittance set | `classref_effective_schema_empty:` (names action + field) |
+| constraint keywords outside the closed vocabulary | `classref_constraint_unsupported:` (names action + field + keyword) |
+
+### 3.8 Multi-profile merge (D13)
+
+A device claiming several profiles gets the MERGED references under ONE ownership
+domain: one manifest, one envelope, one `plugin_id`, one descriptor hash (A03's
+single-ownership rule; workbench-design §2 — "Separate profile names never permit
+independent clients to drive the same underlying hardware concurrently" — mirrored
+at the presentation layer: one presentation document per device). Deterministic
+merge: profile ids sorted bytewise; the FIRST reference keeps bare page ids; every
+subsequent reference's page ids are prefixed `{profile_slug}-`; binding ids derive
+from the action URN slug (unique by namespacing) and prefix on collision. Two
+references claiming the SAME action URN through different named slots refuse
+`classref_profile_slot_conflict:`. A profile with no reference yet contributes only
+the D14 vendor-actions lane — its actions stay covered.
+
+### 3.9 Coverage derivation (D14)
+
+The expander emits a per-action control plan (action URN → ladder level) into the
+expectation document. The reference's `expect.controls` declares the INTENDED level
+per class action; a divergence between intended and derived (a constraint made a
+field inexpressible, an action absent) is a REPORTED deviation requiring declaration —
+the same D12c ledger, one mechanism. The gate's coverage arm consumes the plan
+(§5.1).
 
 ## 4. D12b — overlay file with deterministic composition
 
@@ -422,7 +587,28 @@ edits — which is the measured today-posture).
    any run-action button; lane labels traceable); deviation ledger applied (§4);
    undeclared divergence FAILs with census-vs-expect deltas.
 6. **Exit**: 0 clean; non-zero with typed findings (`classref_gate_missing:`,
-   `classref_gate_excess:`, `classref_gate_forbidden:`, `classref_gate_undeclared:`).
+   `classref_gate_excess:`, `classref_gate_forbidden:`, `classref_gate_undeclared:`,
+   `classref_gate_uncovered:`).
+
+### 5.1 The coverage arm (D14 — always on)
+
+Independent of class matching, the gate enumerates every key of
+`descriptor.actions` and asserts, per action: a rendered control at its ladder level
+(§2.5) OR a declared deviation in `ui/class-reference.json`. Neither present ⇒
+`classref_gate_uncovered:` naming the URN. Placement: the `verify-ui` command, plus
+the generated project test scaffold wires it into a plugin's own CI (the
+`_write_preview_examples` conformance-test precedent), so coverage is checked where
+the plugin lives, not only where the SDK lives.
+
+**Baselines under D14 (stated expected outcomes):**
+
+- The fresh scalar scaffold (no class reference; its descriptor declares no
+  invoke-class actions): coverage PASSES — nothing declared beyond L1-reachable
+  actions; the class-expect arm skips. The gate does not invent obligations the
+  descriptor does not create.
+- The banked class baseline fixture: coverage FAILS ADDITIONALLY (arm, abort,
+  configure, fetch, decode all unreachable in the hand-minimal manifest) — A4's
+  finding count rises accordingly.
 
 **RED control (pre-committed):** the gate FAILS on the banked baseline fixture — a
 hand-minimal manifest of the two-channel class descriptor reproducing today's posture
@@ -432,20 +618,24 @@ fixture is synthetic (invented names) and committed under the SDK tests.
 
 ## 6. Acceptance rules (pre-committed, with denominators and both kill directions)
 
-Deterministic census assertions; the "sample" is the fixed fixture set (2 expansion
-descriptors + 4 refusal fixtures + 1 baseline fixture + 1 overlay fixture). Every rule
-was written before any gate output existed.
+Deterministic census assertions; the "sample" is the fixed fixture set (F1/F2/F3a/F3b
+expansion descriptors + 4 refusal fixtures + the baseline fixture + the overlay
+fixture + the vendor-catalog fixture — §3.5). Every rule was written before any gate
+output existed; A9/A10 arrived with the D13/D14 fold, still before any gate output
+existed.
 
 | # | rule (ship if) | kill if |
 |---|---|---|
-| A1 | 2-channel class descriptor: `validate_presentation` valid; gate PASS; census **2/2** channel lanes, **1/1** group lane (`D1–D2`), **0** decoder lanes, **2/2** run buttons, **0** forbidden components | any count off, or validation fails |
+| A1 | 2-channel class descriptor: `validate_presentation` valid; gate PASS; census **2/2** channel lanes, **1/1** group lane (`D1–D2`), **0** decoder lanes, run buttons **2/2** (abort L1 bare, arm L2 with **≥1** `numeric-input` for `max_duration_ms`), configuration page preset-mediated with its birth deviation REPORTED, **0** forbidden components | any count off, or validation fails |
 | A2 | 34-channel d-series descriptor: valid; gate PASS; **34/34** channel lanes, **4/4** full groups + **1/1** partial (`D33–D34`), data-string trace clean (§3.5) | any reference-authored data string found, or expansion fails |
 | A3 | refusal fixtures all RED with their typed prefixes (§3.3): **4/4** | any fixture expands instead of refusing |
-| A4 | gate FAILS on the banked baseline fixture with ≥4 findings (lanes, group, configuration page, buttons) | gate passes the baseline (it proves nothing) |
+| A4 | gate FAILS on the banked baseline fixture with ≥6 findings (lanes, group, configuration page, run buttons, plus the D14 coverage findings for the unreachable actions) | gate passes the baseline (it proves nothing) |
 | A5 | overlay fixture survives re-derive: **2/2** overlay effects present after regeneration; composed manifest valid | either effect lost, or composed manifest invalid |
 | A6 | deviation ledger: declared id downgrades **1/1** failure to REPORTED; undeclared divergence still FAILS; unknown id refused **1/1** | any undeclared divergence passes, or an unknown id is accepted |
 | A7 | all generated documents stamp `active_version("plugin-ui")` — **3/3** equal, no literal | any hardcoded version |
 | A8 | Landing 3: the pattern-library class page exports in **2/2** themes; screenshot count increases by the recorded per-entry number | either theme missing |
+| A9 | D13 pair: F3a (narrow) — `threshold_v` renders as a fixed read-only display (**0** numeric-inputs for it), **0** trigger button, **0** decoder lanes, gate PASS; F3b (programmable) — bounded numeric-inputs whose asserted min/max EQUAL the fixture's constraint values (bounds from the intersection), trigger button **1/1**, decoder lanes per pinned decoder; the two manifests' inventories differ exactly on the capability-derived controls | any bound not matching the constraint bytes, or a narrow-only control appearing in F3b (or vice versa) |
+| A10 | D14 coverage: class fixture **7/7** actions covered (**5** rendered + **2** declared: configure-preset-deviation, decode-enum-deviation), gate PASS with both REPORTED; deleting the decode declaration ⇒ FAIL (`classref_gate_uncovered:`); the vendor-action fixture renders in Device features at its ladder level and is covered; the scalar scaffold: coverage PASSES, class arm skips | any undeclared action passing, or a declared one still failing |
 
 Underpowered rather than conclusive: if the census cannot be keyed on contract-pinned
 surfaces (parser cannot resolve a §E.1 surface the render actually emits), the gate's
@@ -464,8 +654,13 @@ per repin); matrix/site stamps regenerate mechanically.
 family into the vendored tree + lock (the sync machinery derives families from the
 manifest; **build-time verification:** if any SDK surface enumerates families, the row is
 added in the same change). New module (expander + overlay composer + gate + census
-parser), CLI `derive-ui` / `verify-ui`, the fixture set and acceptance tests (A1–A7),
-AI-GUIDE/UI-GUIDE `cannot_derive` text (D8). SDK release cut (`make release-cut`) so the
+parser), CLI `derive-ui` / `verify-ui`, the fixture set and acceptance tests (A1–A10),
+AI-GUIDE/UI-GUIDE `cannot_derive` text (D8). D13/D14 mechanisms land here: the
+effective-schema intersection (§3.7) with its fail-closed cases, the reachability
+ladder and per-action control plan (§3.9), the multi-profile merge (§3.8), the
+Device-features derivation (§2.5), and the gate's always-on coverage arm wired into
+the generated project test (§5.1). The fixture set grows to F1/F2/F3a/F3b plus the
+vendor-catalog fixture (§3.5). SDK release cut (`make release-cut`) so the
 gateway pointer advances to a tag. The SDK PR body notes the gateway issue (single stream).
 
 **Landing 3 — gateway: pointer advance + pattern-library page + docs.** Submodule
@@ -490,6 +685,8 @@ All homes use the README vocabulary; every trigger names an observable.
 | D-6 | `cross-constraints.json` row for the family (plugin-ui floor) | documentation in the family README at the next family bump | plugin-ui's served range widens past one version (a plugin-ui bump landing) |
 | D-7 | preset derivation (`preset_asset_ids` wiring) | follow-on issue | an author supplies a commissioned preset through check-preset (a published preset on the registry) |
 | D-8 | #460 (upgrade artifact migration), #461 (venv symlink damage), #463 rows 3/7/8 | their own issues (already filed) | per those issues |
+| D-9 | frequency-counter support | follow-on issue (OTDP catalog lane) | the first registry arrival of a plugin descriptor declaring a frequency-measurement action; the promotion criterion is §2.5's three-way rule (vendor-profile default; dmm-optional on 1:1 scalar-model evidence; new class on two-plugin divergence) |
+| D-10 | §E.1 input vocabulary for non-numeric action fields (text input, select, boolean toggle) | follow-on issue (ui-contract §E lane — a contract addition, not this increment) | a D14 deviation ledger entry whose reason names an inexpressible field type arrives on the SDK tracker (the ledger itself is the observable surface) |
 
 ## 9. Review tier and Step-1 keyword scan (#254)
 
@@ -545,6 +742,17 @@ submodule-pointer touch).
   data fields; reviewers must hold the line that threshold safety is commissioned per
   bench (`cannot_derive.thresholds`). Falsified if any acceptance fixture's manifest
   carries a limit the descriptor did not declare.
+- **R7 — intersection correctness (D13).** A wrong intersection either OFFERS a value
+  the device does not admit (the D13 failure) or HIDES one it does. Mitigation: the
+  closed vocabulary, the refuse-unknown rule, and A9's bounds-equal-constraint-bytes
+  assertion. Falsified if A9's asserted bounds diverge from the fixture's constraint
+  bytes in either direction.
+- **R8 — `host_supplied` mis-declaration (D13/D14).** Naming a field host-supplied
+  that no host actually supplies yields a button that cannot complete an invocation.
+  Mitigation: the names come from the OTDP acquisition-lifecycle model
+  (`acquisition_id`, `configuration_id`), and A10's invocation-path arms exercise the
+  rendered controls against the preview host's real call path. Falsified if an L1/L2
+  control cannot complete its invocation in the SDK test lane.
 
 ## 11. Invariant and drift impacts
 
@@ -557,7 +765,10 @@ submodule-pointer touch).
   SDK lock and vendored tree through the sanctioned sync loop, in the sanctioned order.
 - **No CTL/STO/REG invariant is touched** — no gateway runtime bytes change. The
   presentation-safety obligations that apply (§C.1 R-DEENERGISE-1, §D mode banners) are
-  asserted by the gate, not redefined.
+  asserted by the gate, not redefined. **A02 note (D13):** the effective schema is a
+  NARROWING composition only (catalogue ∧ constraints ∧ policy-where-commissioned);
+  no path widens admittance, and bench policy enters only where a bench's own
+  commissioned record supplies it — never invented at preview.
 - Drift walk (G5): the plugin-ui README's layout description and the workbench-design §6
   "recipe" language stay truthful (the recorded D12a gap is disclosed, not papered over);
   `docs/internal/drift-and-obligations.md` gains no new numbered obligation in this
