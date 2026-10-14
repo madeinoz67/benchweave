@@ -253,6 +253,13 @@ families — `additionalProperties: false` everywhere, limits on string lengths 
 sizes mirroring plugin-ui's own limit posture: 262,144-byte documents, 32 nesting levels.
 The family ships a SECOND machine file, `layout.schema.json` — the namespaced layout
 block's vocabulary, §2.6.)
+(Admission-fold amendments, 2026-10-14: the sketch's per-slot variable template was
+dropped — nothing authored it and lane variables derive from the descriptor; `attribute`
+is the closed lane-kind selector map (the three `data-bw-lane-kind` selectors only); the
+target grammar is anchored `^>=?[0-9]+(\.[0-9]+)*$`, and the target-version comparison is
+per parsed operator: the active version A satisfies `>=V` iff A ≥ V, `>V` iff A > V,
+`<V` iff A < V, `<=V` iff A ≤ V — whatever set the grammar admits; any other outcome
+fires `classref_target_version:`.)
 
 ### 2.3 The logic_analyser reference (content sketch — the committed file is normative)
 
@@ -507,11 +514,13 @@ nodes are the author's (overlay or hand-written), never the reference's.
 
 ### 3.2 Chunking rule (D6)
 
-Groups of **8 consecutive lanes**; the last partial group is allowed; a trailing remainder
+groups of **8 consecutive lanes**; the last partial group is allowed; a trailing remainder
 of **exactly 1** lane forms **no group** (plugin-ui `lane_group.member_ids` `minItems: 2`
 — a one-member group is schema-impossible; the lone lane stays an ungrouped channel
 lane). Group id `lanes-{k}` (k from 1); label `D{first}–D{last}` over 1-based positional
-numbers; `radix: "hex"` (default); `member_ids` = the channel ids in declaration order,
+numbers; labels are DECIMAL positional always (D1–D2, D33–D34 per A1/A9); the group
+radix governs value formatting in rendered content, never the label; `radix: "hex"`
+(default); `member_ids` = the channel ids in declaration order,
 **first declared member = LSB** (contract §E.4.3); `default_collapsed` is NOT set by the
 reference (a host-collapse preference is author territory, overlay-writable).
 
@@ -526,6 +535,7 @@ reference (a host-collapse preference is author territory, overlay-writable).
 | active plugin-ui version below `targets.plugin_ui` | `classref_target_version:` |
 | reference document failing its own schema | `classref_invalid_reference:` |
 | descriptor failing `validate_descriptor` | existing validator findings (unchanged lane) |
+| a page binding a slot key absent from the reference's `slots` | `classref_unknown_slot:` (a cross-object key check the schema cannot express; the expansion-time gate arm) |
 
 ### 3.4 Expect resolution
 
@@ -548,8 +558,11 @@ two-lane remainder) — expands and validates through the canonical validator
 - the **data** strings differ exactly where the descriptors differ (channel ids, labels);
 - a test asserts the manifest's data-string set is a subset of descriptor ∪
   action-schema strings (no reference-authored data), and that the reference document
-  itself contains no numeric literals outside the structural trio (8, 64, pattern arity)
-  — grep-level, machine-checked.
+  itself contains no numeric literals outside the landed structural set {0, 8, 12} —
+  group_size 8, the capture-page plot_index 0, and the layout grid spans (12, the
+  vocabulary's own structural bound) — and no pure-numeric STRINGS outside the
+  count-arity literal "1" (the census covers string-encoded numerics too; version
+  strings and action URNs are not pure numerics) — grep-level, machine-checked.
 
 **Fixture plan under D13/D14 (attribution isolation).** D2 varies NAMES holding
 capability fixed; D13 varies CAPABILITY holding the class fixed. One fixture cannot
@@ -687,7 +700,11 @@ Mechanics:
   reference's expect vocabulary refuses (`classref_unknown_expectation:` — an unknown id
   cannot launder a divergence); a declared deviation downgrades exactly that
   expectation's failure to a REPORTED row in the gate output; undeclared divergence
-  FAILS.
+  FAILS. D7-class expectations are NON-DOWNGRADABLE: the ledger refuses a deviation
+  whose expectation id names an energy-removing action's reachability
+  (`classref_deviation_forbidden:`) — nothing may stand between the operator and abort
+  (ui-contract §C.1 R-DEENERGISE-1); no L1 schema surface can semantically identify an
+  abort URN, so the refusal is the expansion-time gate's.
 - The overlay and declaration files are authoring state that ships inert in the wheel
   (undeclared in manifest `assets`, read only by the expander) — disclosed here and in
   UI-GUIDE.
@@ -717,7 +734,9 @@ edits — which is the measured today-posture).
    the same surfaces the ui-html contract harness pins, never template internals
    (risk R1 mitigation).
 5. **Assert**: numeric `expect` per page; `forbid` checks (zero `bw-confirm` ancestors of
-   any run-action button; lane labels traceable); deviation ledger applied (§4);
+   any run-action button AND no intermediating control — a staging pair, a numeric
+   input, any control between the operator and an energy-removing action's control
+   (§C.1 R-DEENERGISE-1); lane labels traceable); deviation ledger applied (§4);
    undeclared divergence FAILs with census-vs-expect deltas. **Layout arm (§2.6):** the
    `plugin-ui-class-reference:layout` block, when present, is validated against the
    family's `layout.schema.json` (a block failing the family schema refuses

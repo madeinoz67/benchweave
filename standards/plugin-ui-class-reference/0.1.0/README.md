@@ -51,17 +51,21 @@ claims.
 
 **Pages** are page templates. `binding_slots` lists the slot keys a page
 binds; optional-action slots bind only when the descriptor declares them.
-`vendor_features: true` marks the page that hosts the Device-features
-section. The `plot` block declares the page's `digital_lanes` plot: the
-dataset slot it runs over, group of 8 with label pattern `D{first}-D{last}`,
-radix `hex` (default) or `decimal`.
+A `binding_slots` entry that names no key in the reference's `slots`
+refuses at expansion (`classref_unknown_slot:`). `vendor_features: true`
+marks the page that hosts the Device-features section. The `plot` block
+declares the page's `digital_lanes` plot: the dataset slot it runs over,
+group of 8 with label pattern `D{first}-D{last}`, radix `hex` (default)
+or `decimal`. Labels are decimal positional always; the radix formats
+rendered values, never labels.
 
 **Expect** declares the gate's assertions. `components` maps a component
 name to a `count` — an integer or a closed expression (`{n_lanes}`,
 `{n_groups}`, `{n_decoders}`, `{n_run_actions}`, `{n_configure_fields}`,
 `{n_pages}`, integer literals, `+`); `attribute` maps a
-`"name=value"` selector (for example `"data-bw-lane-kind=channel"`) to a
-count expression; `per_page` names a page id, or `*` for every page.
+`"name=value"` selector to a count expression; the selector set is closed:
+the three `data-bw-lane-kind` selectors (channel, group, decoder) and
+nothing else. `per_page` names a page id, or `*` for every page.
 `controls` maps a class action URN to its reachability level: `button`
 (L1, no required inputs after host-owned fields), `staging` (L2, required
 numeric inputs), `preset` (L3, configuration-shaped), `deviation`
@@ -110,7 +114,10 @@ and family version) and the declared-deviation ledger
 reference's expect vocabulary is refused (`classref_unknown_expectation:`) —
 an unknown id cannot launder a divergence. A declared deviation downgrades
 exactly that expectation's failure to a REPORTED row in the gate output;
-an undeclared divergence FAILS the gate.
+an undeclared divergence FAILS the gate. D7-class expectations are
+non-downgradable: a deviation may never name an energy-removing action's
+reachability — the ledger refuses (`classref_deviation_forbidden:`);
+nothing may stand between the operator and abort.
 
 ## Authoring path and provenance
 

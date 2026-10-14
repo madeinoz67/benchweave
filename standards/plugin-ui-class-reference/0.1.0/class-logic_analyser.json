@@ -166,7 +166,8 @@
     "forbid": [
       "confirm-wrapped-run-action",
       "color-role-hint-on-lane",
-      "untraceable-lane-label"
+      "untraceable-lane-label",
+      "intermediated-energy-removing-action"
     ]
   },
   "cannot_derive": [

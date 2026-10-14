@@ -36,7 +36,7 @@
       "properties": {
         "plugin_ui": {
           "type": "string",
-          "pattern": "^>=?[0-9]",
+          "pattern": "^>=?[0-9]+(\\.[0-9]+)*$",
           "minLength": 1,
           "maxLength": 32
         }
@@ -59,7 +59,7 @@
     },
     "layouts": {
       "type": "array",
-      "maxItems": 64,
+      "maxItems": 16,
       "items": {
         "$ref": "https://benchweave.dev/contracts/plugin-ui-class-reference/0.1.0/layout.schema.json#/$defs/layout_page"
       }
@@ -150,10 +150,6 @@
                 "input_schema",
                 "output_measurement"
               ]
-            },
-            "variables": {
-              "type": "object",
-              "maxProperties": 256
             },
             "host_supplied": {
               "type": "array",
@@ -265,37 +261,7 @@
           "type": "object",
           "maxProperties": 64,
           "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "count"
-            ],
-            "properties": {
-              "count": {
-                "type": [
-                  "string",
-                  "integer"
-                ]
-              },
-              "attribute": {
-                "type": "object",
-                "maxProperties": 16
-              },
-              "per_page": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 256
-              },
-              "must_not_be_wrapped_by": {
-                "type": "array",
-                "maxItems": 16,
-                "items": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                }
-              }
-            }
+            "$ref": "#/$defs/component_expect"
           }
         },
         "controls": {
@@ -336,7 +302,25 @@
         },
         "attribute": {
           "type": "object",
-          "maxProperties": 16
+          "maxProperties": 16,
+          "additionalProperties": false,
+          "properties": {
+            "data-bw-lane-kind=channel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "data-bw-lane-kind=group": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "data-bw-lane-kind=decoder": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
         },
         "per_page": {
           "type": "string",

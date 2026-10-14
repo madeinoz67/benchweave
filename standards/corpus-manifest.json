@@ -1385,7 +1385,7 @@
     {
       "path": "plugin-ui-class-reference/0.1.0/class-reference.schema.json",
       "source": "docs/plugin-ui-class-reference-v1/class-reference.schema.json",
-      "sha256": "699badc9e93936bbbcd67616ad81b72344ec71ae478fdd809d4287384085847a"
+      "sha256": "d6bb121b4576b25026d2ca986943f679cdd407c2ef8e70959b51b479d0bb5ebe"
     },
     {
       "path": "plugin-ui-class-reference/0.1.0/layout.schema.json",
@@ -1395,7 +1395,7 @@
     {
       "path": "plugin-ui-class-reference/0.1.0/class-logic_analyser.json",
       "source": "docs/plugin-ui-class-reference-v1/class-logic_analyser.json",
-      "sha256": "9154a1470cbbb016f5ee72df9698dbf35b5e08935eab7a65b45fb97b24c47d53"
+      "sha256": "1d631a0e20d36cc5e50ec59bd5de5def1f289c5144f016ff256d8e554b2677f8"
     }
   ]
 }
