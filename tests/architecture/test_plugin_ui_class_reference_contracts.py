@@ -170,8 +170,8 @@ def test_profile_id_pattern(profile_id: str, valid: bool) -> None:
 
 @pytest.mark.parametrize(
     ("target", "valid"),
-    [(">=0.3.1", True), ("0.3.1", True), ("latest", False), (">=zero", False)],
-    ids=["range", "bare", "word", "non-numeric"],
+    [(">=0.3.1", True), (">0.3.1", True), ("0.3.1", False), ("latest", False), (">=zero", False)],
+    ids=["range", "gt", "bare-invalid", "word", "non-numeric"],
 )
 def test_plugin_ui_target_pattern(target: str, valid: bool) -> None:
     document = minimal_reference(targets={"plugin_ui": target})
@@ -479,7 +479,8 @@ def test_the_reference_binds_the_catalogued_class_actions() -> None:
 
 def test_reference_numbers_are_structural_only() -> None:
     """D2: the only numeric literals in the reference are the structural
-    instantiations - group_size 8 and the capture-page plot_index 0."""
+    instantiations - group_size 8, the capture-page plot_index 0, and the
+    layout grid spans (12, the vocabulary's own structural bound)."""
     document = json.loads(REFERENCE.read_bytes())
     numbers: list[int | float] = []
 
@@ -496,7 +497,7 @@ def test_reference_numbers_are_structural_only() -> None:
                 walk(item)
 
     walk(document)
-    assert sorted(numbers) == [0, 8]
+    assert set(numbers) == {0, 8, 12}
 
 
 def test_reference_layouts_carry_no_text_nodes() -> None:
