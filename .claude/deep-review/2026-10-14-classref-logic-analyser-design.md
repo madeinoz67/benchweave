@@ -11,7 +11,10 @@ plugin-ui 0.3.1 both sides, OTDP 0.2.3, `benchweave-ui-html==0.2.1`.
 capability)** and **D14 (action coverage)** folded 2026-10-14 as first-class owner
 points of the same rank — D13 lands in §2.4 and §3.7–§3.8, D14 in §2.5, §3.9 and the
 gate's always-on coverage arm (§5); both move the schema (§2.2), the fixtures (§3.5)
-and the acceptance rules (A1, A4, A9, A10).
+and the acceptance rules (A1, A4, A9, A10). A second owner ruling the same day rolls
+the **recipe vocabulary IN** (supersedes the D-2 deferral; mechanism in §2.6), and a
+third makes every deferral an **owner row-call** (§8's table is the candidate list;
+the numbered row-call list lives on the tracker).
 
 ## 0. Summary
 
@@ -117,13 +120,14 @@ Admission mechanics (what Landing 1 physically does):
   schema but require a registered host panel id — D1: none exists, so the reference uses
   none), plot kinds (`digital_lanes`), `channel_hints` (visible-only on lanes),
   `lane_groups`, `decoder_lanes`, presets via `preset_asset_ids`.
-  **Recorded gap:** the workbench-design §6.1 component-recipe allowlist (sections,
-  grids, arbitrary component trees) is *not* a plugin-ui capability — workbench-design §6:
-  "Plugin-defined component recipes require a separately reviewed, versioned
-  presentation-contract addition", reiterated by `docs/internal/ui-styleguide.md`
-  ("Plugin presentation"). The reference therefore expresses composition ONLY through
-  pages/bindings/plots; the recipe vocabulary is deferred with the custom-device
-  increment (D-2 in §8). No ungoverned extension field carries a component tree.
+  **Recipe vocabulary rolled IN (owner ruling 2026-10-14, supersedes the D-2
+  deferral):** the gap between the §6.1 recipe vocabulary and what a manifest can
+  carry closes IN THIS INCREMENT, through the family's namespaced layout block
+  riding the plugin-ui 0.3.1 `extensions` seam — §2.6 carries the mechanism and the
+  evidence that decides it. The workbench §6 clause ("Plugin-defined component
+  recipes require a separately reviewed, versioned presentation-contract addition")
+  is satisfied BY the family: `plugin-ui-class-reference` is the reviewed, versioned
+  addition; no ungoverned extension field carries a component tree.
 - **Colour carries nothing (D6).** The reference's lanes vocabulary has no colour
   concept at all (plugin-ui 0.3.1 already refuses `color_role` on `digital_lanes`
   hints — `ui-manifest.schema.json` `$defs.plot.allOf`, `not required color_role`;
@@ -240,7 +244,9 @@ Admission mechanics (what Landing 1 physically does):
 
 (The committed schema is full JSON Schema with the closed-world discipline of the sibling
 families — `additionalProperties: false` everywhere, limits on string lengths and array
-sizes mirroring plugin-ui's own limit posture: 262,144-byte documents, 32 nesting levels.)
+sizes mirroring plugin-ui's own limit posture: 262,144-byte documents, 32 nesting levels.
+The family ships a SECOND machine file, `layout.schema.json` — the namespaced layout
+block's vocabulary, §2.6.)
 
 ### 2.3 The logic_analyser reference (content sketch — the committed file is normative)
 
@@ -382,6 +388,84 @@ whose frequency surfaces DISAGREE on action shapes such that one profile cannot
 express both (the A10 bounded-classes logic: classes are minted on demonstrated
 divergence, not anticipation).
 
+### 2.6 The layout vocabulary (D12a roll-in — the extension seam)
+
+**Mechanism: the family's layout vocabulary rides the plugin-ui 0.3.1 `extensions`
+seam as a namespaced, family-schema'd block — `plugin-ui-class-reference:layout` —
+carried by plain 0.3.1 manifests today. No plugin-ui bump.** The evidence that
+ decides it (verified, not assumed):
+
+- **Option A (plugin-ui 0.4.0 carrying the vocabulary) is OUT on the owner's own
+  bindings, by direct evidence.** The family's normative code row
+  `src/benchweave/presentation/contracts.py` embeds the version literals
+  (`SCHEMA_ROOT = "https://benchweave.dev/contracts/plugin-ui/0.3.1/"` line 20;
+  `contract_version != "0.3.1"` guards lines 247 and 372) — a bump EDITS gateway
+  `src/benchweave` bytes (D11 violated), re-stamps every carried pin through the
+  single-serving wall, and any new layout validation would live in the same
+  validator file. A bump also needs renderer consumption of the new vocabulary —
+  a renderer change D4 forbids.
+- **Option B's seam is real and verified.** `ui-manifest.schema.json` 0.3.1 admits
+  `extensions` as a namespaced map (`patternProperties
+  "^[a-z][a-z0-9.-]+:[a-z][a-z0-9._-]+$"`, value schema `{}`, `maxProperties: 64`),
+  and the canonical validator is EXTENSION-BLIND: zero references to `extensions`
+  in `contracts.py` (881 lines, verified) — a manifest carrying the block validates
+  IDENTICALLY to one without it. The plugin-ui README names the seam's rule:
+  "Fields are closed except explicitly namespaced manifest extensions."
+- **Rendering without a renderer change (D4 holds).** The block composes ONLY
+  §E.1 partials (panels, buttons, staging pairs, tiles, plots) — the ui-html
+  package and its contract harness never change. Consumption is HOST composition:
+  the SDK preview host (`benchweave_sdk_server` — SDK-side code) renders the block
+  by grouping and ordering the partials it already renders; a host that does not
+  know the namespace ignores the block and serves the manifest's plain pages —
+  degrade-by-ignoring, never an error. The owner's stop-and-report fork resolves
+  by evidence: the renderer CAN consume the vocabulary because the vocabulary was
+  drawn from what the renderer already ships (§E.1's inventory), not from §6.1's
+  full aspiration.
+- **The block is the workbench §6 "separately reviewed, versioned
+  presentation-contract addition":** its schema is a machine file of THIS family
+  (`layout.schema.json`, corpus-pinned, versioned `0.1.0` with the family),
+  reviewed through the same governor lane as the rest — governed where the
+  ungoverned extension field is refused.
+
+**The vocabulary** (family `layout.schema.json`; closed world, §6.1's prohibitions
+schema-enforced — no JavaScript, templates, arbitrary HTML/CSS, external URLs,
+credentials, polling or raw commands; bounded: ≤64 nodes per page, depth ≤3,
+grid spans ≤12, text ≤512 characters):
+
+```
+layout            := { "contract_version": "0.1.0", "pages": [layout_page] }
+layout_page       := { "page_id": <must match a manifest page id>, "sections": [section] }
+section           := { "id", "title"?, "surface": "raised"|"recessed", "children": [node] }
+node              := section | control | text | reading | plot_ref
+control           := { "binding_id": <a manifest binding on this page>,
+                       "kind": "button"|"numeric"|"rotary",
+                       "field"?: <an input field of the binding's action> }
+text              := { "body": ≤512 chars }          // AUTHOR capability only —
+                                                  // the class reference authors
+                                                  // none (D2: structure, not data)
+reading           := { "binding_id": ..., "kind": "reading-tile"|"data-table" }
+plot_ref          := { "plot_index": <a plot of this page> }   // orders/places the
+                                                  // page's declared plot
+```
+
+The component kinds map 1:1 onto the §E.1 inventory (panel, button, numeric-input,
+rotary-control, reading-tile, data-table, engineering-plot, digital-lanes); grid
+placement is host CSS-grid composition of panels (the styleguide's own layout
+rule), not a new component. §6.1 items with NO §E.1 component — tabs, splits,
+sliders, switches, selectors, keypads, text inputs — stay OUT of the vocabulary
+(their absence is structural: §E.1 ships no such component; row-call D-10).
+
+**D12a parity holds by construction:** the reference's layout sections and a
+hand-authored block are the SAME vocabulary under the SAME family schema — one
+vocabulary, two writers, identical validation (A11). The reference's layouts
+carry structure only (panels, controls, binding and field references); `text`
+nodes are the author's (overlay or hand-written), never the reference's.
+
+**The honest gap, row-called (D-11):** the GATEWAY production host is as
+  extension-blind as the validator — it will ignore the block until gateway-side
+  consumption work lands. That work is structurally excluded from THIS increment
+  by D11 itself (no `src/benchweave` change); it is a row-call, not a silent cut.
+
 ## 3. Expansion semantics (SDK side)
 
 ### 3.1 Slot resolution
@@ -460,15 +544,17 @@ two-lane remainder) — expands and validates through the canonical validator
 capability fixed; D13 varies CAPABILITY holding the class fixed. One fixture cannot
 serve both proofs without confounding attribution — a failure could be name-caused
 or capability-caused. The plan is therefore FOUR descriptors over THREE proof axes:
-F1 (2-channel, class-shaped — the A1 primary), F2 (the 34-channel d-series rename —
-the D2 proof), F3a narrow (fixed `threshold_v` via `const`, single-value
+F1 (2-channel, class-shaped — the A1 primary), F2 (the **32-channel d-series rename
+`d0`..`d31`** — the task's named fixture, kept exactly; the D2 proof: 4 full groups,
+zero remainder), F3a narrow (fixed `threshold_v` via `const`, single-value
 `sample_rate_hz` enum, no optional actions) and F3b programmable (bounded
 `threshold_v` range, `sample_rate_hz` bounds, `trigger` + `decode` declared) — the
-D13 pair. F3b MAY reuse F2's 34-channel naming (the capability and name axes
-combine cleanly there), which the build may take; the axes stay independently
-attributed either way. A fifth fixture — a vendor action (invented
-`com.veridian-labs.auto-threshold/1.0.0` through a pinned vendor-catalog fixture) —
-serves A10's Device-features arm.
+D13 pair; **F3b runs 34 channels (`d0`..`d33`) and carries the partial-group arm
+(`D33–D34`)**, so the remainder arithmetic is covered on the capability axis without
+touching the task's named 32-channel fixture. A fifth fixture — a vendor action
+(invented `com.veridian-labs.auto-threshold/1.0.0` through a pinned vendor-catalog
+fixture) — serves A10's Device-features arm; a sixth — a hand-authored
+layout-bearing manifest — serves A11's parity arm.
 
 ### 3.6 Version stamping (D4)
 
@@ -482,20 +568,56 @@ authors no lane markup"). **If implementation discovers a renderer gap, work sto
 reports** (the dispatch's stop condition; nothing found in evidence — the declaration-only
 lanes render exists at ui-html 0.2.1).
 
-### 3.7 Effective-schema intersection (D13)
+### 3.7 Effective-schema intersection (D13) — designed against the real mechanism
 
-Algorithm, per action: start from the catalogue `input_schema`; for each property
-named in the descriptor's `input_constraints`, intersect over the closed vocabulary
-(§2.4); policy narrows further only where commissioned. Outputs feed three
-consumers: ladder placement (§2.5), the rendered control's bounds/enums/consts, and
-the expander-materialised settings schema. Fail-closed cases (typed, joining §3.3's
-table):
+**Where `input_constraints` actually live and what they carry (verified):** the
+descriptor's per-action `input_constraints` fragments are FULL JSON-Schema objects
+applied CONJUNCTIVELY — the gateway checks "the input validates against the action's
+catalog input schema, and the input also satisfies your descriptor's
+`input_constraints` narrowing" (`docs/device-developer-guide.md`, the invoke gate),
+and both SDK preset lanes apply the same AND-wise composition (plugin-ui README).
+Real in-tree shapes: `fixtures/execution/descriptor-sim-psu.json` narrows
+`otdp.dc_psu.configure/1.0.0` with `properties` carrying `minimum`/`maximum`/
+`exclusiveMinimum`/`pattern` (`^ch1$`)/`type`, plus a top-level `required` list —
+not the empty `{}` the class example shows. The class fixture's emptiness is the
+UNNARROWED case, not the mechanism.
+
+**Consequence for the design — the expander does not merge schemas for validation
+(validation already composes AND-wise in the existing lanes); it derives the
+EFFECTIVE ADMITTANCE per rendered field, for control derivation only:**
+
+- Numeric fields (`number`/`integer`): intersect the bounds family
+  (`minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum`/`multipleOf`,
+  type-within-family) — a numeric control is emitted whose `min`/`max`/`step` are
+  the intersection; every value the control can submit is admittED by both
+  schemas. `const` → read-only fixed display (never an editable offer).
+- `enum` → fixed option set from the intersection.
+- `pattern` → renderable ONLY when the admitted set is finite and enumerable
+  (a literal alternation `^(a|b|c)$` derives fixed options; any other pattern —
+  `^ch1$` narrows to one value, so `^ch1\d+$` shapes — marks the field
+  INEXPRESSIBLE: a free control cannot guarantee admittance, and offering one
+  would violate D13's rule). An inexpressible required field drops the action to
+  L0 (declared deviation) while the existing validation lanes still enforce the
+  constraint — nothing is silently unenforced.
+- Array/object constraints (`items`, `minItems`, `uniqueItems`) and `required`
+  additions do not derive form controls; they ride the existing conjunctive
+  validation untouched. The ladder's "no required inputs" test uses
+  catalogue-required ∪ constraints-required.
+- Unknown keywords outside this vocabulary refuse
+  `classref_constraint_unsupported:` (same loud-degrade rule — dropping a
+  constraint would offer an unadmitted value).
+
+Fail-closed cases (typed, joining §3.3's table):
 
 | condition | refusal prefix |
 |---|---|
 | a constraint narrows a field to a different JSON type family than the catalogue's | `classref_effective_schema_conflict:` (names action + field + both types) |
 | a REQUIRED field's enum/bounds narrow to an empty admittance set | `classref_effective_schema_empty:` (names action + field) |
 | constraint keywords outside the closed vocabulary | `classref_constraint_unsupported:` (names action + field + keyword) |
+
+The expander-materialised `ui/settings/*.schema.json` stays the constraints-derived
+effective document, so check-preset's AND-wise lane enforces exactly what the forms
+offered.
 
 ### 3.8 Multi-profile merge (D13)
 
@@ -585,7 +707,16 @@ edits — which is the measured today-posture).
    (risk R1 mitigation).
 5. **Assert**: numeric `expect` per page; `forbid` checks (zero `bw-confirm` ancestors of
    any run-action button; lane labels traceable); deviation ledger applied (§4);
-   undeclared divergence FAILs with census-vs-expect deltas.
+   undeclared divergence FAILs with census-vs-expect deltas. **Layout arm (§2.6):** the
+   `plugin-ui-class-reference:layout` block, when present, is validated against the
+   family's `layout.schema.json` (a block failing the family schema refuses
+   `classref_layout_invalid:` — the canonical validator is extension-blind, so the
+   FAMILY schema is the block's only authority); the census then asserts the composed
+   grouping (the Run group's `bw-panel` contains the arm and abort `bw-button`s in
+   declaration order — DOM-order assertion, not just counts). **Extension-blindness
+   control:** a layout-bearing manifest passes the gateway-vendored canonical validator
+   UNCHANGED — pinned by a test, because it is the load-bearing fact the whole seam
+   rests on.
 6. **Exit**: 0 clean; non-zero with typed findings (`classref_gate_missing:`,
    `classref_gate_excess:`, `classref_gate_forbidden:`, `classref_gate_undeclared:`,
    `classref_gate_uncovered:`).
@@ -620,22 +751,23 @@ fixture is synthetic (invented names) and committed under the SDK tests.
 
 Deterministic census assertions; the "sample" is the fixed fixture set (F1/F2/F3a/F3b
 expansion descriptors + 4 refusal fixtures + the baseline fixture + the overlay
-fixture + the vendor-catalog fixture — §3.5). Every rule was written before any gate
-output existed; A9/A10 arrived with the D13/D14 fold, still before any gate output
-existed.
+fixture + the vendor-catalog fixture + the hand-authored layout manifest — §3.5).
+Every rule was written before any gate output existed; A9–A11 arrived with the
+D13/D14 and vocabulary folds, still before any gate output existed.
 
 | # | rule (ship if) | kill if |
 |---|---|---|
 | A1 | 2-channel class descriptor: `validate_presentation` valid; gate PASS; census **2/2** channel lanes, **1/1** group lane (`D1–D2`), **0** decoder lanes, run buttons **2/2** (abort L1 bare, arm L2 with **≥1** `numeric-input` for `max_duration_ms`), configuration page preset-mediated with its birth deviation REPORTED, **0** forbidden components | any count off, or validation fails |
-| A2 | 34-channel d-series descriptor: valid; gate PASS; **34/34** channel lanes, **4/4** full groups + **1/1** partial (`D33–D34`), data-string trace clean (§3.5) | any reference-authored data string found, or expansion fails |
+| A2 | 32-channel d-series descriptor (`d0`..`d31`, the task's named fixture): valid; gate PASS; **32/32** channel lanes, **4/4** full groups, **0** remainder groups, data-string trace clean (§3.5) | any reference-authored data string found, or expansion fails |
 | A3 | refusal fixtures all RED with their typed prefixes (§3.3): **4/4** | any fixture expands instead of refusing |
 | A4 | gate FAILS on the banked baseline fixture with ≥6 findings (lanes, group, configuration page, run buttons, plus the D14 coverage findings for the unreachable actions) | gate passes the baseline (it proves nothing) |
 | A5 | overlay fixture survives re-derive: **2/2** overlay effects present after regeneration; composed manifest valid | either effect lost, or composed manifest invalid |
 | A6 | deviation ledger: declared id downgrades **1/1** failure to REPORTED; undeclared divergence still FAILS; unknown id refused **1/1** | any undeclared divergence passes, or an unknown id is accepted |
 | A7 | all generated documents stamp `active_version("plugin-ui")` — **3/3** equal, no literal | any hardcoded version |
 | A8 | Landing 3: the pattern-library class page exports in **2/2** themes; screenshot count increases by the recorded per-entry number | either theme missing |
-| A9 | D13 pair: F3a (narrow) — `threshold_v` renders as a fixed read-only display (**0** numeric-inputs for it), **0** trigger button, **0** decoder lanes, gate PASS; F3b (programmable) — bounded numeric-inputs whose asserted min/max EQUAL the fixture's constraint values (bounds from the intersection), trigger button **1/1**, decoder lanes per pinned decoder; the two manifests' inventories differ exactly on the capability-derived controls | any bound not matching the constraint bytes, or a narrow-only control appearing in F3b (or vice versa) |
+| A9 | D13 pair: F3a (narrow) — `threshold_v` renders as a fixed read-only display (**0** numeric-inputs for it), **0** trigger button, **0** decoder lanes, gate PASS; F3b (programmable, 34 channels) — bounded numeric-inputs whose asserted min/max EQUAL the fixture's constraint values (bounds from the intersection), trigger button **1/1**, decoder lanes per pinned decoder, **1/1** partial group `D33–D34`; the two manifests' inventories differ exactly on the capability-derived controls | any bound not matching the constraint bytes, or a narrow-only control appearing in F3b (or vice versa) |
 | A10 | D14 coverage: class fixture **7/7** actions covered (**5** rendered + **2** declared: configure-preset-deviation, decode-enum-deviation), gate PASS with both REPORTED; deleting the decode declaration ⇒ FAIL (`classref_gate_uncovered:`); the vendor-action fixture renders in Device features at its ladder level and is covered; the scalar scaffold: coverage PASSES, class arm skips | any undeclared action passing, or a declared one still failing |
+| A11 | Layout parity and render (§2.6): a HAND-AUTHORED layout-bearing manifest (fixture) and the EXPANDED manifest both validate **identically** — canonical validator `valid=true` for both (extension-blindness) AND family `layout.schema.json` `valid=true` for both; the SDK host renders the block — census asserts the Run-group `bw-panel` contains arm+abort buttons in declaration order (DOM order, not count alone); a layout block naming a page id absent from the manifest refuses `classref_layout_invalid:` | either writer validating where the other fails (parity break), or the composed order differing from the declared order |
 
 Underpowered rather than conclusive: if the census cannot be keyed on contract-pinned
 surfaces (parser cannot resolve a §E.1 surface the render actually emits), the gate's
@@ -645,9 +777,11 @@ not a pass/fail on the increment.
 ## 7. Three-landing sequence
 
 **Landing 1 — gateway main: the standard.** Family dir + schemas + reference +
-README; standards-manifest admission entry + founding dependency_policy block; corpus
-rows via repin; this design record. Governor review + Tier 3. No `src/benchweave` bytes.
-CI: existing standards suites cover the new rows (coverage is both-directions fail-closed
+README — now TWO machine schemas (`class-reference.schema.json` and
+`layout.schema.json`, the D12a roll-in) + the `class-logic_analyser.json` reference
++ README; standards-manifest admission entry + founding dependency_policy block; corpus
+rows via repin; this design record. Governor review + Tier 3. No `src/benchweave`
+bytes. CI: existing standards suites cover the new rows (coverage is both-directions fail-closed
 per repin); matrix/site stamps regenerate mechanically.
 
 **Landing 2 — SDK: expander + gate + docs + release.** `sync-standards` ingests the new
@@ -658,27 +792,40 @@ parser), CLI `derive-ui` / `verify-ui`, the fixture set and acceptance tests (A1
 AI-GUIDE/UI-GUIDE `cannot_derive` text (D8). D13/D14 mechanisms land here: the
 effective-schema intersection (§3.7) with its fail-closed cases, the reachability
 ladder and per-action control plan (§3.9), the multi-profile merge (§3.8), the
-Device-features derivation (§2.5), and the gate's always-on coverage arm wired into
-the generated project test (§5.1). The fixture set grows to F1/F2/F3a/F3b plus the
-vendor-catalog fixture (§3.5). SDK release cut (`make release-cut`) so the
-gateway pointer advances to a tag. The SDK PR body notes the gateway issue (single stream).
+Device-features derivation (§2.5), the gate's always-on coverage arm wired into
+the generated project test (§5.1), the expander's emission of the
+`plugin-ui-class-reference:layout` block and the preview host's consumption of it
+(§2.6 — host composition of existing §E.1 partials; the ui-html package and the
+canonical validator are untouched, and the extension-blindness control is pinned by
+a test), and the A11 layout-parity fixture. The fixture set grows to F1/F2/F3a/F3b
+plus the vendor-catalog and hand-authored-layout fixtures (§3.5). SDK release cut
+(`make release-cut`) so the gateway pointer advances to a tag. The SDK PR body notes
+the gateway issue (single stream).
 
 **Landing 3 — gateway: pointer advance + pattern-library page + docs.** Submodule
 gitlink + `.gitmodules` pin advanced in one commit (`sdk-drift` lane shape); the
 pattern-library **capture-page composition** for the analyser class (#462 row 2 —
 composed from the existing §E.1 components, host-owned, no new contract rows); the
 mockup's analyzer composition (#462 row 1); styleguide/workbench doc updates
-(ui-styleguide.md composition note; workbench-design stays historical-rationale).
+(ui-styleguide.md composition note; **its "Plugin presentation" paragraph gains the
+family-extension reconciliation** — the namespaced `plugin-ui-class-reference:layout`
+block is the sanctioned, family-schema'd use of the extension seam, so the "do not
+encode a private component tree in extension fields" guidance now names the one
+governed exception; workbench-design stays historical-rationale).
 A8 rides here.
 
-## 8. Deferral table
+## 8. Deferral table — OWNER ROW-CALLS (nothing defers by default)
 
-All homes use the README vocabulary; every trigger names an observable.
+**Process rule (owner, 2026-10-14):** every row below is a CANDIDATE the owner
+decides — roll in or defer; nothing defers by default and nothing rolls in by
+default. The numbered row-call list (what / structural reason or "effort only" /
+recommendation) is returned to the tracker with this record; the owner's calls fold
+back into this table before the design is final. The former D-2 (recipe vocabulary)
+is REMOVED — the owner rolled it in (§2.6).
 
 | id | deferred | home | reopen trigger |
 |---|---|---|---|
 | D-1 | the other 11 OTDP classes' references (dc_psu first — it has the existing mockup) | follow-on issue (gateway #463 remains open for the class sweep; the sweep issue names dc_psu next) | this slice's gate PASSes on logic_analyser and lands (the train closing) |
-| D-2 | custom-device §6.1 recipe vocabulary beyond pages/plots (the recorded D12a gap) | follow-on issue (the "separately reviewed, versioned presentation-contract addition" workbench-design §6 names) | a plugin author needs a composition plugin-ui 0.3.x cannot express, arriving as a descriptor + ask on the SDK tracker |
 | D-3 | host-owned analyser `class_panel` (D1) | follow-on issue | a registered host panel id exists (a panel admission lands in the gateway UI surface) |
 | D-4 | gateway-side fallback for plugins shipping no manifest | follow-on issue (gateway) | a gateway G-team issue asking for the reference-derived default page |
 | D-5 | decode-annotation overlay (`decode_annotated` spans beyond the closed trio) | follow-on issue | a descriptor pins a decoder declaration exercising the annotation form (an arrival on the registry) |
@@ -687,6 +834,7 @@ All homes use the README vocabulary; every trigger names an observable.
 | D-8 | #460 (upgrade artifact migration), #461 (venv symlink damage), #463 rows 3/7/8 | their own issues (already filed) | per those issues |
 | D-9 | frequency-counter support | follow-on issue (OTDP catalog lane) | the first registry arrival of a plugin descriptor declaring a frequency-measurement action; the promotion criterion is §2.5's three-way rule (vendor-profile default; dmm-optional on 1:1 scalar-model evidence; new class on two-plugin divergence) |
 | D-10 | §E.1 input vocabulary for non-numeric action fields (text input, select, boolean toggle) | follow-on issue (ui-contract §E lane — a contract addition, not this increment) | a D14 deviation ledger entry whose reason names an inexpressible field type arrives on the SDK tracker (the ledger itself is the observable surface) |
+| D-11 | GATEWAY production-host consumption of the `plugin-ui-class-reference:layout` block (the SDK preview host renders it; the gateway host is extension-blind until this lands) | follow-on issue (gateway G-lane) | this slice's Landing 3 merges (the pointer advance + docs land, making the gateway consumption the only missing half) |
 
 ## 9. Review tier and Step-1 keyword scan (#254)
 
@@ -753,6 +901,13 @@ submodule-pointer touch).
   (`acquisition_id`, `configuration_id`), and A10's invocation-path arms exercise the
   rendered controls against the preview host's real call path. Falsified if an L1/L2
   control cannot complete its invocation in the SDK test lane.
+- **R9 — the extension seam's looseness (§2.6).** The canonical validator is
+  extension-blind (verified), so the family schema is the layout block's ONLY
+  validation authority — a plugin could carry a malformed block past `check-ui`.
+  Mitigation: `verify-ui` refuses `classref_layout_invalid:` and the generated
+  project test runs it in CI; a block the family schema does not know refuses rather
+  than renders partially. Falsified if a malformed block renders anything in the SDK
+  host or passes `verify-ui`.
 
 ## 11. Invariant and drift impacts
 
