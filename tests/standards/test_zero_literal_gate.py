@@ -84,7 +84,7 @@ class TestActiveVersionFromCorpus:
         assert active_version_from_corpus(corpus, "registry") == expected_registry
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
         assert active_version_from_corpus(corpus, "interface") == "0.1.0"
-        assert active_version_from_corpus(corpus, "plugin-ui") == "0.3.0"
+        assert active_version_from_corpus(corpus, "plugin-ui") == "0.3.1"
         assert active_version_from_corpus(corpus, "plugin-ui-preview") == "0.2.0"
 
     def test_entry_absent_refuses_loudly(self, tmp_path: Path) -> None:

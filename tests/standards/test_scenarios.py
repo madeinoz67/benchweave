@@ -30,12 +30,12 @@ from benchweave_sdk.standards_sync import SyncReport, sync  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 
 STANDARD = "plugin-ui"
-OLD_VERSION = "0.3.0"
+OLD_VERSION = "0.3.1"
 NEW_VERSION = "0.4.0"
 # The scenario victim: normative and standards-pinned (docs/ holds no corpus).
-NORMATIVE = "standards/plugin-ui/0.3.0/ui-manifest.schema.json"
-PIN_KEY = "plugin-ui/0.3.0/ui-manifest.schema.json"
-DOC_README = "standards/plugin-ui/0.3.0/README.md"
+NORMATIVE = "standards/plugin-ui/0.3.1/ui-manifest.schema.json"
+PIN_KEY = "plugin-ui/0.3.1/ui-manifest.schema.json"
+DOC_README = "standards/plugin-ui/0.3.1/README.md"
 PARITY = "src/benchweave/presentation/contracts.py"
 ALL_IDS = {"otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview"}
 
@@ -206,7 +206,7 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     repo = _repo_copy(tmp_path)
     bundle, sdk = _first_cycle(tmp_path, repo)
     # Copy-then-edit-the-copy: a real breaking bump never touches the
-    # retained version's bytes (#203 slice 1 — the carried set keeps 0.3.0
+    # retained version's bytes (#203 slice 1 — the carried set keeps 0.3.1
     # beside the new version, byte-frozen).
     _bump_version(repo)
     _break_normative(repo)

@@ -320,6 +320,47 @@ def test_live_mount_valid_token_calls_gateway_info_and_serves_wire_schemas(
             }, f"{wire_tool['name']} wire schema drifted"
 
 
+# --- row 1a (#450): server-level instructions on the initialize response ------
+
+
+def test_live_initialize_serves_server_instructions(tmp_path: Path) -> None:
+    """Row 1a (issue #450 §3.6): the initialize response carries the server's
+    ``instructions`` — the SDK standalone server's inline disclosure posture,
+    ported. Content arms pin the accept-and-poll-to-terminal run model,
+    ``outcome_unknown``'s honest semantics, and the gateway-side enforcement
+    statement (A06 on the surface; A04 named where agents read). The 17
+    vendored tool DESCRIPTIONS are corpus bytes and are NOT touched by this
+    row (PR-2's row 1b)."""
+    with _live_app(tmp_path) as url:
+        status, body, _ = _post(
+            url,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "clientInfo": {"name": "task8", "version": "0"},
+                },
+            },
+            {"Authorization": f"Bearer {_token({'stg:observe'})}"},
+        )
+        assert status == 200, status
+        assert body is not None and "result" in body, body
+        instructions = body["result"].get("instructions")
+        assert isinstance(instructions, str) and instructions, (
+            "initialize response serves no server instructions (row 1a, #450)"
+        )
+        # Accept-and-poll-to-terminal model (§8 row-1a GREEN arms):
+        assert "run_start accepts a run" in instructions
+        assert "poll run_get" in instructions
+        # outcome_unknown's honest semantics:
+        assert "outcome_unknown" in instructions
+        # Gateway-side enforcement (A04):
+        assert "enforced by the gateway" in instructions
+
+
 def test_live_mount_auth_rejections(tmp_path: Path) -> None:
     with _live_app(tmp_path) as url:
         # Missing token: 401-class rejection at the transport (no session).

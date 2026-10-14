@@ -27,6 +27,8 @@ The host checks:
 
 `input_constraints` is an additional JSON Schema, never a replacement for the standard schema. It must itself be meta-validated and use only locally admitted references. It narrows model ranges, modes and capacities. Coupled constraints requiring live state are checked semantically. Empty constraints in structural examples do not establish a real instrument's limits.
 
+The pinned catalog may be plugin-authored, in the standard catalog's shape (`catalog_version`/`otdp_version`, `profiles[]`, per-action `input_schema`/`output_schema`); load-time resolution already admits it (exactly one catalog per descriptor). A plugin-authored catalog may re-declare an `otdp.*` profile id only when it reproduces the pinned corpus version's rows exactly: identical rows are benign; divergence refuses at the presentation seam (`profile_shadow` on the binding target). Vendor profile ids stay outside `otdp.*` per section 1's corpus-owned-namespace rule.
+
 The standard action side-effect is a minimum classification. A device may elevate none to state_change, for example a DMM resistance measurement that applies stimulus. It must not downgrade a state-changing action. The umbrella invoke policy is conservative; the gateway evaluates the exact action and current configuration. Profile-aware clients must not mark every invoke read-only because one action is a measurement.
 
 Request:

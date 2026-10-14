@@ -1243,6 +1243,26 @@
       "sha256": "2c89b754519bbd38dcecd7a25165ab25aeff0987c4880f090ae3efdafa3d31d4"
     },
     {
+      "path": "plugin-ui/0.3.1/binding-catalogue.schema.json",
+      "source": "standards/plugin-ui/0.3.0/binding-catalogue.schema.json",
+      "sha256": "3243a2ed30059a74db5c7a36ce30d7c9deccaac4702bb172dd92a217dc36f97e"
+    },
+    {
+      "path": "plugin-ui/0.3.1/configuration-preset.schema.json",
+      "source": "standards/plugin-ui/0.3.0/configuration-preset.schema.json",
+      "sha256": "c7fb335a67974d13e1bbafbe88e800224caa1b5044c119ee1047b78aca483326"
+    },
+    {
+      "path": "plugin-ui/0.3.1/presentation-envelope.schema.json",
+      "source": "standards/plugin-ui/0.3.0/presentation-envelope.schema.json",
+      "sha256": "04159363c0bc5001b9937c786c2721c37761826754ab7e61ba0c39f87d13e8b5"
+    },
+    {
+      "path": "plugin-ui/0.3.1/ui-manifest.schema.json",
+      "source": "standards/plugin-ui/0.3.0/ui-manifest.schema.json",
+      "sha256": "8e738d94be4dd24308851196e64574a92b24b2295b4dfc4b82e7c7b710fbcc52"
+    },
+    {
       "path": "registry/0.1.0/examples/package-lock.json",
       "source": "docs/registry-v1.0.0/examples/package-lock.json",
       "sha256": "52f57da1f016ed0eb61cc5b7a3c0d213ecffb443df1613f91e55e691a7d275c6"

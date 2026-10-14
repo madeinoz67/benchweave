@@ -312,6 +312,16 @@ Authoring rules the instance demonstrates:
   every preset a configuration target declares, whether or not a binding
   lists it, and refuses a preset-shaped asset no target declares
   (`unreferenced_preset`) rather than guessing its wiring.
+- **Commissioned devices change the firmware gate.** A descriptor with
+  `firmware_policy: "commissioned"` carries no descriptor-side firmware
+  list. The bench's commissioned record is the firmware authority. Both SDK
+  lanes admit a firmware value that the preset itself lists. The gateway
+  composes the settings and preset pages with no firmware value, because
+  the offline check cannot decide one from the descriptor. A firmware list
+  that the descriptor does declare stays enforced under both policies.
+  Apply is not weakened: the device must report an established firmware,
+  and the apply gate refuses before any write when that firmware is not in
+  the preset's `supported_firmware` list.
 - **A preset's `configuration_id` is a placeholder.** The runtime treats that
   key as gateway-issued; any future apply path must substitute the issued
   token, never replay the literal. Selecting a preset performs no I/O and

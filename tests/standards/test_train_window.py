@@ -1,17 +1,22 @@
-"""The bump window (#97): the prescriptive release-train floor, enforced.
+"""Sync-completion pacing (#451, GOVERNANCE G-5): the release train's rule.
 
-Arms: the pure gap judgement (violation, boundary, per-standard), and a
-scratch-repository family that drives the REAL collector end-to-end with
-controlled committer dates — non-empty collection, the inside-floor refusal,
-the admission and reset-class exemptions, and the real-tree grandfather row.
-The scratch family is what makes a passing real-tree row non-vacuous: the
-real tree correctly collects zero post-anchor bumps, and only the scratch
-arms prove the collector can collect at all.
+Arms: the pure sync-completion judgement (the missing-predecessor refusal,
+per-standard scope), and a scratch-repository family that drives the REAL
+collector and lock reader end-to-end with controlled SDK locks — non-empty
+collection, the missing-predecessor refusal, the compliant-bump pass (wall
+time no longer matters), the admission and reset-class exemptions, the
+pre-anchor grandfather, the same-commit stacking refusal, the unreadable
+lock and uninitialized submodule refusals, and the real-tree grandfather
+row. The scratch family is what makes a passing real-tree row non-vacuous:
+the real tree correctly collects zero post-anchor bumps, and only the
+scratch arms prove the collector can collect at all.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -22,248 +27,492 @@ from benchweave.standards.train_window import (
     TrainWindowError,
     check_train_windows,
     collect_bump_entries,
-    window_violations,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-# Owner revisit 2026-09-23: the 48h starting figure -> 24h, after one window ran
-# and its observed cost was latency (a queued fold-after-release), not churn.
-FLOOR_SECONDS = 24 * 3600
+# The module's G-5 marker literal, pinned here as the contract the scratch
+# fixtures stand in for: the anchor is the FIRST commit whose module path
+# contains this literal (the amendment's own arrival, oldest match). If the
+# module's ANCHOR_MARKER moves without this line, every scratch anchor fails
+# to resolve and the suite refuses loudly instead of silently re-anchoring.
+ANCHOR_MARKER = "train_window:g5-sync-completion-anchor"
 T0 = "2026-09-20T12:00:00+08:00"
 
 
-def test_second_bump_inside_the_floor_is_refused() -> None:
-    entries = (
-        BumpEntry("otdp", "0.2.0", 1_000_000_000),
-        BumpEntry("otdp", "0.2.1", 1_000_000_000 + 4 * 3600 + 480),
+def _run(repo: Path, *arguments: str, date: str | None = None) -> str:
+    """One git invocation, user identity on every commit-capable call."""
+    environment = dict(os.environ)
+    if date is not None:
+        environment["GIT_AUTHOR_DATE"] = date
+        environment["GIT_COMMITTER_DATE"] = date
+    completed = subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
     )
-    violations = window_violations(entries, FLOOR_SECONDS)
-    assert len(violations) == 1
-    assert violations[0].startswith("train_window_violation: otdp 0.2.0 -> 0.2.1")
-    assert "4.13h" in violations[0]
+    return completed.stdout
 
 
-def test_bump_exactly_at_the_floor_passes() -> None:
-    entries = (
-        BumpEntry("otdp", "0.2.0", 1_000_000_000),
-        BumpEntry("otdp", "0.2.1", 1_000_000_000 + FLOOR_SECONDS),
-    )
-    assert window_violations(entries, FLOOR_SECONDS) == ()
-
-
-def test_per_standard_windows_are_independent() -> None:
-    entries = (
-        BumpEntry("otdp", "0.2.0", 1_000_000_000),
-        BumpEntry("registry", "0.1.2", 1_000_000_000 + 3600),
-        BumpEntry("registry", "0.1.3", 1_000_000_000 + 2 * 3600),
-    )
-    violations = window_violations(entries, FLOOR_SECONDS)
-    assert len(violations) == 1
-    assert violations[0].startswith("train_window_violation: registry")
-
-
-def _commit(repo: Path, date: str, *paths_contents: tuple[str, str]) -> None:
+def _commit(
+    repo: Path,
+    date: str,
+    *paths_contents: tuple[str, str],
+    sdk_pin: str | None = None,
+) -> str:
+    """Commit the named paths only — never `add -A`: the SDK clone under
+    `packages/sdk` is a nested repository whose gitlink is pinned
+    deliberately (`sdk_pin`), never by an accidental staging sweep."""
     for relative, content in paths_contents:
         target = repo / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
-        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    env_dates = {
-        "GIT_AUTHOR_DATE": date,
-        "GIT_COMMITTER_DATE": date,
-    }
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-         "commit", "-m", "w"],
-        check=True,
-        capture_output=True,
-        env={**os.environ, **env_dates},
-    )
+        _run(repo, "add", relative)
+    if sdk_pin is not None:
+        _run(repo, "update-index", "--add", "--cacheinfo", f"160000,{sdk_pin},packages/sdk")
+    _run(repo, "commit", "-m", "w", date=date)
+    return _run(repo, "rev-parse", "HEAD").strip()
 
 
 def _scratch_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "scratch"
     repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
-    # The anchor: this module's own arrival, in-history for the scratch repo.
-    _commit(
-        repo,
-        T0,
-        ("src/benchweave/standards/train_window.py", "# anchor stand-in\n"),
-    )
+    _run(repo, "init", "-q")
     return repo
 
 
-def test_collector_reads_file_paths_and_refuses_inside_floor(tmp_path: Path) -> None:
-    repo = _scratch_repo(tmp_path)
-    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+def _anchor(repo: Path, date: str = T0) -> None:
+    """The stand-in carries the G-5 marker: the anchor is the first commit
+    whose module path contains it, exactly as in the real tree."""
     _commit(
         repo,
-        "2026-09-20T14:55:00+08:00",  # 2.92h after admission: the first
-        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),  # non-admission bump —
-    )  # it opens the window, nothing precedes it in the entry sequence
-    entries = collect_bump_entries(repo)
-    # Non-vacuity: the collector must read the FILE paths git emits and
-    # derive their version directories — a return of () here is the dead
-    # collector, not a clean window.
-    assert [entry.version for entry in entries] == ["0.2.0"]
-    check_train_windows(repo, FLOOR_SECONDS)  # one bump: clean
-    _commit(
-        repo,
-        "2026-09-20T15:55:00+08:00",  # 1h after 0.2.0 — inside the floor
-        ("standards/otdp/0.2.1/x.schema.json", "{}\n"),
+        date,
+        ("src/benchweave/standards/train_window.py", f"# {ANCHOR_MARKER}\n"),
     )
-    with pytest.raises(TrainWindowError, match="train_window_violation: otdp"):
-        check_train_windows(repo, FLOOR_SECONDS)
 
 
-def test_admission_is_exempt_and_newest_bump_is_judged(tmp_path: Path) -> None:
+def _sdk_repo(
+    tmp_path: Path,
+    date: str,
+    *carried: dict[str, list[str]],
+    yanked: frozenset[tuple[str, str]] = frozenset(),
+) -> tuple[Path, list[str]]:
+    """A mini SDK repository whose i-th commit's standards-lock.json carries
+    ``carried[i]`` (standard -> versions). Returns (path, commit shas)."""
+    sdk = tmp_path / "sdk-src"
+    sdk.mkdir(exist_ok=True)
+    _run(sdk, "init", "-q")
+    shas: list[str] = []
+    for mapping in carried:
+        rows = [
+            {
+                "id": standard,
+                "version": version,
+                "yanked": (standard, version) in yanked,
+            }
+            for standard, versions in sorted(mapping.items())
+            for version in versions
+        ]
+        sha = _commit(
+            sdk,
+            date,
+            ("standards-lock.json", json.dumps({"standards": rows})),
+        )
+        shas.append(sha)
+    return sdk, shas
+
+
+def _attach_sdk(repo: Path, sdk: Path) -> None:
+    """Clone the mini SDK into the parent at ``packages/sdk`` — the object
+    store ``git -C packages/sdk show`` reads. The gitlink itself is pinned
+    per commit by ``_commit(sdk_pin=...)``."""
+    (repo / "packages").mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "clone", "-q", "--no-local", str(sdk), str(repo / "packages/sdk")],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_judgement_refuses_a_lock_lacking_the_predecessor() -> None:
+    from benchweave.standards.train_window import sync_completion_violations
+
+    entries = (BumpEntry("otdp", "0.2.1", "c" * 40, "0.2.0"),)
+    messages = sync_completion_violations(entries, lambda _commit_sha: frozenset())
+    assert len(messages) == 1
+    assert messages[0].startswith("train_window_violation: otdp 0.2.0 -> 0.2.1")
+    assert "SDK lock" in messages[0]
+
+
+def test_judgement_passes_when_the_lock_carries_the_predecessor() -> None:
+    from benchweave.standards.train_window import sync_completion_violations
+
+    entries = (BumpEntry("otdp", "0.2.1", "c" * 40, "0.2.0"),)
+    carried = frozenset({("otdp", "0.2.0")})
+    assert sync_completion_violations(entries, lambda _commit_sha: carried) == ()
+
+
+def test_per_standard_scope_is_independent() -> None:
+    from benchweave.standards.train_window import sync_completion_violations
+
+    entries = (
+        BumpEntry("otdp", "0.2.1", "a" * 40, "0.2.0"),
+        BumpEntry("registry", "0.1.3", "b" * 40, "0.1.2"),
+    )
+    # registry's predecessor is carried, otdp's is not: one line, otdp only.
+    carried = frozenset({("registry", "0.1.2")})
+    messages = sync_completion_violations(entries, lambda _commit_sha: carried)
+    assert len(messages) == 1
+    assert messages[0].startswith("train_window_violation: otdp")
+    assert "registry" not in messages[0]
+
+
+def test_the_anchor_marker_literal_is_pinned_to_the_module_contract() -> None:
+    from benchweave.standards.train_window import ANCHOR_MARKER as module_marker
+
+    # The module's constant and the literal the fixtures stand in with are
+    # one contract; either moving alone breaks every scratch anchor loudly.
+    assert module_marker == ANCHOR_MARKER
+    assert ANCHOR_MARKER == "train_window:g5-sync-completion-anchor"
+
+
+def test_a_judged_bump_whose_lock_lacks_the_predecessor_refuses(tmp_path: Path) -> None:
+    # The rule's core arm: the SDK lock pinned at the bump commit carries no
+    # row for the previous released version — the bump must be refused, by a
+    # typed message in the train_window_ family.
     repo = _scratch_repo(tmp_path)
-    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": []})
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))  # admission
+    _attach_sdk(repo, sdk)
     _commit(
         repo,
-        "2026-09-23T12:00:00+08:00",  # outside the floor: admission -> 0.2.0 is clean
+        "2026-09-21T12:00:00+08:00",  # the judged bump
         ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
     )
+    entries = collect_bump_entries(repo)
+    # Non-vacuity: the collector reads file paths and derives version dirs.
+    assert [entry.version for entry in entries] == ["0.2.0"]
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.1.0 -> 0.2.0"):
+        check_train_windows(repo)
+
+
+def test_compliant_bumps_pass_regardless_of_wall_time(tmp_path: Path) -> None:
+    # G-5's affirmative half: pacing is the SDK leg, not the clock. Two
+    # bumps an hour apart both pass when each commit's lock already carries
+    # its predecessor — the #97 24-hour floor is what this rule retires.
+    repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(
+        tmp_path, T0, {"otdp": ["0.1.0"]}, {"otdp": ["0.1.0", "0.2.0"]}
+    )
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))  # admission
+    _attach_sdk(repo, sdk)
     _commit(
         repo,
-        "2026-09-23T13:00:00+08:00",  # 1h after 0.2.0: the newest pair is judged
-        ("standards/otdp/0.2.1/x.schema.json", "{}\n"),
+        "2026-09-20T13:00:00+08:00",  # 1h after admission
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
     )
-    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.2.1"):
-        check_train_windows(repo, FLOOR_SECONDS)
+    check_train_windows(repo)  # lock carries 0.1.0: clean
+    _commit(
+        repo,
+        "2026-09-20T14:00:00+08:00",  # 1h after 0.2.0 — inside the retired floor
+        ("standards/otdp/0.2.1/x.schema.json", "{}\n"),
+        sdk_pin=shas[1],
+    )
+    assert check_train_windows(repo) == ()  # lock carries 0.2.0: clean
 
 
-def test_reset_class_commit_opens_fresh_windows(tmp_path: Path) -> None:
+def test_a_yanked_predecessor_row_still_counts_as_carried(tmp_path: Path) -> None:
+    # A yanked row is post-sync state: the release ledger the rule prices
+    # was already paid, so the pin to the yanked predecessor still passes.
     repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(
+        tmp_path, T0, {"otdp": ["0.1.0"]}, yanked=frozenset({("otdp", "0.1.0")})
+    )
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    assert check_train_windows(repo) == ()
+
+
+def test_admission_needs_no_lock_carriage(tmp_path: Path) -> None:
+    # A standard's first version has no predecessor to require — the
+    # exemption holds with no SDK checkout attached at all.
+    repo = _scratch_repo(tmp_path)
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    assert collect_bump_entries(repo) == ()
+    assert check_train_windows(repo) == ()
+
+
+def test_reset_class_commit_is_exempt_and_opens_a_fresh_wing(tmp_path: Path) -> None:
+    # One commit adding dirs for three or more standards reads as a reset:
+    # exempt from carriage (the lock never carries what lands together), and
+    # each standard's next non-exempt bump is judged afresh.
+    repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": []})
+    _anchor(repo)
     _commit(
         repo,
         T0,
         ("standards/otdp/0.1.0/x.schema.json", "{}\n"),
         ("standards/registry/0.1.0/x.schema.json", "{}\n"),
         ("standards/interface/0.1.0/x.schema.json", "{}\n"),
+    )  # admissions
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",  # reset-class: three standards, one commit
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        ("standards/registry/0.1.1/x.schema.json", "{}\n"),
+        ("standards/interface/0.1.1/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
     )
+    assert collect_bump_entries(repo) == ()  # exempt: no entries
+    assert check_train_windows(repo) == ()
+    # The fresh wing: otdp's next non-exempt bump IS judged, against a lock
+    # that carries nothing — it refuses, proving the reset did not swallow
+    # the rule for good.
     _commit(
         repo,
-        "2026-09-20T13:00:00+08:00",  # 1h after the reset-class commit: the
-        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),  # reset opened fresh
-    )  # windows — this bump starts otdp's, it is not judged against the reset
-    check_train_windows(repo, FLOOR_SECONDS)  # clean
-    _commit(
-        repo,
-        "2026-09-20T14:00:00+08:00",  # 1h after 0.2.0: the pair the floor binds
+        "2026-09-21T13:00:00+08:00",
         ("standards/otdp/0.2.1/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
     )
-    with pytest.raises(TrainWindowError, match="train_window_violation: otdp"):
-        check_train_windows(repo, FLOOR_SECONDS)
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.2.0 -> 0.2.1"):
+        check_train_windows(repo)
+
+
+def test_pre_anchor_bumps_are_grandfathered_and_post_anchor_judged(
+    tmp_path: Path,
+) -> None:
+    # The anchor's falsifier: the same non-compliant bump passes BEFORE the
+    # amendment's marker lands and refuses after — judgement moves forward
+    # at the anchor rather than retroactively over grandfathered history.
+    repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": []})
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))  # admission
+    _commit(
+        repo,
+        "2026-09-20T13:00:00+08:00",  # non-compliant bump, PRE-anchor
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+    )
+    _anchor(repo, "2026-09-20T18:00:00+08:00")  # the amendment arrives later
+    _attach_sdk(repo, sdk)
+    assert collect_bump_entries(repo) == ()  # grandfathered by mechanism
+    assert check_train_windows(repo) == ()
+    # Post-anchor: 0.2.1's predecessor 0.2.0 is not in the lock → refused.
+    _commit(
+        repo,
+        "2026-09-20T19:00:00+08:00",
+        ("standards/otdp/0.2.1/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.2.0 -> 0.2.1"):
+        check_train_windows(repo)
 
 
 def test_straddled_version_dir_counts_once(tmp_path: Path) -> None:
-    # The real corpus straddled otdp 0.1.2 across two commits 26 seconds
-    # apart; a version directory is one bump at its earliest commit, not a
-    # zero-gap self-pair.
+    # The real corpus straddled a version directory across two commits 26
+    # seconds apart; it is one bump at its earliest commit, not a
+    # double-judged pair.
     repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": ["0.1.0"]})
+    _anchor(repo)
     _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
-    _commit(repo, "2026-09-21T12:00:00+08:00", ("standards/otdp/0.2.0/a.json", "{}\n"))
-    _commit(repo, "2026-09-21T12:00:26+08:00", ("standards/otdp/0.2.0/b.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/a.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    _commit(
+        repo,
+        "2026-09-21T12:00:26+08:00",
+        ("standards/otdp/0.2.0/b.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
     entries = collect_bump_entries(repo)
     assert [entry.version for entry in entries] == ["0.2.0"]
-    check_train_windows(repo, FLOOR_SECONDS)  # clean: one bump, no self-pair
+    assert check_train_windows(repo) == ()  # one entry, predecessor carried
 
 
-def test_same_commit_double_version_is_a_zero_gap_violation(tmp_path: Path) -> None:
-    # Two version directories of one standard in a single commit is the
-    # most extreme window violation (0h by GOVERNANCE's "each new version
-    # directory"); it must refuse, not collapse to the last-listed version.
+def test_same_commit_double_version_refuses_the_stack(tmp_path: Path) -> None:
+    # Two version dirs of one standard in a single commit: the higher one's
+    # predecessor is the lower one, which no lock at that commit can carry —
+    # the stacking refusal, not a collapse onto one entry.
     repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": ["0.1.0"]})
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/a.json", "{}\n"),
+        ("standards/otdp/0.3.0/a.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.2.0 -> 0.3.0"):
+        check_train_windows(repo)
+
+
+def test_delete_and_readd_does_not_reanchor(tmp_path: Path) -> None:
+    # A landed refusal must survive the module being dropped and re-added
+    # (revert + re-land is ordinary GitHub flow); the anchor is the FIRST
+    # marker arrival, not the newest one.
+    repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": []})
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.1.0 -> 0.2.0"):
+        check_train_windows(repo)
+    module = repo / "src/benchweave/standards/train_window.py"
+    _run(
+        repo,
+        "rm", "-q", str(module.relative_to(repo)),
+        date="2026-09-21T13:00:00+08:00",
+    )
+    _run(
+        repo, "commit", "-m", "rm",
+        date="2026-09-21T13:00:00+08:00",
+    )
+    _anchor(repo, "2026-09-21T14:00:00+08:00")  # re-landed
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.1.0 -> 0.2.0"):
+        check_train_windows(repo)  # still refused: the anchor did not move
+
+
+def test_an_unreadable_pinned_lock_refuses_to_judge(tmp_path: Path) -> None:
+    # The orphaned-pin class: a gitlink whose object the clone does not
+    # hold. The carriage state cannot be read, so the verdict must refuse —
+    # never a laundered pass out of a missing object.
+    repo = _scratch_repo(tmp_path)
+    sdk, _shas = _sdk_repo(tmp_path, T0, {"otdp": ["0.1.0"]})
+    _anchor(repo)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        sdk_pin="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",  # absent object
+    )
+    with pytest.raises(TrainWindowError, match="train_window_history_unreadable"):
+        check_train_windows(repo)
+
+
+def test_an_uninitialized_sdk_checkout_refuses_by_name(tmp_path: Path) -> None:
+    # A pinned gitlink with no initialized submodule: refused by name with
+    # the remediation, and carrying no SHAs — a superproject HEAD must never
+    # be misattributed as submodule state (the check.py posture).
+    repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": ["0.1.0"]})
+    _anchor(repo)
     _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
     _commit(
         repo,
-        "2026-09-22T12:00:00+08:00",
-        ("standards/otdp/0.2.0/a.json", "{}\n"),
-        ("standards/otdp/0.3.0/a.json", "{}\n"),
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        sdk_pin=shas[0],
     )
-    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.3.0"):
-        check_train_windows(repo, FLOOR_SECONDS)
+    (repo / "packages" / "sdk").mkdir(parents=True)  # plain-clone-before-init
+    with pytest.raises(TrainWindowError) as excinfo:
+        check_train_windows(repo)
+    message = str(excinfo.value)
+    assert message.startswith("train_window_history_unreadable")
+    assert "not initialized" in message
+    assert "git submodule update --init packages/sdk" in message
+    assert not re.search(r"[0-9a-f]{40}", message), message
 
 
-def test_delete_and_readd_does_not_reanchor_the_clock(tmp_path: Path) -> None:
-    # A landed violation must survive the module being dropped and re-added
-    # (revert + re-land is ordinary GitHub flow); the anchor is the FIRST
-    # arrival of the module, not the newest add git happens to list.
+def test_shallow_clone_refuses_to_judge(tmp_path: Path) -> None:
+    # A depth-1 graft lists every standards file as Added at one timestamp;
+    # the collector detects it and refuses rather than judge from nothing.
     repo = _scratch_repo(tmp_path)
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": []})
+    _anchor(repo)
     _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
-    _commit(repo, "2026-09-22T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
-    _commit(repo, "2026-09-22T13:00:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
-    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.2.1"):
-        check_train_windows(repo, FLOOR_SECONDS)
-    module = repo / "src/benchweave/standards/train_window.py"
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-         "rm", "-q", str(module.relative_to(repo))],
-        check=True, capture_output=True,
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.json", "{}\n"),
+        sdk_pin=shas[0],
     )
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
-         "commit", "-m", "rm"],
-        check=True, capture_output=True,
-        env={**os.environ, "GIT_AUTHOR_DATE": "2026-09-22T15:00:00+08:00",
-             "GIT_COMMITTER_DATE": "2026-09-22T15:00:00+08:00"},
-    )
-    _commit(repo, "2026-09-22T16:00:00+08:00",
-            ("src/benchweave/standards/train_window.py", "# re-landed\n"))
-    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.2.1"):
-        check_train_windows(repo, FLOOR_SECONDS)
-
-
-def test_shallow_clone_of_a_violating_repo_refuses_to_judge(tmp_path: Path) -> None:
-    # A depth-1 clone grafts every standards file onto HEAD as Added; the
-    # surviving per-standard version reads as admission and launders the
-    # violation clean. The collector must detect a shallow repository and
-    # refuse rather than judge.
-    repo = _scratch_repo(tmp_path)
-    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
-    _commit(repo, "2026-09-23T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
-    _commit(repo, "2026-09-23T13:00:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
     shallow = tmp_path / "shallow"
     subprocess.run(
         ["git", "clone", "-q", "--depth", "1", "--no-local", str(repo), str(shallow)],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
-    (shallow / "src/benchweave/standards").mkdir(parents=True, exist_ok=True)
-    (shallow / "src/benchweave/standards/train_window.py").write_text("# present\n")
     with pytest.raises(TrainWindowError, match="train_window_history_unreadable"):
         collect_bump_entries(shallow)
 
 
-def test_real_tree_post_anchor_sequence_is_clean() -> None:
-    # The real tree correctly collects zero post-anchor bumps (the anchor is
-    # this module's arrival in THIS repository's history). The scratch family
-    # above carries the non-vacuity burden; this row pins the deployment
-    # state — grandfathering by mechanism, not a silent empty read.
-    entries = collect_bump_entries(ROOT)
-    assert window_violations(entries, FLOOR_SECONDS) == ()
-    assert check_train_windows(ROOT, FLOOR_SECONDS) == ()
-
-
 def test_dev_directory_addition_is_invisible_to_the_window(tmp_path: Path) -> None:
-    # The -dev stage's arm-D differential (devstage design record §9),
-    # pinned in-suite: the identical history with the change in a dev head
-    # is clean, while the pure-semver version-directory bump inside the
-    # same closed window fires. This pins the zero-collector-changes claim
-    # (§4.5) mechanically — a future _VERSION_PATH edit that starts
-    # counting dev directories would reprice authoring as releasing.
+    # The -dev stage's arm: a dev-head directory is staging, not a version —
+    # it must not collect as a bump (authoring is not releasing), while the
+    # identical landing as a real version directory is judged.
     repo = _scratch_repo(tmp_path)
+    # One SDK state serves both pins: its lock carries 0.1.0 but not 0.2.0,
+    # which is what the compliant bump needs and what the control refuses on.
+    sdk, shas = _sdk_repo(tmp_path, T0, {"otdp": ["0.1.0"]})
+    _anchor(repo)
     _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
-    _commit(repo, "2026-09-23T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
-    # The dev head opens 1h after 0.2.0 — inside the closed window:
-    _commit(repo, "2026-09-23T13:00:00+08:00", ("standards/otdp/0.2.1-dev/x.json", "{}\n"))
+    _attach_sdk(repo, sdk)
+    _commit(
+        repo,
+        "2026-09-21T12:00:00+08:00",
+        ("standards/otdp/0.2.0/x.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
+    _commit(
+        repo,
+        "2026-09-21T13:00:00+08:00",  # inside any wall-clock floor
+        ("standards/otdp/0.2.1-dev/x.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
     entries = collect_bump_entries(repo)
     assert [entry.version for entry in entries] == ["0.2.0"], (
         "a dev-directory addition must not collect as a bump"
     )
-    check_train_windows(repo, FLOOR_SECONDS)  # clean: the head is invisible
-    # The control half: the same landing as a real version directory fires.
-    _commit(repo, "2026-09-23T13:30:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
+    assert check_train_windows(repo) == ()  # the head is invisible
+    # The control half: the same landing as a real version directory fires
+    # (its predecessor 0.2.0 is absent from the lock pinned there).
+    _commit(
+        repo,
+        "2026-09-21T14:00:00+08:00",
+        ("standards/otdp/0.2.1/x.json", "{}\n"),
+        sdk_pin=shas[0],
+    )
     with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.2.0 -> 0.2.1"):
-        check_train_windows(repo, FLOOR_SECONDS)
+        check_train_windows(repo)
+
+
+def test_real_tree_post_anchor_sequence_is_clean() -> None:
+    # The real tree correctly collects zero post-anchor bumps (the anchor is
+    # this amendment's own arrival in THIS repository's history — G-5
+    # re-anchored the clock). The scratch family above carries the
+    # non-vacuity burden; this row pins the deployment state — grandfathering
+    # by mechanism, not a silent empty read.
+    entries = collect_bump_entries(ROOT)
+    assert entries == ()
+    assert check_train_windows(ROOT) == ()

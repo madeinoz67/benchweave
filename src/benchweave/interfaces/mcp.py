@@ -132,6 +132,28 @@ def build_mcp(
     mcp = FastMCP(
         name="benchweave-gateway",
         auth=StgTokenVerifier(secret, audience=audience, now_epoch=now_epoch),
+        # Row 1a (issue #450 §3.6): the server-level instructions — the SDK
+        # standalone server's inline disclosure posture, ported. States the
+        # accept-and-poll-to-terminal run model, outcome_unknown's honest
+        # semantics (A06 on the surface), and that leases, generation fences
+        # and the protective transition are gateway-side (A04: a client
+        # cannot veto them). The 17 vendored tool DESCRIPTIONS are corpus
+        # bytes and are NOT touched here (PR-2's row 1b); only this
+        # server-level parameter is code-side. No absent_guarantees port:
+        # the gateway PROVIDES the guarantees the standalone host
+        # absent-guardians; its honesty block is gateway_info's existing
+        # limits/version body (design §3.6, stated so the asymmetry is not
+        # "fixed" by mistake).
+        instructions=(
+            "BenchWeave test-bench gateway. Run lifecycle: run_start accepts "
+            "a run; poll run_get (or resolve run_find) to a terminal state "
+            "before asserting the result. A terminal run may carry "
+            "outcome_unknown — the final record is missing; treat it as "
+            "unresolved, never as passed. Leases, generation fences and the "
+            "protective transition are enforced by the gateway regardless of "
+            "client behavior. gateway_info serves the advertised limits and "
+            "the interface version this server enforces."
+        ),
     )
     vendored = vendored_tools()
     max_page_size = limits["max_page_size"]
