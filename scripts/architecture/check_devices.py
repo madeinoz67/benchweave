@@ -541,18 +541,21 @@ analyzer = descriptors.get("reference-analyzer-config.json")
 if analyzer is None:
     check("Adapter configuration example census", False)
 else:
-    config_files = analyzer["integration"]["adapter"]["configuration"]["files"]
-    image_path = OUT / "examples" / "reference-analyzer-image.bin"
-    check(
-        "Adapter configuration example census",
-        len(config_files) == 1
-        and config_files[0]["id"] == "bench_image"
-        and config_files[0]["path"] == "reference-analyzer-image.bin"
-        and image_path.is_file()
-        and hashlib.sha256(image_path.read_bytes()).hexdigest()
-        == config_files[0]["sha256"],
-    )
-    d = copy.deepcopy(analyzer)
+    # The example legitimately omits the configuration surface (the
+    # digest-pinned asset class moved to the admission tests, issue #447
+    # fold), so the S21 dead-shape arms synthesize their base inline
+    # instead of reading it from the example.
+    base = copy.deepcopy(analyzer)
+    base["integration"]["adapter"]["configuration"] = {
+        "files": [
+            {
+                "id": "synthetic_image",
+                "path": "synthetic-image.bin",
+                "sha256": "0" * 64,
+            }
+        ]
+    }
+    d = copy.deepcopy(base)
     d["integration"]["adapter"]["configuration"]["files"] = []
     errors_at = [error.json_path for error in dv.iter_errors(d)]
     check("Reject empty adapter configuration files", not dv.is_valid(d))
@@ -563,11 +566,11 @@ else:
             for path in errors_at
         ),
     )
-    d = copy.deepcopy(analyzer)
+    d = copy.deepcopy(base)
     d["integration"]["adapter"]["configuration"]["settings"] = {"gain": 4}
     check("Reject scalar sibling of configuration files", not dv.is_valid(d))
     prior = OUT.parent / "0.2.2"
-    d = copy.deepcopy(analyzer)
+    d = copy.deepcopy(base)
     d["otdp_version"] = "0.2.2"
     prior_validator = Draft202012Validator(
         json.loads((prior / "otdp-device-descriptor.schema.json").read_text(encoding="utf-8"))

@@ -1040,7 +1040,7 @@
     {
       "path": "otdp/0.2.3/examples/reference-analyzer-config.json",
       "source": "standards/otdp/0.2.3/examples/reference-analyzer-config.json",
-      "sha256": "ddcc5255a1c84d743667e4eb0bf619a00f9eacbfa3217b6c0d53a0abe8e18dab"
+      "sha256": "01be77d9c1a1b7b88df71f219faa3484035ff08436e9b9dcf7778ad598a2db32"
     },
     {
       "path": "otdp/0.2.3/examples/reference-can.json",
