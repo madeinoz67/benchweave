@@ -2,7 +2,7 @@
 
 # OTDP 0.2.3 specification verification
 
-**Result: 718/718 checks passed; 0 failed.**
+**Result: 717/717 checks passed; 0 failed.**
 
 12 class profiles and 51 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side. Protocol-decoder declarations, their digest-pinned documents and the decode_annotated vectors were checked (PD1 through PD5); gateway admission mirrors and binary-class emission are the named follow-on slices.
 
@@ -11,7 +11,6 @@
 ## Checks
 
 - PASS: Accept over-classified read verb
-- PASS: Adapter configuration example census
 - PASS: Adapter configuration per-pin control
 - PASS: Adapter configuration refusal names the files path
 - PASS: Catalog structure

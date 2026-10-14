@@ -30,7 +30,7 @@
 | [Protocol decoders](../standards/otdp/0.2.3/protocol-decoders.md) | Declarative decoder surface: pinned declarations, the decode_annotated action and annotation event logs |
 | [Measurement model](../standards/otdp/0.2.3/measurement-model.md) | Units, axes, channels, complex and digital data, timing, calibration and uncertainty |
 | [Profile catalog](../standards/otdp/0.2.3/device-profile-catalog.json) | 51 actions with exact input and output schemas |
-| [Validation report](../standards/otdp/0.2.3/validation-report.md) | 718 document and schema checks that pass, and their limits |
+| [Validation report](../standards/otdp/0.2.3/validation-report.md) | 717 document and schema checks that pass, and their limits |
 
 The package also includes these artefact types:
 
