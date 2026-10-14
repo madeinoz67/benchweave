@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTOR_SCHEMA_NAME = "otdp-device-descriptor.schema.json"
 
 
-def test_manifest_loads_all_six_standards() -> None:
+def test_manifest_loads_all_seven_standards() -> None:
     manifest = load_manifest(ROOT)
     assert {entry.id for entry in manifest.standards} == {
         "otdp",
@@ -35,6 +35,7 @@ def test_manifest_loads_all_six_standards() -> None:
         "execution",
         "interface",
         "plugin-ui",
+        "plugin-ui-class-reference",
         "plugin-ui-preview",
     }
 
