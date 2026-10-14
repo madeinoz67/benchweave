@@ -37,7 +37,10 @@ NORMATIVE = "standards/plugin-ui/0.3.1/ui-manifest.schema.json"
 PIN_KEY = "plugin-ui/0.3.1/ui-manifest.schema.json"
 DOC_README = "standards/plugin-ui/0.3.1/README.md"
 PARITY = "src/benchweave/presentation/contracts.py"
-ALL_IDS = {"otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview", "plugin-ui-class-reference"}
+ALL_IDS = {
+    "otdp", "registry", "execution", "interface",
+    "plugin-ui", "plugin-ui-preview", "plugin-ui-class-reference",
+}
 
 
 def _repo_copy(tmp_path: Path) -> Path:
