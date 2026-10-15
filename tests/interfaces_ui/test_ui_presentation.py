@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -771,3 +772,163 @@ def test_planted_action_urn_hijack_refuses_instead_of_displacing(
         match=rf"corpus_pin_mismatch: otdp/{version}/examples/zz-hijack\.json",
     ):
         _presentation_documents()
+
+
+# --- the L4 class-reference fallback (design record 2026-10-15 §1) ---------------
+#
+# A class-shaped descriptor with NO admitted envelope derives its default
+# presentation read-time: the attachment triple composes from (descriptor ×
+# corpus reference), validates through the UNCHANGED validate_attachment,
+# and renders visibly host-derived (data-bw-presentation-derived + the
+# disclosure). Unknown classes fail OPEN — the no-attachment note
+# byte-identical to the pre-L4 render (the committed baseline). Fail-closed
+# derivations render their typed classref_* finding, never a partial page.
+
+_F1 = Path(__file__).resolve().parents[1] / "presentation" / "classref_fixtures"
+
+
+def _f1_descriptor_raw(tag: str = "f1") -> bytes:
+    return (_F1 / f"descriptor-{tag}.json").read_bytes()
+
+
+def _vendor_catalog_map() -> dict[str, bytes]:
+    raw = (_F1 / "vendor-catalog.json").read_bytes()
+    return {hashlib.sha256(raw).hexdigest(): raw}
+
+
+def _admit_vendor_catalog(gateway: SimpleNamespace) -> None:
+    """Admit the fixture vendor catalog into the composition store by
+    digest — the admission-store resolution the fallback reads (the same
+    shape plugin admission produces for pinned contract documents)."""
+    raw = (_F1 / "vendor-catalog.json").read_bytes()
+    gateway.content.put_document(
+        raw,
+        hashlib.sha256(raw).hexdigest(),
+        json.loads(raw),
+        "urn:x:classref-vendor-catalog",
+        NOW_ISO,
+    )
+
+
+def test_classref_descriptor_without_attachment_derives_presentation(
+    gateway: SimpleNamespace,
+) -> None:
+    """B1 (F1 arm, state level): the class-shaped descriptor with no
+    admitted envelope composes the derived presentation — 3/3 pages per
+    the reference (capture + configuration + device-features), valid=True
+    through the unchanged validator, visibly derived."""
+    _admit_vendor_catalog(gateway)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f1"))
+    assert state.absence is None
+    assert state.derived is True
+    assert state.valid is True, state.findings
+    assert [page.page_id for page in state.pages] == [
+        "capture",
+        "configuration",
+        "device-features",
+    ]
+
+
+def test_f2_derives_the_full_lane_inventory(gateway: SimpleNamespace) -> None:
+    """B1 (F2 arm): the 32-channel descriptor derives 32 channel
+    variables and the four lane groups the reference's chunking arithmetic
+    yields (4 full groups, zero remainder)."""
+    _admit_vendor_catalog(gateway)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f2"))
+    assert state.absence is None and state.derived is True and state.valid
+    capture = next(page for page in state.pages if page.page_id == "capture")
+    plot = capture.plots[0]
+    assert len(plot["y"]) == 32
+    assert [group["label"] for group in plot["lane_groups"]] == [
+        "D1-D8",
+        "D9-D16",
+        "D17-D24",
+        "D25-D32",
+    ]
+
+
+def test_derived_pages_render_the_host_derived_marker(
+    gateway: SimpleNamespace,
+) -> None:
+    """B1's render arm: the derived state renders the
+    data-bw-presentation-derived marker and the visible disclosure beside
+    the pages — the masquerade guard (R2)."""
+    _admit_vendor_catalog(gateway)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f1"))
+    html = _render_device_page(state)
+    assert "data-bw-presentation-derived" in html
+    assert "Default class presentation" in html
+    assert "no plugin attachment" in html
+
+
+def test_unknown_class_fails_open_to_the_pre_l4_absence_note(
+    gateway: SimpleNamespace,
+) -> None:
+    """B3: an unknown-class descriptor (no profile with a corpus
+    reference) renders today's no-attachment note BYTE-IDENTICAL to the
+    committed pre-L4 baseline — the fail-open arm never invents
+    obligations the descriptor does not create."""
+    descriptor = json.loads(_f1_descriptor_raw("f1"))
+    descriptor["id"] = "dev.example.scalar"
+    descriptor["profiles"] = ["otdp.dc_psu/1.0.0"]
+    descriptor["channels"] = []
+    descriptor["actions"] = {}
+    descriptor["contracts"] = []
+    state = compose_device_presentation(gateway.content, json.dumps(descriptor).encode())
+    assert state.absence == "no-attachment"
+    assert state.derived is False
+    html = _render_device_page(state)
+    match = re.search(
+        r'<p class="bw-presentation-absent"[^>]*>.*?</p>', html, re.DOTALL
+    )
+    assert match is not None
+    assert match.group(0).encode() == (
+        _F1.parent.parent / "interfaces_ui" / "baselines" / "l4-no-attachment-note.html"
+    ).read_bytes()
+
+
+def test_refused_derivation_renders_the_typed_finding(
+    gateway: SimpleNamespace,
+) -> None:
+    """The fail-closed arm: a derivation refusal renders its typed
+    classref_* finding (the vendor catalog is not admitted here — the
+    gateway resolves pinned vendor catalogs from the admission store),
+    never a partial page."""
+    descriptor_raw = _f1_descriptor_raw("f1")
+    state = compose_device_presentation(
+        gateway.content, descriptor_raw, vendor_catalogs={}
+    )
+    assert state.absence is None
+    assert state.valid is False
+    assert state.pages == ()
+    assert any(
+        code == "classref_unknown_action" for code, _path, _message in state.findings
+    )
+
+
+def _render_device_page(state: Any) -> str:
+    """The device template rendered the route's way (the same environment
+    and context shape ui.py's page closure passes; the class-shaped device
+    has no fixture bench row, so the render-level arms drive the shared
+    template directly)."""
+    from benchweave.interfaces.ui import _ENV
+
+    return str(
+        _ENV.get_template("device.j2").render(
+            title="Device d",
+            device={
+                "device_id": "d",
+                "identity_state": "idle",
+                "generation": 1,
+                "descriptor": {"sha256": "ab"},
+                "profiles": ["otdp.logic_analyser/1.0.0"],
+            },
+            presentation=state,
+            mode_banner=None,
+            csrf_token="t",
+            gateway_id="gw",
+            principal="op",
+            scopes=["stg:observe"],
+            session_warning=None,
+        )
+    )

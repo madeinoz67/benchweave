@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -58,6 +59,11 @@ from markupsafe import Markup
 
 from benchweave.content.store import ContentStore
 from benchweave.presentation.admission import validate_attachment
+from benchweave.presentation.classref import (
+    ClassRefusal,
+    derive_attachment,
+    select_references,
+)
 from benchweave.standards.manifest import (
     StandardsError,
     active_version_from_corpus,
@@ -298,6 +304,35 @@ def _presentation_documents() -> dict[str, dict[str, Any]]:
     return dict(_presentation_documents_cached(str(corpus), _corpus_state(corpus)))
 
 
+def _pin_scoped_documents(
+    descriptor: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """The composition's document set scoped the way the SDK host scopes
+    its own (``benchweave_sdk.presentation._pinned_schemas``): the OTDP
+    device-profile catalogs follow the descriptor's pinned version. Two
+    served versions whose profile rows legitimately evolved read as a
+    ``profile_shadow`` refusal in the validator's flat profile-row scan
+    otherwise — the SDK's own docstring names the failure; the gateway's
+    #446 set predated the fallback and never met a divergent profile row
+    until the class-reference landing. Path keys only: the ``$id``-aliased
+    keys carry no catalog paths (a catalog document carries no ``$id``),
+    mirroring the SDK's deletion set exactly."""
+    documents = _presentation_documents()
+    pin = str(descriptor.get("otdp_version") or "")
+    if not pin:
+        return documents
+    stale = [
+        key
+        for key in documents
+        if str(key).startswith("otdp/")
+        and str(key).endswith("device-profile-catalog.json")
+        and not str(key).startswith(f"otdp/{pin}/")
+    ]
+    for key in stale:
+        del documents[key]
+    return documents
+
+
 def _documents_by_schema_suffix(
     content: ContentStore, suffix: str, descriptor_digest: str
 ) -> list[dict[str, Any]]:
@@ -366,6 +401,9 @@ class PresentationPage:
     tiles: tuple[PresentationTile, ...] = field(default=())
     plot_summaries: tuple[str, ...] = field(default=())
     preset_ids: tuple[str, ...] = field(default=())
+    #: The page's raw declared plot rows (dataset pages) — the layout
+    #: pass's skeleton source and the composition-level lane census input.
+    plots: tuple[dict[str, Any], ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -380,16 +418,27 @@ class PresentationState:
     #: to validate: no envelope admitted, or the attachment is not
     #: validatable (its catalogue or resources are not admitted).
     absence: str | None
+    #: True when the state composes the READ-TIME class-reference
+    #: derivation (no admitted envelope; a corpus reference applies) —
+    #: the rendered page must carry the host-derived marker (R2's
+    #: masquerade guard).
+    derived: bool = False
 
 
 def compose_device_presentation(
-    content: ContentStore | None, descriptor_raw: bytes
+    content: ContentStore | None,
+    descriptor_raw: bytes,
+    *,
+    vendor_catalogs: Mapping[str, bytes] | None = None,
 ) -> PresentationState:
     """Resolve and validate the device's presentation attachment.
 
     ``content`` is the composition's content store (``create_app`` always
     passes it); ``None`` is the routing-test posture, which renders the
     honest absence rather than inventing an attachment.
+    ``vendor_catalogs`` maps the descriptor's pinned vendor-catalog
+    digests to admitted bytes (the composition's own resolution when the
+    caller omits it — the store lookup below).
     """
     # The device row's descriptor bytes are the admission-verified bytes;
     # digest them here — the envelope pins exactly this digest.
@@ -403,12 +452,11 @@ def compose_device_presentation(
         content, _ENVELOPE_SCHEMA_SUFFIX, descriptor_digest
     )
     if not envelopes:
-        return PresentationState(
-            envelope_sha256=None,
-            valid=False,
-            findings=(),
-            pages=(),
-            absence="no-attachment",
+        return _classref_fallback(
+            content,
+            descriptor_raw,
+            descriptor_digest,
+            vendor_catalogs=vendor_catalogs,
         )
     envelope_row = envelopes[0]
     envelope = envelope_row["content"]
@@ -442,7 +490,7 @@ def compose_device_presentation(
         descriptor_raw=descriptor_raw,
         verified_resources=resources,
         binding_catalogue=catalogues[0]["content"],
-        schema_documents=_presentation_documents(),
+        schema_documents=_pin_scoped_documents(descriptor),
         supported_features=SUPPORTED_FEATURES,
         supported_panels=SUPPORTED_PANELS,
         # The descriptor's OWN declared-supported firmware (a
@@ -458,6 +506,29 @@ def compose_device_presentation(
     bindings = {
         str(row["id"]): row for row in manifest.get("bindings", [])
     }
+    pages = _compose_page_rows(manifest, unavailable, targets, bindings)
+    return PresentationState(
+        envelope_sha256=envelope_row["sha256"],
+        valid=report.valid,
+        findings=tuple(
+            (finding.code, finding.path, finding.message)
+            for finding in report.findings
+        ),
+        pages=pages,
+        absence=None,
+    )
+
+
+def _compose_page_rows(
+    manifest: Mapping[str, Any],
+    unavailable: set[str],
+    targets: Mapping[str, Mapping[str, Any]],
+    bindings: Mapping[str, Mapping[str, Any]],
+) -> tuple[PresentationPage, ...]:
+    """The page composition both attachment arms share — the derived
+    presentation composes through the SAME loop (one code path is the
+    no-regression guarantee; the admitted path's rendered bytes are
+    pinned by the B6 baseline)."""
     pages: list[PresentationPage] = []
     for page in manifest.get("pages", []):
         page_id = str(page["id"])
@@ -496,24 +567,143 @@ def compose_device_presentation(
                 tiles=tiles,
                 plot_summaries=plot_summaries,
                 preset_ids=preset_ids,
+                plots=tuple(
+                    plot
+                    for plot in page.get("plots", [])
+                    if isinstance(plot, dict)
+                ),
             )
         )
+    return tuple(pages)
+
+
+def _classref_fallback(
+    content: ContentStore,
+    descriptor_raw: bytes,
+    descriptor_digest: str,
+    *,
+    vendor_catalogs: Mapping[str, bytes] | None,
+) -> PresentationState:
+    """The no-manifest fallback (L4 capability a): a class-shaped
+    descriptor with no admitted envelope derives its default presentation
+    read-time from (descriptor × corpus reference), validates through the
+    UNCHANGED ``validate_attachment``, and renders visibly host-derived.
+
+    Fail-open: no descriptor profile with a corpus reference (unknown
+    class; vendor-only; custom devices) renders today's ``no-attachment``
+    absence byte-identically (B3) — the fallback never invents
+    obligations the descriptor does not create. Fail-closed: every
+    derivation refusal renders its typed ``classref_*`` finding, never a
+    partial page (B2's kill direction)."""
+    try:
+        descriptor = json.loads(descriptor_raw)
+    except ValueError:
+        descriptor = {}
+    references = select_references(corpus_root(), descriptor)
+    if references is None:
+        # The fail-open boundary: no profile names a class with a
+        # reference — today's honest absence, byte-identical (B3).
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=(),
+            pages=(),
+            absence="no-attachment",
+        )
+    try:
+        derived = derive_attachment(
+            descriptor_raw,
+            corpus=corpus_root(),
+            vendor_catalogs=(
+                vendor_catalogs
+                if vendor_catalogs is not None
+                else _admitted_vendor_catalogs(content, descriptor)
+            ),
+        )
+    except ClassRefusal as refusal:
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=((refusal_prefix(refusal), "", str(refusal)),),
+            pages=(),
+            absence=None,
+        )
+    resources = dict(derived.resources)
+    report = validate_attachment(
+        derived.envelope_raw,
+        descriptor_raw=descriptor_raw,
+        verified_resources=resources,
+        binding_catalogue=derived.catalogue,
+        schema_documents=_pin_scoped_documents(descriptor),
+        supported_features=SUPPORTED_FEATURES,
+        supported_panels=SUPPORTED_PANELS,
+        firmware=_declared_firmware(descriptor),
+    )
+    if not report.valid:
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=tuple(
+                (finding.code, finding.path, finding.message)
+                for finding in report.findings
+            ),
+            pages=(),
+            absence=None,
+        )
+    targets = {
+        str(row["id"]): row for row in derived.catalogue.get("targets", [])
+    }
+    bindings = {
+        str(row["id"]): row for row in derived.manifest.get("bindings", [])
+    }
     return PresentationState(
-        envelope_sha256=envelope_row["sha256"],
-        valid=report.valid,
-        findings=tuple(
-            (finding.code, finding.path, finding.message)
-            for finding in report.findings
-        ),
-        pages=tuple(pages),
+        envelope_sha256=None,
+        valid=True,
+        findings=(),
+        pages=_compose_page_rows(derived.manifest, set(), targets, bindings),
         absence=None,
+        derived=True,
     )
 
 
+def _declared_firmware(descriptor: Mapping[str, Any]) -> str | None:
+    """The descriptor's own declared-supported firmware (the admitted
+    path's rule, shared with the fallback)."""
+    identity = descriptor.get("identity", {})
+    firmware_values = identity.get("supported_firmware") or []
+    return str(firmware_values[0]) if firmware_values else None
+
+
+def refusal_prefix(refusal: ClassRefusal) -> str:
+    """The typed refusal's machine-matchable prefix (the text up to the
+    first colon) — the finding's code slot, so the rendered finding
+    carries the classref_* code the design's table names."""
+    return str(refusal).split(":", 1)[0]
+
+
+def _admitted_vendor_catalogs(
+    content: ContentStore, descriptor: Mapping[str, Any]
+) -> dict[str, bytes]:
+    """The descriptor's pinned vendor catalogs, resolved from the
+    ADMISSION store by digest (the gateway has no plugin package dir; the
+    store is the gateway's resolution source — the derivation refuses
+    typed when a pin the descriptor names is not admitted)."""
+    resolved: dict[str, bytes] = {}
+    for row in descriptor.get("contracts", []):
+        identifier = str(row.get("id", ""))
+        if identifier.startswith("urn:otdp:"):
+            continue
+        pin = str(row.get("sha256", ""))
+        document = content.get_document(pin)
+        if document is not None:
+            resolved[pin] = bytes(document["raw_bytes"])
+    return resolved
+
+
 def _tiles_for_page(
-    page: dict[str, Any],
-    bindings: dict[str, dict[str, Any]],
-    targets: dict[str, dict[str, Any]],
+    page: Mapping[str, Any],
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
 ) -> list[PresentationTile]:
     """One tile per bound observation target's VALUE variable — value
     ``Unavailable`` until a gateway-reported observation supplies it
