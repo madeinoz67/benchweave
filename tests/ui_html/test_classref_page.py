@@ -110,19 +110,47 @@ def test_decoder_lanes_resolve_through_the_descriptor_vectors() -> None:
 
 def test_the_run_section_follows_the_controls_plan() -> None:
     """arm = staging (the action schema's remaining required numeric,
-    max_duration_ms — schema minimum 1, no maximum; the empty maximum
-    attribute is an ABSENT bound, never an invented one); abort and
-    trigger are L1 buttons; abort renders as ONE action — never inside a
-    confirm subtree (the D7 forbid confirm-wrapped-run-action)."""
+    max_duration_ms); abort and trigger are L1 buttons; abort renders as
+    ONE action — never inside a confirm subtree (the D7 forbid
+    confirm-wrapped-run-action).
+
+    The bounds arm re-derives BOTH bound renderings from the catalog
+    bytes: the rendered minimum string equals the schema minimum, and the
+    rendered maximum equals the schema maximum — a declared schema bound
+    renders its value, an absent one renders the empty attribute, never
+    an invented bound (A02).
+
+    What the guard does NOT catch (G4): drift in the disclosed fixture
+    choices — the decoder event timings, cursor/trigger positions, state
+    sequences, and the 24-sample/12-column fixture scale — none of which
+    the corpus carries an authority for. The arm pins only the strings
+    the corpus itself carries."""
     page = classref.render_capture_page()
+    vectors = _load(VECTORS)["vectors"]
     schema = _load(CATALOG)["actions"]["otdp.logic_analyser.arm/1.0.0"]["input_schema"]
     remaining = [
         n for n in schema["required"]
         if n not in ("configuration_id", "acquisition_id")
     ]
     assert remaining == ["max_duration_ms"]
-    assert 'min="1"' in page
-    assert 'max=""' in page  # the absent bound, disclosed
+    field = schema["properties"]["max_duration_ms"]
+    # The bounds arm: the page equals the catalog bytes, both directions.
+    assert f'min="{field["minimum"]}"' in page
+    if "maximum" in field:
+        assert f'max="{field["maximum"]}"' in page
+        assert 'max=""' not in page
+    else:
+        assert 'max=""' in page  # the absent bound, disclosed
+    # The adversary's uncovered set, cheaply pinned: the arm example
+    # value, the configure rate and the staged-config identity — each
+    # re-derived from the corpus bytes.
+    arm_vector = next(v for v in vectors if v["id"] == "logic_analyser-arm")
+    arm_value = arm_vector["request"]["arguments"]["input"]["max_duration_ms"]
+    assert f'value="{arm_value}"' in page
+    configure_vector = next(v for v in vectors if v["id"] == "logic_analyser-configure")
+    rate = configure_vector["request"]["arguments"]["input"]["sample_rate_hz"]
+    assert classref.capture_lanes().rate_suffix == f"at {rate / 1e6:g} MHz"
+    assert "cfg-1" in page  # the vectors' canonical configuration_id
     assert "Arm acquisition" in page
     assert "Abort acquisition" in page
     assert "Force trigger" in page

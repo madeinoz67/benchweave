@@ -9,9 +9,37 @@ fixture-vocabulary rule).
 
 from __future__ import annotations
 
+import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+
+UNKNOWN_CELL = "\u2014"  # the unknown marker an unstable bus cell carries
+
+
+class _Balance(HTMLParser):
+    """The tag-balance checker (the fold's standing arm)."""
+
+    VOID = {"meta", "br", "img", "input", "hr", "link"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stack: list[str] = []
+        self.errors: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in self.VOID:
+            self.stack.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.VOID:
+            return
+        if not self.stack or self.stack[-1] != tag:
+            self.errors.append(f"mismatch at {tag}")
+        else:
+            self.stack.pop()
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockup.html"
@@ -38,13 +66,39 @@ def test_both_theme_sections_carry_the_analyzer_composition(mockup_html: str) ->
 
 
 def test_lane_groups_are_eight_lanes_with_decimal_labels(mockup_html: str) -> None:
-    """8-lane groups with DECIMAL positional labels D{first}-D{last} and
-    hex-formatted bus values (the group radix governs values, not
-    labels)."""
+    """8-lane groups with DECIMAL positional labels D{first}-D{last}; the
+    bus VALUES carry the hex formatting (F4: the values' formatting, not
+    the prose header) — every value cell is two uppercase hex digits and
+    every unknown cell is the unknown marker."""
     for theme, section in _themes(mockup_html).items():
         assert "D1-D8" in section, theme
         assert "D9-D16" in section, theme
-        assert "hex" in section.lower(), theme
+        blocks = re.findall(
+            r'<div class="bus-values">(.*?)</div>', section, re.DOTALL
+        )
+        assert len(blocks) == 2, theme
+        for block in blocks:
+            cells = re.findall(r"<span(?: class=\"unk\")?>([^<]*)</span>", block)
+            assert len(cells) == 12, theme
+            for cell in cells:
+                assert cell == UNKNOWN_CELL or re.fullmatch(r"[0-9A-F]{2}", cell), (
+                    theme,
+                    cell,
+                )
+
+
+def test_arm_control_is_a_staging_pair(mockup_html: str) -> None:
+    """F2: the analyzer's Arm control is the staging pair (a labelled
+    numeric input followed by the Arm button) matching the pattern page
+    and the reference's controls plan (arm: staging)."""
+    for theme, section in _themes(mockup_html).items():
+        start = section.find('aria-label="Run controls"')
+        assert start != -1, theme
+        run_block = section[start : start + 900]
+        numeric = run_block.find('type="number"')
+        label = run_block.find("Max duration")
+        arm = run_block.find(">Arm<")
+        assert -1 < label < numeric < arm, theme
 
 
 def test_decoder_lanes_present(mockup_html: str) -> None:
@@ -74,6 +128,15 @@ def test_analyzer_uses_the_severity_model(mockup_html: str) -> None:
         analyzer = analyzer.split("</main>", 1)[0]
         assert "warning" in analyzer, theme
         assert "NORMAL" in analyzer, theme
+
+
+def test_the_mockup_markup_is_balanced(mockup_html: str) -> None:
+    """F4: the standing tag-balance check — the parser reports 0 errors
+    and 0 unclosed tags over the whole document."""
+    parser = _Balance()
+    parser.feed(mockup_html)
+    assert not parser.errors, parser.errors[:5]
+    assert not parser.stack, parser.stack[:5]
 
 
 def test_lane_names_are_invented(mockup_html: str) -> None:
