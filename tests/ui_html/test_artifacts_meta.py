@@ -64,7 +64,8 @@ def test_registration_completeness_is_set_equality() -> None:
     row-ids — no orphan, no gap. The expectation is the INDEPENDENT manifest
     derivation: every manifest key of every table (G1d slice 2 filled the
     three behaviour tables — the full 168, registrar-derived, never a hand
-    count)."""
+    count; L5's trio makes it 171; the L5 refute fold added the select
+    fixed-display row — 172)."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
     from benchweave_ui_html.manifest import MANIFEST
@@ -75,7 +76,7 @@ def test_registration_completeness_is_set_equality() -> None:
         if table.slug not in artifacts.DEFERRED_SLUGS
         for key in table.keys
     }
-    assert len(expected) == 168, len(expected)
+    assert len(expected) == 172, len(expected)
     assert set(registry.REGISTRY) == expected
     assert set(artifacts.REGISTERED_ROW_IDS) == expected
     assert set(artifacts.G1B_ROW_IDS) == expected
@@ -103,8 +104,10 @@ def test_empty_registry_fail_closed_pure_function() -> None:
 
 def test_ship_state_green_red_split_over_the_real_contract() -> None:
     """Every registered row is green against the real contract — the full
-    168 (G1d slice 2 registered the ten behaviour rows) — and the registered
-    set is exactly the contract's row set (no orphan, no unregistered row)."""
+    172 (G1d slice 2 registered the ten behaviour rows; L5's trio added
+    three, the refute fold added the select fixed-display row)
+    three) — and the registered set is exactly the contract's row set (no
+    orphan, no unregistered row)."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
     rows = {row.row_id: row for row in _contract_rows()}

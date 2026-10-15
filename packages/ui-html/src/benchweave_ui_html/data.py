@@ -76,6 +76,59 @@ class RotaryControlData:
 
 
 @dataclass(frozen=True)
+class TextInputData:
+    """§E.1 ``text-input``: labelled free-text field with the staged help.
+
+    ``minlength``/``maxlength`` render ONLY when the caller supplies them
+    (A02 bound honesty: an absent bound renders the absent attribute, never
+    an invented limit — the numeric row's own rule, the trio's shared form).
+    """
+
+    label: str
+    value: str
+    input_id: str = "bw-text-field"
+    help_id: str = "bw-text-help"
+    help_text: str = "Staged value; use Apply to request the change"
+    minlength: str | None = None
+    maxlength: str | None = None
+
+
+@dataclass(frozen=True)
+class SelectData:
+    """§E.1 ``select``: labelled enum field over a closed option set (the
+    effective-schema intersection's enum — every offered option admitted by
+    construction).
+
+    A ``const`` (or single-option ``options``) renders the read-only fixed
+    display, never an editable offer. An EMPTY ``options`` is a typed
+    authoring error (an empty enum admits no value); the renderer neither
+    crashes nor invents a value — it renders the honest empty fixed display
+    (``data-bw-select-empty``, "No options declared", the select labelling,
+    no staging sentence).
+    """
+
+    label: str
+    options: tuple[str, ...]
+    value: str = ""
+    select_id: str = "bw-select-field"
+    help_id: str = "bw-select-help"
+    help_text: str = "Staged value; use Apply to request the change"
+
+
+@dataclass(frozen=True)
+class BooleanInputData:
+    """§E.1 ``boolean-input``: a switch that stages intent — the control
+    carries ``role="switch"`` + ``aria-checked``; the staging/Apply lane
+    stays the one submit path."""
+
+    label: str
+    checked: bool
+    control_id: str = "bw-boolean-control"
+    help_id: str = "bw-boolean-help"
+    help_text: str = "Staged value; use Apply to request the change"
+
+
+@dataclass(frozen=True)
 class ReadingData:
     """§E.1 ``reading-tile``: value, unit, quality line, and — per the row's
     Notes — the optional §B.3 state and §E.3 set evidence the canonical

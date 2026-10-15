@@ -1,0 +1,6 @@
+<div class="bw-text">
+  <label class="bw-text__label" for="{{ data.input_id }}">{{ data.label }}</label>
+  <input class="bw-text__field" id="{{ data.input_id }}" type="text" value="{{ data.value }}"
+         aria-describedby="{{ data.help_id }}"{% if data.minlength is not none %} minlength="{{ data.minlength }}"{% endif %}{% if data.maxlength is not none %} maxlength="{{ data.maxlength }}"{% endif %}>
+  <p class="bw-text__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
+</div>

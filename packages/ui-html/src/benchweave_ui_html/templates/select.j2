@@ -1,0 +1,19 @@
+<div class="bw-select">
+  {%- if data.options | length > 1 -%}
+  <label class="bw-select__label" for="{{ data.select_id }}">{{ data.label }}</label>
+  <select class="bw-select__field" id="{{ data.select_id }}" aria-describedby="{{ data.help_id }}">
+    {%- for option in data.options -%}
+    <option value="{{ option }}"{{ ' selected' if option == data.value else '' }}>{{ option }}</option>
+    {%- endfor -%}
+  </select>
+  <p class="bw-select__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
+  {%- elif data.options | length == 1 -%}
+  <label class="bw-select__label" for="{{ data.select_id }}">{{ data.label }}</label>
+  <span class="bw-select__field" id="{{ data.select_id }}" aria-describedby="{{ data.help_id }}" data-bw-select-fixed>{{ data.options[0] }}</span>
+  <p class="bw-select__help" id="{{ data.help_id }}">Fixed value; the schema admits only this value.</p>
+  {%- else -%}
+  <label class="bw-select__label" for="{{ data.select_id }}">{{ data.label }}</label>
+  <span class="bw-select__field" id="{{ data.select_id }}" aria-describedby="{{ data.help_id }}" data-bw-select-fixed data-bw-select-empty>No options declared</span>
+  <p class="bw-select__help" id="{{ data.help_id }}">No options are declared; no value is admitted.</p>
+  {%- endif -%}
+</div>

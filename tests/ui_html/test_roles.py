@@ -13,7 +13,7 @@ from benchweave_ui_html.roles import (
 
 
 def test_supported_roles_are_exactly_the_contract_section_e1_set() -> None:
-    assert {"button", "slider", "region", "status", "img", "table"} == SUPPORTED_ROLES
+    assert {"button", "slider", "region", "status", "img", "table", "switch"} == SUPPORTED_ROLES
 
 
 @pytest.mark.parametrize(
@@ -27,6 +27,7 @@ def test_supported_roles_are_exactly_the_contract_section_e1_set() -> None:
         ("<table><caption>Readings</caption></table>", "table"),
         ('<div role="status">Saved</div>', "status"),
         ('<span role="img" aria-label="Traces"></span>', "img"),
+        ('<button role="switch" aria-checked="true">On</button>', "switch"),
     ],
 )
 def test_has_role_true(html: str, role: str) -> None:

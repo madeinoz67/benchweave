@@ -3,11 +3,12 @@
 Computes an element's role from explicit ``role=`` attributes plus implicit
 ARIA roles derived from element names — an accessibility-tree query, never a
 CSS-selector stand-in. Coverage is pinned to EXACTLY the roles the contract's
-§E.1 Required-roles cells name (button, slider, region, status, img, table —
-design record §13: extract from the cells, pin exactly those, no broader); a
-role outside that set cannot be computed by this resolver and raises
-``RoleUnresolvable`` rather than answering false (a false negative here would
-be a silent pass upstream).
+§E.1 Required-roles cells name (button, slider, region, status, img, table,
+switch — design record §13: extract from the cells, pin exactly those, no
+broader; ``switch`` joined with the L5 boolean-input row, the set's own
+extract-from-the-cells rule); a role outside that set cannot be computed by
+this resolver and raises ``RoleUnresolvable`` rather than answering false (a
+false negative here would be a silent pass upstream).
 
 The browser-grade resolver (Playwright + axe, UR-05 Direction and UR-09)
 lands behind this same ``RoleResolver`` protocol as a test extra; when it
@@ -23,7 +24,7 @@ from typing import Protocol
 ROLE_UNRESOLVABLE = "role-unresolvable"
 
 SUPPORTED_ROLES: frozenset[str] = frozenset(
-    {"button", "slider", "region", "status", "img", "table"}
+    {"button", "slider", "region", "status", "img", "table", "switch"}
 )
 
 # Implicit ARIA roles for the elements that can carry the contract's roles.

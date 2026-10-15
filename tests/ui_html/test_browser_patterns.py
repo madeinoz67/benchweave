@@ -67,7 +67,7 @@ def page(browser: Browser) -> Generator[Page]:
 
 
 def test_export_census_in_the_runs_output_root(export_root: Path) -> None:
-    """26 pages (13 × 2 themes) + the index; every page root carries
+    """34 pages (17 × 2 themes) + the index; every page root carries
     data-bw-pattern-library; the manifest-derived minimum coverage holds as
     fixture ids on the pages."""
     for theme in ("light", "dark"):

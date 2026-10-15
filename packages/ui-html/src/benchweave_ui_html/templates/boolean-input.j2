@@ -1,0 +1,8 @@
+<div class="bw-boolean">
+  <label class="bw-boolean__label" for="{{ data.control_id }}">{{ data.label }}</label>
+  <button type="button" class="bw-boolean__control" id="{{ data.control_id }}" role="switch"
+          aria-checked="{{ 'true' if data.checked else 'false' }}" aria-describedby="{{ data.help_id }}">
+    {{ 'On' if data.checked else 'Off' }}
+  </button>
+  <p class="bw-boolean__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
+</div>

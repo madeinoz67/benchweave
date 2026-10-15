@@ -2,7 +2,7 @@
   "files": {
     "docs/internal/ui-contract.md": {
       "core": 0,
-      "total": 196
+      "total": 200
     },
     "tests/architecture/test_plugin_ui_class_reference_contracts.py": {
       "core": 0,
@@ -482,7 +482,7 @@
     },
     "tests/interfaces_ui/test_ui_presentation.py": {
       "core": 0,
-      "total": 38
+      "total": 40
     },
     "tests/interfaces_ui/test_ui_read_views.py": {
       "core": 0,
@@ -654,7 +654,7 @@
     },
     "tests/ui_html/test_browser_patterns.py": {
       "core": 0,
-      "total": 34
+      "total": 42
     },
     "tests/ui_html/test_classref_page.py": {
       "core": 0,
@@ -687,6 +687,10 @@
     "tests/ui_html/test_harness.py": {
       "core": 0,
       "total": 4
+    },
+    "tests/ui_html/test_input_trio.py": {
+      "core": 0,
+      "total": 7
     },
     "tests/ui_html/test_items.py": {
       "core": 0,
@@ -722,7 +726,7 @@
     },
     "tests/ui_html/test_roles.py": {
       "core": 0,
-      "total": 13
+      "total": 14
     },
     "tests/ui_html/test_series_colour_proofs.py": {
       "core": 0,

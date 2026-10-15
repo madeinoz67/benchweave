@@ -16,6 +16,7 @@ from importlib.resources import files
 COMPONENT_TEMPLATES = frozenset(
     {
         "alert-bubble.j2",
+        "boolean-input.j2",
         "button.j2",
         "confirm-action.j2",
         "data-table.j2",
@@ -30,6 +31,8 @@ COMPONENT_TEMPLATES = frozenset(
         "reading-tile.j2",
         "refusal.j2",
         "rotary-control.j2",
+        "select.j2",
+        "text-input.j2",
         "toast.j2",
         "workbench.j2",
     }
