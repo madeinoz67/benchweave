@@ -70,6 +70,8 @@ All notable changes to this project will be documented in this file.
 - The class-reference reconciliation (Landing 3)
 - STE register pass on the class-reference sections
 - CON-12 render at the v0.14.0 pairing
+- BPE trim of the agent instruction set
+- Fold the verify lenses — provenance carve-out, tool-contract home, recipe single-home (#468)
 
 ### Features
 
