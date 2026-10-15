@@ -139,7 +139,7 @@ def _run_script(manifest: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def _windows_job_text(workflow_text: str) -> str:
     """The windows job's YAML block (from its key to the next job key)."""
     match = re.search(
-        r"^  windows:\n(.*?)(?=^  \w+:|\Z)", workflow_text, re.S | re.M
+        r"^  windows:\n(.*?)(?=^  [\w-]+:|\Z)", workflow_text, re.S | re.M
     )
     assert match is not None, "windows job block not found in ci.yml"
     return match.group(1)
@@ -152,6 +152,67 @@ def _windows_job_text_full(workflow_text: str) -> str:
     )
     assert match is not None, "windows-full job block not found in ci.yml"
     return match.group(1)
+
+
+def _assert_windows_job_pins(job: str) -> None:
+    """The windows-job pins (selection, timeout, evidence posture).
+
+    Shared by the committed-tree pin and the doctored posture-loss arm so
+    both exercise exactly the same assertions.
+    """
+    assert "-m wincore" in job, (
+        "the windows job no longer runs the core selection (-m wincore)"
+    )
+    assert "timeout-minutes: 20" in job, (
+        "the windows job timeout is not the R5 20-minute value"
+    )
+    assert "continue-on-error: true" in job, (
+        "the windows job lost the evidence posture (continue-on-error on the "
+        "test step)"
+    )
+    assert "--junitxml=windows-evidence.xml" in job, (
+        "the windows job lost the junitxml evidence artifact"
+    )
+    assert "Evidence summary" in job, (
+        "the windows job lost the evidence summary step"
+    )
+    assert "windows-evidence-junit" in job, (
+        "the windows job lost the junitxml artifact upload"
+    )
+
+
+def _without_windows_job_posture(workflow_text: str) -> str:
+    """A copy of the workflow with ONLY the windows job's continue-on-error gone.
+
+    Line-scan surgery, deliberately NOT via ``_windows_job_text``: the
+    doctoring must stay independent of the extraction machinery this arm
+    exercises, so a defect in the extraction cannot hide in the doctoring.
+    """
+    lines = workflow_text.splitlines(keepends=True)
+    try:
+        start = next(
+            i for i, line in enumerate(lines) if line.rstrip() == "  windows:"
+        )
+        end = next(
+            i for i, line in enumerate(lines) if line.rstrip() == "  windows-full:"
+        )
+    except StopIteration as exc:
+        raise AssertionError(
+            "ci.yml job keys shifted — the doctored arm needs the "
+            "'  windows:' and '  windows-full:' job-key lines"
+        ) from exc
+    assert start < end, "ci.yml job order shifted: windows-full precedes windows"
+    doctored = list(lines)
+    for i in range(start + 1, end):
+        if lines[i].strip() == "continue-on-error: true":
+            doctored[i] = ""
+            break
+    else:
+        raise AssertionError(
+            "no continue-on-error: true found inside the windows job block — "
+            "the doctored arm found nothing to remove"
+        )
+    return "".join(doctored)
 
 
 @pytest.fixture(scope="module")
@@ -300,26 +361,22 @@ def test_workflow_windows_job_pins_the_core_selection() -> None:
     RED control for the workflow change: this arm reds against the pre-fix
     ci.yml (full selection, 45-minute timeout).
     """
-    job = _windows_job_text(WORKFLOW.read_text(encoding="utf-8"))
-    assert "-m wincore" in job, (
-        "the windows job no longer runs the core selection (-m wincore)"
-    )
-    assert "timeout-minutes: 20" in job, (
-        "the windows job timeout is not the R5 20-minute value"
-    )
-    assert "continue-on-error: true" in job, (
-        "the windows job lost the evidence posture (continue-on-error on the "
-        "test step)"
-    )
-    assert "--junitxml=windows-evidence.xml" in job, (
-        "the windows job lost the junitxml evidence artifact"
-    )
-    assert "Evidence summary" in job, (
-        "the windows job lost the evidence summary step"
-    )
-    assert "windows-evidence-junit" in job, (
-        "the windows job lost the junitxml artifact upload"
-    )
+    _assert_windows_job_pins(_windows_job_text(WORKFLOW.read_text(encoding="utf-8")))
+
+
+def test_workflow_windows_job_posture_pin_fires_on_windows_only_posture_loss() -> None:
+    """Deleting ONLY the windows job's continue-on-error must red the pin.
+
+    F1 fold (both refute lanes, #471): ``_windows_job_text``'s lookahead
+    stopped at ``\\w+:`` job keys only, so the hyphenated ``windows-full:`` /
+    ``sdk-drift:`` blocks bled into the extracted "windows job" text and
+    windows-full's continue-on-error masked a windows-only posture loss —
+    the pin stayed green with the posture gone. The doctored arm turns that
+    loss into a failing input for the pin, per the suite's teeth pattern.
+    """
+    doctored = _without_windows_job_posture(WORKFLOW.read_text(encoding="utf-8"))
+    with pytest.raises(AssertionError, match="evidence posture"):
+        _assert_windows_job_pins(_windows_job_text(doctored))
 
 
 def test_workflow_weekly_full_lane_pins_the_complement_run() -> None:
