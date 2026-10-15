@@ -8,7 +8,7 @@ description: >-
   deviation from the design comes back with evidence.
 model: opus
 tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex
-disallowedTools: mcp__gortex__change, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
+disallowedTools: mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
@@ -26,27 +26,12 @@ Confirm the commit you are on. Work in the worktree you were given (cut from
 
 ## Gortex posture in the worktree
 
-A linked worktree is discovered automatically as an overlay on its Git family's
-designated primary — never `track` it explicitly. Discovery is debounced, so run
-`gortex repos reconcile` immediately after `git worktree add`, and pass
-`require_exact: true` on gortex reads inside the worktree (add `require_fresh: true` and
-an absolute RFC3339 `wait_deadline` when you can afford to wait) so an unserved view is a
-hard error instead of silent primary-checkout evidence. If a read still falls back,
-`gortex repos explain-view <path-in-the-worktree>` names the exact binding step that
-failed; the precondition for the overlay is exactly one ready designated primary for the
-family (`gortex repos families`).
-
-**Edit grant (single-file, freshness-gated).** gortex v0.64.0 supports coordinated
-single-file edits in worktree views only when the exact requested checkout is served,
-and refuses batch edits, file-lifecycle operations, and LSP refactors there server-side.
-The facade grant is verb-level, so this paragraph adds the observable gate that server
-guarantee rides on: before any `mcp__gortex__edit`, `gortex repos reconcile` must have
-run for this worktree (view availability, not a freshness guarantee) AND the pre-edit
-read must have reported `freshness.exact: true` with `actual_view` naming this
-worktree; a response carrying no freshness object is unverified. Non-exact or
-unverified: fall back to native Edit for that file rather than trusting a stale or
-main-checkout view. New files still go through native Write. On the write side, use
-the edit tool's `base_sha` drift guard and `physical_evidence` disk-verified receipt.
+Reads inside the worktree pass `require_exact: true` so an unserved view is a hard error,
+not silent primary-checkout evidence; an edit is granted only when the pre-edit read
+reported `freshness.exact: true` with `actual_view` naming this worktree — a response
+with no freshness object is unverified. Route edits through gortex `edit_file` items with
+absolute worktree paths; brand-new files go through native Write. The full routing table
+and the reconcile/explain-view mechanics: CLAUDE.md § Edit routing.
 
 ## RED-first is the whole job
 
@@ -106,13 +91,8 @@ outrunning its mechanism (name a set from a mechanism, state what a guard does n
 
 ## Walk the obligations, don't assume
 
-`docs/internal/drift-and-obligations.md` is the list. The shapes that recur: touching an
-MCP tool means the vendored corpus is the authority and the schemas are pinned verbatim;
-an API-visible change means `openapi.json`; a CLI change means the CLI reference in the
-operator docs; a vendored-bytes change means the lock and the stamps and a main-side
-re-sync; a `pyproject.toml` dependency change means `uv.lock` in the same commit; a test
-whose outcome depends on repo secrets must match the workflow's materialisation, and a
-workflow change gets a cold full-suite run.
+`docs/internal/drift-and-obligations.md` is the list — walk it for every synced surface
+your diff touches, before you commit.
 
 ## Push discipline for shared surfaces (#69)
 
@@ -142,16 +122,10 @@ plugin with a sibling row:
 
 ## Rules that are not negotiable
 
-- **Synthetic fixtures only.** Invented names — not a real colleague, customer, contact,
-  or another product's module names. Grep your diff for real content, paths,
-  identifiers, emails and credentials before committing, including in filenames.
-- **This repository is public.** A measurement corpus is "a real bench". Keep the
-  numbers, drop the name.
-- **No Claude/Anthropic attribution** in any commit message, comment, or code.
-- **No LLM in the control path.** Protection, verification and completion are deterministic
-  machinery (decision A04); an AI agent drives the interfaces and nothing else.
-- Protective parameters are commissioned per bench (decision A02); never hardcode a
-  constant tuned on one bench.
+Synthetic fixtures only (grep your diff for real content, paths, identifiers, emails and
+credentials before committing, including in filenames); a measurement corpus is "a real
+bench", never named; no Claude/Anthropic attribution; no LLM in the control path (A04);
+protective parameters commissioned per bench (A02). Full forms: CLAUDE.md §2 and §4.
 
 ## Deviating from the design
 
@@ -176,20 +150,6 @@ Do not open a PR.
 
 ## Findings that should outlive this session
 
-If you learn something durable, non-obvious, and not recoverable from git or the tracker —
-a measured number, a decision and why it beat the alternative, an honest negative, a
-defect *pattern* rather than a defect, a trap that looks safe — **propose it rather than
-only writing it in your report:**
-
-```sh
-node .claude/hooks/memory-propose.mjs <<'JSON'
-{"concept":"short label","content":"the fact itself, self-contained, readable in a year","summary":"one line","type":"fact","tags":["build"],"source":"increment-builder"}
-JSON
-```
-
-Tags are required (at least one) — the validator refuses tag-less proposals, and
-untagged memories are invisible to tag-filtered recall. `.claude/memory-protocol.md` has
-the schema and, more importantly, the bar: a noisy vault is worse than a small one, so
-progress narration and restatements of the diff do not qualify.
-
-A report is read once. The ledger is drained into memory and survives.
+Propose durable findings via `.claude/hooks/memory-propose.mjs` before the session ends
+(review findings included, every severity). The bar, schema, and tags rule:
+`.claude/memory-protocol.md`.

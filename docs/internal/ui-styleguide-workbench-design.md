@@ -315,7 +315,7 @@ The workbench will include representative stories for all current OTDP classes:
 - DC power supply;
 - digital multimeter;
 - oscilloscope;
-- logic analyser;
+- logic analyser — delivered as the class-reference capture page (Landing 3 of the class-reference program; the design record of 2026-10-14);
 - function generator;
 - electronic load;
 - source-measure unit;

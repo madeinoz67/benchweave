@@ -68,12 +68,8 @@ or a public surface, run the loop.
    for `state/`, `control/`, concurrency); the full battery ONCE, immediately before
    push; batches (row-call folds) land as ONE commit with per-row RED evidence in the
    message, one battery; gates read TRUE exit codes (unpiped / `PIPESTATUS` /
-   output-to-file) and any mypy claim from a fresh cache.** (Rationale, 2026-09-24/25:
-   an F841 ruff miss shipped on a test-only commit — the exemption-shaped hole this
-   split closes; the no-exemption fast lane now catches that class at the offending
-   commit, EARLIER than the adversary pass that found it, and the push battery still
-   catches it. The stale-evidence mypy miss was an evidence failure — piped exit +
-   warm cache — closed by the true-exit/fresh-cache rules, not run frequency.) Operator-facing
+   output-to-file) and any mypy claim from a fresh cache.** (rationale: the F841/stale-evidence
+   incidents — ledgered) Operator-facing
    documentation authored in the slice (website pages, user guides, README instruction
    sections, warnings, safety notices) goes through the `document-writer` agent
    (`.claude/agents/document-writer.md` — the ASD-STE100 register; CLAUDE.md §
@@ -90,14 +86,12 @@ or a public surface, run the loop.
    vendored tree, or version strings ALSO dispatches the `standards-governor` agent
    (tier-independent; #69) — a governance review that never ran is a skipped gate. For anything moving a deadline, threshold, digest rule or
    lease computation, also run the `mechanism-critic`. **On Tier-3 / trust-boundary
-   increments the refute deliberately runs two independent adversary lanes (#181
-   R3) — the second lane's independent yield is the point (2026-09-23 inc3: lane 2
-   found the two MEDIUMs lane 1 missed).** **The slate scales with the diff**
+   increments the refute deliberately runs two independent adversary lanes (#181 R3) —
+   the second lane's independent yield is the point.** **The slate scales with the diff**
    (no new rule, codified): full four-lane slate for Tier-3 / standards-touching work;
    lighter diffs scale down (adversary always; governor only when its trigger fires —
    already the rule; critic only on mechanism moves), and only ONE lane re-runs the full
-   gate battery — the others read the diff and probe (#129: three lanes redundantly
-   re-ran full gates + RED). Reconcile: both clean → stands; a
+   gate battery — the others read the diff and probe (#129). Reconcile: both clean → stands; a
    real evidenced defect → fix it; a genuine correctness split → DEFER to the owner. Fix
    every real finding, with RED-proven guards.
 6. **Measure — the acceptance gate.** The `bench-measurer` agent proves real value on

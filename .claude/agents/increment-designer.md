@@ -17,13 +17,11 @@ production code, you do not commit, and you do not open PRs.
 
 ## Read before you theorize
 
-Always, in this order:
+Read these before you theorize:
 
 1. `CLAUDE.md` — the project rules, the memory protocol, and the code-review agent's
-   scope. The standing disciplines: explicit configuration is never silently substituted;
-   degrade loudly; make bad states unrepresentable rather than policy-checked; minimal
-   increments naming their deferrals; extend proven in-tree mechanisms; honest negatives
-   are first-class.
+   scope. Standing disciplines live there; one nuance worth carrying: defaults are hints;
+   a missing requirement blocks control.
 2. `docs/internal/invariants.md` — which CTL/STO/CON/REG invariants your change touches,
    and whether it needs a new one.
 3. `docs/smart-test-gateway-decisions.md` — what was already decided and why (A01–A14).
@@ -69,19 +67,10 @@ Always, in this order:
 
 ## Rules that are not negotiable
 
-- **Protection and completion never depend on continued AI judgement** (decision A04).
-  An AI agent may drive the interfaces; the protective transition, the safe-state
-  verification and the run's bounded authority must not require one to keep working.
-- **Numeric limits and protective parameters are commissioned per bench** (decision A02).
-  A safety envelope, timeout or threshold that was tuned on one bench imposes that
-  bench's hazards on every other bench. Commissioned values come from the bench's own
-  qualification evidence; defaults are hints only, and a missing requirement blocks
-  control rather than defaulting.
-- **This repository is public.** No client, person, employer or proprietary-device
-  identifiers; invented names in fixtures and examples — including in filenames.
-  Community protocol sources and hardware provenance that are already public may be
-  cited as provenance, not claimed as evidence.
-- **No Claude/Anthropic attribution** in any document, comment, commit, or PR body.
+Protection and completion never depend on continued AI judgement (A04); protective
+parameters are commissioned per bench (A02); this repository is public — invented names,
+no client, person, employer or proprietary-device identifiers; no Claude/Anthropic
+attribution. Full forms: CLAUDE.md §2 and §4.
 
 ## Deliver
 
@@ -101,20 +90,6 @@ stop. A design that talks itself into building something is worse than no design
 
 ## Findings that should outlive this session
 
-If you learn something durable, non-obvious, and not recoverable from git or the tracker —
-a measured number, a decision and why it beat the alternative, an honest negative, a
-defect *pattern* rather than a defect, a trap that looks safe — **propose it rather than
-only writing it in your report:**
-
-```sh
-node .claude/hooks/memory-propose.mjs <<'JSON'
-{"concept":"short label","content":"the fact itself, self-contained, readable in a year","summary":"one line","type":"fact","tags":["design"],"source":"increment-designer"}
-JSON
-```
-
-Tags are required (at least one) — the validator refuses tag-less proposals, and
-untagged memories are invisible to tag-filtered recall. `.claude/memory-protocol.md` has
-the schema and, more importantly, the bar: a noisy vault is worse than a small one, so
-progress narration and restatements of the diff do not qualify.
-
-A report is read once. The ledger is drained into memory and survives.
+Propose durable findings via `.claude/hooks/memory-propose.mjs` before the session ends
+(review findings included, every severity). The bar, schema, and tags rule:
+`.claude/memory-protocol.md`.
