@@ -90,11 +90,15 @@ class TestParityB8:
     def test_triples_validate_through_validate_attachment(self) -> None:
         """B2's module-level arm: every derived triple passes the unchanged
         ``validate_attachment`` (valid=true) — the composition never sees a
-        derivation the validator rejects."""
+        derivation the validator rejects. The supported-panel set is the
+        REGISTRY's derived value, never a fabricated id: the two-slash
+        literal a test once fabricated is a string no legal manifest can
+        declare (the schema's panel_id pattern admits one slash)."""
         from benchweave.interfaces.ui_presentation import _pin_scoped_documents
         from benchweave.presentation.admission import validate_attachment
+        from benchweave.presentation.panels import SUPPORTED_PANELS
 
-        for tag in ("f1", "f2"):
+        for tag in ("f1", "f2", "f1-da"):
             derived = _derive(tag)
             descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
             report = validate_attachment(
@@ -104,7 +108,7 @@ class TestParityB8:
                 binding_catalogue=derived.catalogue,
                 schema_documents=_pin_scoped_documents(json.loads(descriptor_raw)),
                 supported_features=frozenset(),
-                supported_panels=frozenset({"benchweave/classref-logic-analyser/0.1.0"}),
+                supported_panels=SUPPORTED_PANELS,
                 firmware="1.0",
             )
             assert report.valid, report.findings

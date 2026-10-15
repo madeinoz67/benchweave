@@ -1504,6 +1504,41 @@ def test_populate_tiles_reaches_section_tiles(
 _PANEL_ID = "benchweave.classref-logic-analyser/0.1.0"
 
 
+def test_panel_id_pattern_conflict() -> None:
+    """The registration-id note the panel registry cites (panels.py's
+    comment names this test): the design record's example id
+    'benchweave/classref-logic-analyser/0.1.0' carries TWO slashes, and
+    the ui-manifest schema's own panel_id pattern — the shape the design
+    names as binding — admits exactly one. The schema's PATTERN (read
+    digest-verified from the corpus) refuses the two-slash form and
+    admits the pattern-conforming dot-form the registry registers."""
+    from benchweave.presentation.panels import PANELS
+
+    corpus = corpus_root()
+    pins = {
+        str(row["path"]): str(row["sha256"])
+        for row in json.loads((corpus / "corpus-manifest.json").read_bytes())["files"]
+    }
+    relpath = f"plugin-ui/{_PLUGIN_UI}/ui-manifest.schema.json"
+    raw = (corpus / relpath).read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == pins[relpath], (
+        "the schema the pattern is read from must be the pinned bytes"
+    )
+    schema = json.loads(raw)
+    pattern = schema["$defs"]["page"]["properties"]["panel_id"]["pattern"]
+    assert pattern.count("/") == 1, "the pattern itself carries exactly one slash"
+    two_slash = "benchweave/classref-logic-analyser/0.1.0"
+    dot_form = "benchweave.classref-logic-analyser/0.1.0"
+    assert re.fullmatch(pattern, two_slash) is None, (
+        "the design's two-slash example id is schema-refused on any "
+        "class_panel page"
+    )
+    assert re.fullmatch(pattern, dot_form) is not None, (
+        "the registered dot-form conforms to the schema's pattern"
+    )
+    assert dot_form in PANELS and two_slash not in PANELS
+
+
 def test_supported_panels_derive_from_the_registry_mechanically() -> None:
     """B7's mechanical arm: SUPPORTED_PANELS == frozenset(PANELS) by
     construction — the validator consumes the derived value, so a registry
