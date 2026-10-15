@@ -43,7 +43,9 @@
       {% elif not page.available %}
       <p class="bw-panel-note" data-bw-panel-unavailable-note>Unavailable on this host.</p>
       {% else %}
-      {% if page.sections %}
+      {% if page.panel %}
+      {{ page.panel }}
+      {% elif page.sections %}
       <div class="bw-presentation__sections">
         {% for section in page.sections %}
         {{ section.html }}

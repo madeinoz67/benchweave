@@ -71,6 +71,7 @@ from benchweave.presentation.classref import (
     select_references,
     validate_layout_block,
 )
+from benchweave.presentation.panels import SUPPORTED_PANELS as SUPPORTED_PANELS
 from benchweave.standards.manifest import (
     StandardsError,
     active_version_from_corpus,
@@ -84,12 +85,13 @@ from benchweave.vendoring import corpus_root
 #: the device page documents so the seam is greppable and pinnable.
 reading_staleness = staleness
 
-#: The gateway host declares NO custom panels: a manifest page carrying
-#: a ``panel_id`` names a registry panel this host does not serve, which
-#: is the validator's ``panel_unavailable`` finding (SW-41 — rendered as
-#: a refusal when required, unavailable when optional).
-SUPPORTED_PANELS: frozenset[str] = frozenset()
-
+#: The gateway's registered panels: the DERIVED set from the registry
+#: (``presentation.panels``) — the empty frozenset this constant carried
+#: before L4 is replaced by the derived value, so registry/declaration
+#: drift is unrepresentable (B7's mechanical arm). A manifest page
+#: carrying an unregistered ``panel_id`` still meets the validator's
+#: ``panel_unavailable`` finding (SW-41 — rendered as a refusal when
+#: required, unavailable when optional).
 #: The gateway host declares NO named UI features beyond the built-in
 #: page kinds; a manifest requiring a feature is an honest
 #: ``unsupported_feature`` finding, never a guessed yes.
@@ -416,6 +418,9 @@ class PresentationPage:
     #: flat fields re-home into these and render EMPTY on sectioned pages
     #: (one render, never doubled).
     sections: tuple[PresentationSection, ...] = field(default=())
+    #: The registered panel's composition (class_panel pages) — ``None``
+    #: keeps the SW-41 refusal/unavailable arms (unregistered ids).
+    panel: Markup | None = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -619,6 +624,7 @@ def _compose_page_rows(
                 available=is_available,
                 refused=required and not is_available,
                 sections=sections,
+                panel=_panel_composition(page, is_available, targets, bindings),
                 tiles=tiles if not sections else (),
                 plot_summaries=plot_summaries if not sections else (),
                 preset_ids=preset_ids if not sections else _page_presets(page, bindings, targets),
@@ -630,6 +636,36 @@ def _compose_page_rows(
             )
         )
     return tuple(pages)
+
+
+def _panel_composition(
+    page: Mapping[str, Any],
+    is_available: bool,
+    targets: Mapping[str, Mapping[str, Any]],
+    bindings: Mapping[str, Mapping[str, Any]],
+) -> Markup | None:
+    """A registered class_panel page's host composition; ``None`` for
+    everything else (the SW-41 arms render for unregistered ids). No
+    plugin code executes — the registry maps the id to a GATEWAY
+    function over composed page data (A05/NFR-S9)."""
+    if not is_available or str(page.get("kind", "")) != "class_panel":
+        return None
+    from benchweave.presentation.panels import PanelContext, panel_markup
+
+    bound = tuple(str(name) for name in page.get("bindings", []))
+    panel_id = str(page.get("panel_id", ""))
+    return panel_markup(
+        panel_id,
+        PanelContext(
+            panel_id=panel_id,
+            page_id=str(page.get("id", "")),
+            title=str(page.get("title", "")),
+            bindings=bound,
+            bindings_index=bindings,
+            targets=targets,
+        ),
+        corpus_path=corpus_root(),
+    )
 
 
 def _page_presets(

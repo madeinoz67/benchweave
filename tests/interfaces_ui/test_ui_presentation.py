@@ -35,6 +35,7 @@ from benchweave.interfaces.ui_presentation import (
     reading_staleness,
 )
 from benchweave.state.store import Store
+from benchweave.vendoring import corpus_root
 
 ROOT = Path(__file__).resolve().parents[2]
 _PLUGIN_UI = next(
@@ -1324,3 +1325,201 @@ def test_populate_tiles_reaches_section_tiles(
     assert populated_tile is not None and populated_tile is not tile
     assert populated_tile.value == "12.5"
     assert populated_tile.stale_verdict == "no-verdict"
+
+
+# --- L4 capability c: the panel registry ------------------------------------------
+#
+# PANELS is the gateway-owned panel registry; SUPPORTED_PANELS derives from
+# it (frozenset(PANELS)) so registry/declaration drift is unrepresentable.
+# A class_panel page naming the registered panel validates (panel_unavailable
+# gone) and renders the host composition; an unregistered panel keeps the
+# SW-41 refusal; the registry's corpus pin guards the family version it
+# renders against (R4).
+
+_PANEL_ID = "benchweave.classref-logic-analyser/0.1.0"
+
+
+def test_supported_panels_derive_from_the_registry_mechanically() -> None:
+    """B7's mechanical arm: SUPPORTED_PANELS == frozenset(PANELS) by
+    construction — the validator consumes the derived value, so a registry
+    entry is servable the moment it exists and a declaration can never
+    name a panel the registry lacks."""
+    from benchweave.interfaces.ui_presentation import SUPPORTED_PANELS
+    from benchweave.presentation.panels import PANELS
+
+    assert frozenset(PANELS) == SUPPORTED_PANELS
+    assert _PANEL_ID in SUPPORTED_PANELS
+
+
+def test_registered_class_panel_validates_and_renders(
+    tmp_path: Path,
+) -> None:
+    """B7: a class_panel page with the registered id validates clean (the
+    panel_unavailable finding is GONE) and renders the host composition —
+    the run-group's disabled §E.1 buttons and the lane rails from the
+    bound dataset."""
+
+    content, _store = _layout_content(tmp_path)
+    descriptor_raw = _SIM_PSU_DESCRIPTOR.read_bytes()
+    digest = hashlib.sha256(descriptor_raw).hexdigest()
+    manifest = {
+        "contract_version": _PLUGIN_UI,
+        "plugin_id": json.loads(descriptor_raw)["id"],
+        "descriptor_sha256": digest,
+        "bindings": [
+            {"id": "capture", "kind": "dataset", "target_id": "capture"},
+            {"id": "arm", "kind": "procedure", "target_id": "arm"},
+        ],
+        "pages": [
+            {
+                "id": "capture-panel",
+                "title": "Capture",
+                "kind": "class_panel",
+                "panel_id": _PANEL_ID,
+                "bindings": ["capture", "arm"],
+                "required": True,
+            }
+        ],
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": digest,
+        "targets": [
+            {
+                "id": "capture",
+                "kind": "dataset",
+                "action_id": "otdp.dc_psu.measure/1.0.0",
+                "profile_ids": ["otdp.dc_psu/1.0.0"],
+                "measurement_schema_id": "urn:otdp:measurement:0.2.2",
+                "variables": [
+                    {
+                        "id": "t",
+                        "type": "number",
+                        "unit": "s",
+                        "shape": "vector",
+                        "axis_role": "x",
+                    },
+                    {
+                        "id": "v",
+                        "type": "number",
+                        "unit": "V",
+                        "shape": "vector",
+                        "axis_role": "value",
+                    },
+                ],
+            },
+            {
+                "id": "arm",
+                "kind": "procedure",
+                "action_id": "otdp.dc_psu.output/1.0.0",
+                "profile_ids": ["otdp.dc_psu/1.0.0"],
+                "input_schema_id": "urn:otdp:action:dc_psu.output:1.0.0:input",
+            },
+        ],
+    }
+    envelope = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": digest,
+        "resource_root": "ui",
+        "manifest": {"path": "manifest.json", "sha256": hashlib.sha256(manifest_raw).hexdigest()},
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{_PLUGIN_UI}"
+    for raw, parsed, schema in (
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+    ):
+        content.put_document(raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO)
+    state = compose_device_presentation(content, descriptor_raw)
+    assert state.absence is None
+    assert state.valid is True, state.findings
+    page = next(p for p in state.pages if p.page_id == "capture-panel")
+    assert page.available is True
+    assert page.panel is not None
+    html = str(page.panel)
+    assert 'data-bw-disabled-reason="no-authority"' in html
+    assert "No lease or policy authority" in html
+    assert 'data-bw-lane-kind="channel"' in html
+    assert _PANEL_ID in html
+
+
+def test_unregistered_panel_keeps_the_sw41_refusal(
+    tmp_path: Path,
+) -> None:
+    """B7's negative arm: an unregistered panel id keeps today's posture —
+    the validator's panel_unavailable finding and the required page's
+    refusal render, never the composition."""
+    content, _store = _layout_content(tmp_path)
+    descriptor_raw = _SIM_PSU_DESCRIPTOR.read_bytes()
+    digest = hashlib.sha256(descriptor_raw).hexdigest()
+    manifest = {
+        "contract_version": _PLUGIN_UI,
+        "plugin_id": json.loads(descriptor_raw)["id"],
+        "descriptor_sha256": digest,
+        "bindings": [],
+        "pages": [
+            {
+                "id": "must",
+                "title": "Must",
+                "kind": "custom_panel",
+                "panel_id": "custom/1.0.0",
+                "bindings": [],
+                "required": True,
+            }
+        ],
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": digest,
+        "targets": [],
+    }
+    envelope = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": digest,
+        "resource_root": "ui",
+        "manifest": {"path": "manifest.json", "sha256": hashlib.sha256(manifest_raw).hexdigest()},
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{_PLUGIN_UI}"
+    for raw, parsed, schema in (
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+    ):
+        content.put_document(raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO)
+    state = compose_device_presentation(content, descriptor_raw)
+    assert state.valid is False
+    assert any(code == "panel_unavailable" for code, _p, _m in state.findings)
+    required_page = next(p for p in state.pages if p.page_id == "must")
+    assert required_page.refused is True
+    assert required_page.panel is None
+
+
+def test_panel_corpus_pin_mismatch_renders_the_honest_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R4's falsifier mechanised: a panel whose corpus pin names a family
+    version the gateway does not serve renders the honest version note,
+    NEVER the composition (the panel and the corpus bytes it interprets
+    must move in one reviewable unit)."""
+    from benchweave.presentation import panels
+
+    content, _store = _layout_content(tmp_path)
+    monkeypatch.setattr(
+        panels, "served_family_version", lambda _corpus: "9.9.9"
+    )
+    context = panels.PanelContext(
+        panel_id=_PANEL_ID,
+        page_id="capture-panel",
+        title="Capture",
+        bindings=("arm",),
+        bindings_index={"arm": {"kind": "procedure", "target_id": "arm"}},
+        targets={"arm": {"kind": "procedure"}},
+    )
+    markup = panels.panel_markup(_PANEL_ID, context, corpus_path=corpus_root())
+    assert markup is not None
+    html = str(markup)
+    assert "0.1.0" in html and "9.9.9" in html
+    assert 'data-bw-disabled-reason="no-authority"' not in html
