@@ -114,20 +114,6 @@ Make no edits and open nothing.
 
 ## Findings that should outlive this session
 
-If you learn something durable, non-obvious, and not recoverable from git or the tracker —
-a measured number, a decision and why it beat the alternative, an honest negative, a
-defect *pattern* rather than a defect, a trap that looks safe — **propose it rather than
-only writing it in your report:**
-
-```sh
-node .claude/hooks/memory-propose.mjs <<'JSON'
-{"concept":"short label","content":"the fact itself, self-contained, readable in a year","summary":"one line","type":"fact","tags":["mechanism"],"source":"mechanism-critic"}
-JSON
-```
-
-Tags are required (at least one) — the validator refuses tag-less proposals, and
-untagged memories are invisible to tag-filtered recall. `.claude/memory-protocol.md` has
-the schema and, more importantly, the bar: a noisy vault is worse than a small one, so
-progress narration and restatements of the diff do not qualify.
-
-A report is read once. The ledger is drained into memory and survives.
+Propose durable findings via `.claude/hooks/memory-propose.mjs` before the session ends
+(review findings included, every severity). The bar, schema, and tags rule:
+`.claude/memory-protocol.md`.
