@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DESCRIPTOR_SCHEMA_NAME = "otdp-device-descriptor.schema.json"
 
 
-def test_manifest_loads_all_six_standards() -> None:
+def test_manifest_loads_all_seven_standards() -> None:
     manifest = load_manifest(ROOT)
     assert {entry.id for entry in manifest.standards} == {
         "otdp",
@@ -35,8 +35,22 @@ def test_manifest_loads_all_six_standards() -> None:
         "execution",
         "interface",
         "plugin-ui",
+        "plugin-ui-class-reference",
         "plugin-ui-preview",
     }
+
+
+def test_the_manifest_keeps_its_raw_utf8_byte_form() -> None:
+    """Governance byte-form pin (adversary lane 1 F9): the manifest is
+    indent-2 with RAW UTF-8 notes - a json.dumps default round-trip
+    ASCII-escapes the em-dashes, a reflow the machinery does not refuse
+    (repin's canonical-form gate covers corpus-manifest.json only). The
+    tripwire read was the only instrument that caught it; this pin makes
+    the byte form mechanical until repin widens."""
+    raw = (ROOT / "standards/standards-manifest.json").read_bytes()
+    assert b"\\u2014" not in raw, "em-dashes escaped: the file was re-serialized"
+    assert "—".encode() in raw, "expected the raw UTF-8 em-dash bytes"
+    assert raw.endswith(b"\n")
 
 
 def test_interface_reset_has_no_supersession() -> None:
