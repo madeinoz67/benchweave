@@ -36,13 +36,9 @@ of which recalled first.
 
 **Use the helper.** It validates before it writes, fills in `vault`, and refuses a batch
 rather than queueing a bad line. Every proposal carries **at least one tag** — an untagged
-memory is invisible to tag-scoped recall, and the validator rejects tag-less proposals:
-
-```sh
-node .claude/hooks/memory-propose.mjs <<'JSON'
-{"concept":"short label","content":"the fact itself, self-contained, readable in a year","summary":"one line","type":"fact","tags":["…"],"source":"adversary"}
-JSON
-```
+memory is invisible to tag-scoped recall, and the validator rejects tag-less proposals.
+The invocation shape and the JSON example live in one place: CLAUDE.md § Findings that
+outlive the session.
 
 Run the validator with `--check`; it names bad fields on rejection. The schema lives in
 one place — `.claude/hooks/memory-schema.mjs` — imported by the producer, the guard, the

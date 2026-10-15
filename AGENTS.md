@@ -53,8 +53,8 @@ something that has landed).
 Every concurrently-dispatched agent lane works in its OWN worktree, named in its
 brief — never hand two live agents the same probe path (observed 2026-09-24:
 two adversary lanes shared one build worktree; one lane's RED neutralization sat
-live in the other's probe tree). Worktree-list-before-remove and remove-only-yours:
-CLAUDE.md §3.7. The git stash stack is shared across ALL worktrees of this
+live in the other's probe tree). Worktree-list-before-remove, and remove only your own
+worktree: CLAUDE.md §3.7. The git stash stack is shared across ALL worktrees of this
 repo family — never a blind `git stash pop` (it can apply a peer's stash);
 `git stash push -u -m "<unique-tag>"` if stashing at all, and prefer `cp` backups
 for mechanism-neutralization in RED runs.

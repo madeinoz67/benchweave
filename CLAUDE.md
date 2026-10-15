@@ -24,7 +24,7 @@ session's own edits, not only dispatched agents.
 | Situation | Path |
 |---|---|
 | File indexed, primary checkout | `mcp__gortex__edit` — `change(operation:"impact")` before, `change(operation:"detect")` after; signatures also `verify` |
-| Linked worktree overlay | gortex single-file edit when freshness reports `exact: true` with `actual_view` naming the worktree; otherwise native Edit, and the bypass names the caveat |
+| Linked worktree overlay | gortex single-file edit when freshness reports `exact: true` with `actual_view` naming the worktree; otherwise native Edit, and the bypass names the caveat. Worktree binding: `gortex repos reconcile` after `worktree add`; `gortex repos explain-view` diagnoses binding failures |
 | Branch-new / untracked file | native Write; visible to the graph after the next index pass |
 | Generated files (`preview_assets/`, `CHANGELOG_AUTO.md`, `docs/architecture/`, `wiki/`) | never hand-edited — regenerated |
 
@@ -239,6 +239,8 @@ messages, **and filenames**:
 - Use invented names in fixtures and examples — not a real colleague, client, contact,
   DUT serial, or another product's module names.
 - No client, tenant, or employer identifiers; no pricing or commercial terms.
+- Community protocol sources and hardware provenance that are already public may be
+  cited as provenance, not claimed as evidence.
 - If a design record can't make its point without those, it isn't publishable —
   `.claude/deep-review/README.md` has the triage rule and the `private/` convention.
 
