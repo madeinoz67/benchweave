@@ -28,6 +28,10 @@ from typing import Any, cast
 import httpx
 import pytest
 
+# W1 (issue #471): this module exercises supervision.py's win32 arms
+# (probe, TerminateProcess, truthful signal name). WHOLE-MODULE selection.
+pytestmark = [pytest.mark.wincore]
+
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "fixtures" / "execution"
 BENCH_ID = "sim-bench"

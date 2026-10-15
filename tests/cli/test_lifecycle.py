@@ -37,6 +37,12 @@ from click.testing import CliRunner, Result
 
 from benchweave.cli.commands import cli
 
+# W1 (issue #471): this module exercises supervision.py, cli/lifecycle.py and
+# interfaces/supervision.py — every one carries a win32 branch. WHOLE-MODULE
+# selection: the branches execute at module-level call depth per-test
+# curation cannot bound.
+pytestmark = [pytest.mark.wincore]
+
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "fixtures" / "execution"
 TEMPLATE = REPO / "deploy" / "systemd" / "benchweave.service.template"

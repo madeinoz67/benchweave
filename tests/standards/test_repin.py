@@ -88,6 +88,7 @@ def _flip(root: Path, row_path: str) -> None:
     target.write_bytes(target.read_bytes() + b"\n")
 
 
+@pytest.mark.wincore
 def test_repin_round_trip_is_byte_identical(tmp_path: Path) -> None:
     # Adversary F1: anchored on a normalized tmp copy, never the repo
     # tree — a no-op assertion against a drifted real ROOT is a writer
@@ -282,7 +283,17 @@ def _non_canonical(name: str, document: Any) -> bytes:
     return (json.dumps(document, indent=2) + "\n").encode().replace(b"\n", b"\r\n")
 
 
-@pytest.mark.parametrize("shape", ["compact", "bom", "crlf"])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        # W2 (issue #471): only the CRLF arm runs in the windows core lane —
+        # the platform-sensitive canonical-write shape. compact/bom stay
+        # complement.
+        pytest.param("compact", id="compact"),
+        pytest.param("bom", id="bom"),
+        pytest.param("crlf", marks=pytest.mark.wincore, id="crlf"),
+    ],
+)
 def test_repin_refuses_to_write_a_non_canonical_manifest(
     tmp_path: Path, shape: str
 ) -> None:

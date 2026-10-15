@@ -127,6 +127,7 @@ markers = [
   "slow: real child-process orchestration (kill-mid-run); CI runs these — deselect locally for quick iteration with -m 'not slow'",
   "timing: real-paced wall-clock measurements (pacing bands, precision gates, busy-retry windows); CI runs these serialized in the dedicated timing lane — deselect locally with -m 'not timing'",
   "browser: Playwright-driven checks over the file:// pattern library (axe WCAG 2.2 AA, screenshots, the role-resolver disagreement check); CI runs these serialized in the dedicated browser lane with chromium installed — deselect locally with -m 'not browser'",
+  "wincore: cross-platform-critical Windows evidence subset (issue #471) — W1 platform-branching source units (whole-module), W2 platform-sensitive semantics and W3 byte-exactness/digest canary (per-test); runs in the windows CI lane (-m wincore) and in the default gates run like every other test. Deselect locally with -m 'not wincore'.",
 ]
 
 # Report-only coverage: `uv run pytest --cov` prints the table; no gate or

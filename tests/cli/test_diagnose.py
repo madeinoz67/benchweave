@@ -31,6 +31,11 @@ from click.testing import CliRunner, Result
 from benchweave.cli import atrest
 from benchweave.cli.commands import cli
 
+# W1 (issue #471): this module exercises cli/diagnose.py's win32 arm.
+# WHOLE-MODULE selection: the branch executes at module-level call depth
+# per-test curation cannot bound.
+pytestmark = [pytest.mark.wincore]
+
 REPO = Path(__file__).resolve().parents[2]
 POSIX_ONLY = pytest.mark.skipif(
     sys.platform == "win32", reason="POSIX mode bits; W1 residual"

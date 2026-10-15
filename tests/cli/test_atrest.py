@@ -44,6 +44,10 @@ from benchweave.cli.commands import cli
 from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 
+# W1 (issue #471): this module exercises cli/atrest.py's win32 arm (the
+# 0600/ACL credential posture, #137). WHOLE-MODULE selection.
+pytestmark = [pytest.mark.wincore]
+
 
 def _combined(result: Result) -> str:
     """stdout + stderr, robust to click < 8.2's mixed-stream Result."""

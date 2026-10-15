@@ -141,6 +141,7 @@ def test_s_r2_self_retires_when_no_head_declared(
         declared_dev_family("execution")
 
 
+@pytest.mark.wincore
 def test_s_r3_packaged_refusal_never_falls_back_to_active(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

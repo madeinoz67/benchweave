@@ -292,6 +292,7 @@ def test_kill_before_commit_loses_nothing_partial(tmp_path: Path) -> None:
     survivor.close()
 
 
+@pytest.mark.wincore
 def test_kill_after_commit_state_survives(tmp_path: Path) -> None:
     path = tmp_path / "kill.db"
     child = _spawn("commit", path)

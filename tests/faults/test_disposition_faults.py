@@ -126,6 +126,7 @@ def _spawn(
     )
 
 
+@pytest.mark.wincore
 def test_kill_mid_disposition_leaves_neither_audit_nor_deletion(
     tmp_path: Path,
 ) -> None:
@@ -260,6 +261,7 @@ def _whole_objects(target: Path) -> list[Path]:
             if p.is_file() and not p.name.startswith(".")]
 
 
+@pytest.mark.wincore
 def test_ar5a_kill_mid_phase_a_leaves_store_untouched_whole_objects_only(
     tmp_path: Path,
 ) -> None:
@@ -304,6 +306,7 @@ def test_ar5a_kill_mid_phase_a_leaves_store_untouched_whole_objects_only(
     )
 
 
+@pytest.mark.wincore
 def test_ar5b_kill_inside_phase_b_rolls_back_store_keeps_destination(
     tmp_path: Path,
 ) -> None:

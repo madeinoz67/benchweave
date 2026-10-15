@@ -282,11 +282,11 @@ class TestZeroModeOverRealTrees:
             "in the same commit as the tree change, or refresh the snapshot "
             "deliberately"
         )
-        assert payload["scopes"]["scripts"]["scanned"] == 18, (
-            "the scripts class set moved (18 .py minus the self-exempted "
-            "counter — the sdk-drift gate joined at #347 WS1) — update this "
-            "pin in the same commit as the tree change (the ratchet "
-            "discipline)"
+        assert payload["scopes"]["scripts"]["scanned"] == 19, (
+            "the scripts class set moved (19 .py minus the self-exempted "
+            "counter — the sdk-drift gate joined at #347 WS1, the win-core "
+            "manifest ratchet joined at #471) — update this pin in the same "
+            "commit as the tree change (the ratchet discipline)"
         )
         if "sdk" in payload["scopes"]:
             # 20 at the 0.6.0 pin; 19 at 0.7.x (gateway #308: preview_server.py
@@ -383,6 +383,7 @@ class TestRegisterTeeth:
         shutil.copytree(ROOT / "src/benchweave", scratch / "src/benchweave")
         return scratch
 
+    @pytest.mark.wincore
     def test_a_plant_inside_a_registered_file_fails_via_expected_sites(
         self, tmp_path: Path
     ) -> None:
@@ -420,6 +421,7 @@ class TestDocsRatchet:
         shutil.copytree(ROOT / "docs", scratch / "docs")
         return scratch
 
+    @pytest.mark.wincore
     def test_a_planted_prose_literal_fails_the_ratchet(self, tmp_path: Path) -> None:
         scratch = self._scratch_docs_repo(tmp_path)
         target = scratch / "docs/README.md"
@@ -429,6 +431,7 @@ class TestDocsRatchet:
         assert "docs literal beyond snapshot" in result.stdout
         assert "9.9.9" in result.stdout
 
+    @pytest.mark.wincore
     def test_a_subtree_doc_is_inside_the_ratchet(self, tmp_path: Path) -> None:
         """Fold row 3: the scan covers docs/ SUBTREES — a planted literal in
         docs/acceptance is refused. RED at the fold base: the root-only
@@ -498,6 +501,7 @@ class TestDocsRatchet:
         assert counter.PATTERN_DOCS.search("pins 0.3.0-dev") is not None
         assert counter.PATTERN_DOCS.search("candidate 1.0.0-rc2") is not None
 
+    @pytest.mark.wincore
     def test_refresh_is_an_explicit_flag_with_a_reviewable_diff(
         self, tmp_path: Path
     ) -> None:
@@ -993,7 +997,7 @@ class TestScriptsScope:
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
-        assert report["scanned"] == 18
+        assert report["scanned"] == 19
         assert report["count"] == 26
         carried = {row["file"] for row in report["sites"]}
         assert carried == {
