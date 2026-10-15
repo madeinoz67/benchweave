@@ -273,10 +273,72 @@ def populate_tiles(
         for row in descriptor.get("parameters", [])
         if isinstance(row, dict)
     }
+    def _sections(sections: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Tiles re-homed into declared layout sections populate at their
+        re-homed positions (the #369 join's semantics hold through the
+        layout pass — section nodes carry tile OBJECTS)."""
+        out = []
+        for section in sections:
+            nodes = []
+            for node in section.nodes:
+                if node.tile is not None:
+                    key = node.tile.parameter_id
+                    reading = readings.get(key) if key is not None else None
+                    if key is None or reading is None:
+                        nodes.append(node)
+                        continue
+                    window: float | None = None
+                    policy = parameters.get(key, {}).get("read_policy")
+                    if isinstance(policy, dict):
+                        raw_window = policy.get("max_age_ms")
+                        if isinstance(raw_window, (int, float)) and not isinstance(
+                            raw_window, bool
+                        ):
+                            window = float(raw_window)
+                    moment = _parse_observed(reading.observed_at)
+                    freshness_ms: float | None = (
+                        now_epoch_ms - round(moment.timestamp() * 1000)
+                        if moment is not None
+                        else None
+                    )
+                    unit = node.tile.unit
+                    if reading.unit is not None and reading.unit != node.tile.unit:
+                        unit = reading.unit
+                    nodes.append(
+                        replace(
+                            node,
+                            tile=replace(
+                                node.tile,
+                                value=str(reading.value),
+                                unit=unit,
+                                quality=reading.quality,
+                                freshness=(
+                                    f"{reading.observed_at}"
+                                    f" (retained observation from run {reading.run_id})"
+                                ),
+                                stale_verdict=reading_staleness(freshness_ms, window),
+                            ),
+                        )
+                    )
+                elif node.section is not None:
+                    nodes.append(
+                        replace(
+                            node,
+                            section=replace(
+                                node.section,
+                                nodes=_sections(node.section.nodes),
+                            ),
+                        )
+                    )
+                else:
+                    nodes.append(node)
+            out.append(replace(section, nodes=tuple(nodes)))
+        return tuple(out)
+
     pages = []
     for page in state.pages:
         if not page.tiles:
-            pages.append(page)
+            pages.append(replace(page, sections=_sections(page.sections)))
             continue
         tiles = []
         for tile in page.tiles:
@@ -313,5 +375,7 @@ def populate_tiles(
                     stale_verdict=reading_staleness(freshness_ms, window),
                 )
             )
-        pages.append(replace(page, tiles=tuple(tiles)))
+        pages.append(
+            replace(page, tiles=tuple(tiles), sections=_sections(page.sections))
+        )
     return replace(state, pages=tuple(pages))

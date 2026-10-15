@@ -52,17 +52,24 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from benchweave_ui_html.data import ReadingData
-from benchweave_ui_html.partials import render_reading
+from benchweave_ui_html.data import ButtonData, DisabledLabelData, ReadingData, TableData
+from benchweave_ui_html.partials import (
+    render_button,
+    render_data_table,
+    render_disabled_label,
+    render_reading,
+)
 from benchweave_ui_html.staleness import staleness
-from markupsafe import Markup
+from markupsafe import Markup, escape
 
 from benchweave.content.store import ContentStore
 from benchweave.presentation.admission import validate_attachment
 from benchweave.presentation.classref import (
+    LAYOUT_EXTENSION_KEY,
     ClassRefusal,
     derive_attachment,
     select_references,
+    validate_layout_block,
 )
 from benchweave.standards.manifest import (
     StandardsError,
@@ -404,6 +411,11 @@ class PresentationPage:
     #: The page's raw declared plot rows (dataset pages) — the layout
     #: pass's skeleton source and the composition-level lane census input.
     plots: tuple[dict[str, Any], ...] = field(default=())
+    #: The layout pass's composed sections (capability b) — non-empty
+    #: exactly when the manifest's layout block declares this page; the
+    #: flat fields re-home into these and render EMPTY on sectioned pages
+    #: (one render, never doubled).
+    sections: tuple[PresentationSection, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -423,6 +435,25 @@ class PresentationState:
     #: the rendered page must carry the host-derived marker (R2's
     #: masquerade guard).
     derived: bool = False
+
+
+def _layout_invalid_finding(
+    manifest: Mapping[str, Any],
+    corpus: Path,
+) -> tuple[str, str, str] | None:
+    """The layout block's typed refusal (capability b's degrade rule): a
+    block failing the digest-verified corpus layout schema renders
+    ``classref_layout_invalid`` with the finding — never a partial
+    composition. ``None`` when no block rides the manifest or the block
+    validates (the no-block byte-identity clause: absent block, zero new
+    work)."""
+    block = (manifest.get("extensions") or {}).get(LAYOUT_EXTENSION_KEY)
+    if block is None:
+        return None
+    error = validate_layout_block(block, corpus=corpus)
+    if error is None:
+        return None
+    return ("classref_layout_invalid", "extensions", error)
 
 
 def compose_device_presentation(
@@ -485,6 +516,15 @@ def compose_device_presentation(
     descriptor = json.loads(descriptor_raw)
     identity = descriptor.get("identity", {})
     firmware_values = identity.get("supported_firmware") or []
+    layout_finding = _layout_invalid_finding(manifest, corpus_root())
+    if layout_finding is not None:
+        return PresentationState(
+            envelope_sha256=envelope_row["sha256"],
+            valid=False,
+            findings=(layout_finding,),
+            pages=(),
+            absence=None,
+        )
     report = validate_attachment(
         envelope_row["raw_bytes"],
         descriptor_raw=descriptor_raw,
@@ -506,7 +546,10 @@ def compose_device_presentation(
     bindings = {
         str(row["id"]): row for row in manifest.get("bindings", [])
     }
-    pages = _compose_page_rows(manifest, unavailable, targets, bindings)
+    pages = _compose_page_rows(
+        manifest, unavailable, targets, bindings,
+        layout_block=(manifest.get("extensions") or {}).get(LAYOUT_EXTENSION_KEY),
+    )
     return PresentationState(
         envelope_sha256=envelope_row["sha256"],
         valid=report.valid,
@@ -524,38 +567,49 @@ def _compose_page_rows(
     unavailable: set[str],
     targets: Mapping[str, Mapping[str, Any]],
     bindings: Mapping[str, Mapping[str, Any]],
+    layout_block: Mapping[str, Any] | None = None,
 ) -> tuple[PresentationPage, ...]:
     """The page composition both attachment arms share — the derived
     presentation composes through the SAME loop (one code path is the
     no-regression guarantee; the admitted path's rendered bytes are
     pinned by the B6 baseline)."""
+    block_pages: dict[str, list[dict[str, Any]]] = {}
+    if layout_block is not None:
+        block_pages = {
+            str(row.get("page_id")): list(row.get("sections", []))
+            for row in layout_block.get("pages", [])
+            if isinstance(row, dict)
+        }
     pages: list[PresentationPage] = []
     for page in manifest.get("pages", []):
         page_id = str(page["id"])
         required = bool(page.get("required"))
         is_available = page_id not in unavailable
+        block_sections = block_pages.get(page_id, []) if is_available else []
+        sections: tuple[PresentationSection, ...] = ()
         tiles: tuple[PresentationTile, ...] = ()
         plot_summaries: tuple[str, ...] = ()
         preset_ids: tuple[str, ...] = ()
-        if is_available:
-            kind = str(page.get("kind", ""))
-            if kind == "readings":
-                tiles = tuple(
-                    _tiles_for_page(page, bindings, targets)
-                )
-            elif kind == "dataset":
-                plot_summaries = tuple(
-                    f"{plot.get('kind', 'plot')}: "
-                    f"{', '.join(str(name) for name in plot.get('y', []))}"
-                    for plot in page.get("plots", [])
-                )
-            elif kind == "configuration":
-                for name in page.get("bindings", []):
-                    binding = bindings.get(str(name), {})
-                    target = targets.get(str(binding.get("target_id", "")), {})
-                    preset_ids = tuple(
-                        str(value) for value in target.get("preset_asset_ids", [])
+        if block_sections:
+            sections = compose_layout_sections(page, block_sections, bindings, targets)
+        else:
+            if is_available:
+                kind = str(page.get("kind", ""))
+                if kind == "readings":
+                    tiles = tuple(_tiles_for_page(page, bindings, targets))
+                elif kind == "dataset":
+                    plot_summaries = tuple(
+                        f"{plot.get('kind', 'plot')}: "
+                        f"{', '.join(str(name) for name in plot.get('y', []))}"
+                        for plot in page.get("plots", [])
                     )
+                elif kind == "configuration":
+                    for name in page.get("bindings", []):
+                        binding = bindings.get(str(name), {})
+                        target = targets.get(str(binding.get("target_id", "")), {})
+                        preset_ids = tuple(
+                            str(value) for value in target.get("preset_asset_ids", [])
+                        )
         pages.append(
             PresentationPage(
                 page_id=page_id,
@@ -564,9 +618,10 @@ def _compose_page_rows(
                 required=required,
                 available=is_available,
                 refused=required and not is_available,
-                tiles=tiles,
-                plot_summaries=plot_summaries,
-                preset_ids=preset_ids,
+                sections=sections,
+                tiles=tiles if not sections else (),
+                plot_summaries=plot_summaries if not sections else (),
+                preset_ids=preset_ids if not sections else _page_presets(page, bindings, targets),
                 plots=tuple(
                     plot
                     for plot in page.get("plots", [])
@@ -575,6 +630,21 @@ def _compose_page_rows(
             )
         )
     return tuple(pages)
+
+
+def _page_presets(
+    page: Mapping[str, Any],
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, ...]:
+    preset_ids: tuple[str, ...] = ()
+    for name in page.get("bindings", []):
+        binding = bindings.get(str(name), {})
+        target = targets.get(str(binding.get("target_id", "")), {})
+        preset_ids = tuple(
+            str(value) for value in target.get("preset_asset_ids", [])
+        )
+    return preset_ids
 
 
 def _classref_fallback(
@@ -650,6 +720,15 @@ def _classref_fallback(
             pages=(),
             absence=None,
         )
+    layout_finding = _layout_invalid_finding(derived.manifest, corpus_root())
+    if layout_finding is not None:
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=(layout_finding,),
+            pages=(),
+            absence=None,
+        )
     targets = {
         str(row["id"]): row for row in derived.catalogue.get("targets", [])
     }
@@ -660,7 +739,15 @@ def _classref_fallback(
         envelope_sha256=None,
         valid=True,
         findings=(),
-        pages=_compose_page_rows(derived.manifest, set(), targets, bindings),
+        pages=_compose_page_rows(
+            derived.manifest,
+            set(),
+            targets,
+            bindings,
+            layout_block=(derived.manifest.get("extensions") or {}).get(
+                LAYOUT_EXTENSION_KEY
+            ),
+        ),
         absence=None,
         derived=True,
     )
@@ -722,4 +809,255 @@ def _tiles_for_page(
                         parameter_id=str(target.get("parameter_id", "")) or None,
                     )
                 )
+    return tiles
+
+
+#: §C.2's disabled-reason enum: the G2 device page carries NO control
+#: authority (the design's scope line — leases, staging and confirms live
+#: on the G3 control surface), so every layout control renders DISABLED
+#: with the §C.2 enum's own reason key and required visible label text.
+_NO_AUTHORITY = "no-authority"
+_NO_AUTHORITY_LABEL = "No lease or policy authority"
+
+
+@dataclass(frozen=True)
+class SectionNode:
+    """One layout node composed for rendering — a pre-composed markup
+    fragment (controls, text, tables, plot skeletons), a live tile
+    OBJECT (so the #369 join populates it at its re-homed position), or
+    a nested section (the vocabulary's depth ≤ 3)."""
+
+    markup: Markup | None = None
+    tile: PresentationTile | None = None
+    section: PresentationSection | None = None
+
+
+@dataclass(frozen=True)
+class PresentationSection:
+    """One layout section composed for rendering: the §E.1 panel shape
+    with the block's declared surface and grid span; children render in
+    declaration order (B4's DOM-order rule)."""
+
+    section_id: str
+    title: str
+    surface: str
+    span: int
+    nodes: tuple[SectionNode, ...] = ()
+
+    @property
+    def html(self) -> Markup:
+        children = "".join(
+            str(node.markup or "")
+            if node.markup is not None
+            else str(node.tile.html if node.tile else node.section.html if node.section else "")
+            for node in self.nodes
+        )
+        return Markup(  # noqa: S704 - escape()d parts and fixed literals only
+            f'<section class="bw-panel bw-presentation__section" '
+            f'data-bw-section-id="{self.section_id}" '
+            f'data-surface="{self.surface}" '
+            f'style="grid-column: span {self.span}">'
+            f"<h4>{escape(self.title)}</h4>{children}</section>"
+        )
+
+
+def compose_layout_sections(
+    page: PresentationPage | Mapping[str, Any],
+    block_sections: list[dict[str, Any]],
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
+) -> tuple[PresentationSection, ...]:
+    """The layout pass (L4 capability b): one page's block sections
+    composed host-side from the §E.1 partials (the L2 host-consumption
+    approach, gateway-shaped).
+
+    Every control node renders DISABLED with reason ``no-authority``
+    (the G2 read-only scope line: zero enabled controls — B5); reading
+    nodes re-home their binding's tiles INSIDE the declared section in
+    DOM order (B4); plot_ref places the page's lane skeleton at the
+    referenced position; text renders verbatim, autoescaped."""
+    if isinstance(page, PresentationPage):
+        plots = page.plots
+    else:
+        plots = tuple(
+            plot
+            for plot in page.get("plots", [])
+            if isinstance(plot, dict)
+        )
+    return tuple(
+        PresentationSection(
+            section_id=str(section.get("id", "")),
+            title=str(section.get("title", section.get("id", ""))),
+            surface=str(section.get("surface", "raised")),
+            span=int(section.get("span", 12)),
+            nodes=tuple(_section_children(section.get("children", []), plots, bindings, targets)),
+        )
+        for section in block_sections
+    )
+
+
+def _section_children(
+    children: list[dict[str, Any]],
+    plots: tuple[dict[str, Any], ...],
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
+) -> list[SectionNode]:
+    nodes: list[SectionNode] = []
+    for node in children:
+        if "id" in node and ("children" in node) and "kind" not in node:
+            nodes.append(
+                SectionNode(
+                    section=PresentationSection(
+                        section_id=str(node.get("id", "")),
+                        title=str(node.get("title", node.get("id", ""))),
+                        surface=str(node.get("surface", "raised")),
+                        span=int(node.get("span", 12)),
+                        nodes=tuple(
+                            _section_children(
+                                node.get("children", []), plots, bindings, targets
+                            )
+                        ),
+                    )
+                )
+            )
+            continue
+        if "plot_index" in node:
+            nodes.append(SectionNode(markup=_lane_skeleton(node["plot_index"], plots)))
+            continue
+        if "body" in node:
+            # The reference authors no text (D2); an authored block's text
+            # renders verbatim, autoescaped, <= 512 chars by the schema.
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - escape()d body only
+                        f"<p>{escape(str(node['body']))}</p>"
+                    )
+                )
+            )
+            continue
+        kind = node.get("kind")
+        if kind == "button":
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - the package partial's output
+                        render_button(
+                            ButtonData(
+                                label=str(node.get("binding_id", "")),
+                                variant="primary",
+                                disabled_reason=_NO_AUTHORITY,
+                                disabled_label=_NO_AUTHORITY_LABEL,
+                            )
+                        )
+                    )
+                )
+            )
+            continue
+        if kind in ("numeric", "rotary"):
+            field_label = str(node.get("field") or node.get("binding_id", ""))
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - escape()d label + fixed literals
+                        f'<span class="bw-classref-control" '
+                        f'data-bw-disabled-reason="{_NO_AUTHORITY}">'
+                        f'<span class="bw-classref-control__label">{escape(field_label)}</span>'
+                        f"{render_disabled_label(
+                            DisabledLabelData(reason=_NO_AUTHORITY, label=_NO_AUTHORITY_LABEL)
+                        )}"
+                        "</span>"
+                    )
+                )
+            )
+            continue
+        if kind == "data-table":
+            nodes.append(SectionNode(markup=_data_table_for_binding(node, bindings, targets)))
+            continue
+        if kind == "reading-tile":
+            nodes.extend(
+                SectionNode(tile=tile)
+                for tile in _tiles_for_binding(node.get("binding_id", ""), bindings, targets)
+            )
+            continue
+    return nodes
+
+
+def _lane_skeleton(
+    plot_index: int, plots: tuple[dict[str, Any], ...]
+) -> Markup:
+    """The plot's lane-group skeleton at its declared position: one row
+    per channel and per group (data-bw-lane-kind, the §E.4 lane-kind
+    vocabulary), plus the honest no-plotted-data note (GW-22/D3 — no
+    draw claim without a data feed). A plot_ref naming a plot the page
+    does not declare renders the honest note, never silence."""
+    if plot_index >= len(plots):
+        return Markup(  # noqa: S704 - escape()d parts and fixed literals only
+            f'<p class="bw-plot-note">plot {plot_index} is not declared on this page</p>'
+        )
+    plot = plots[plot_index]
+    rows = []
+    for name in plot.get("y", []):
+        rows.append(
+            f'<li data-bw-lane-kind="channel">{escape(str(name))}</li>'
+        )
+    for group in plot.get("lane_groups", []):
+        rows.append(
+            f'<li data-bw-lane-kind="group">{escape(str(group.get("label", "")))}</li>'
+        )
+    for decoder in plot.get("decoder_lanes", []):
+        rows.append(
+            f'<li data-bw-lane-kind="decoder">{escape(str(decoder.get("label", "")))}</li>'
+        )
+    return Markup(  # noqa: S704 - escape()d parts and fixed literals only
+        f'<ul class="bw-lane-skeleton" data-bw-lane-skeleton>{"".join(rows)}</ul>'
+        f'<p class="bw-plot-note">no plotted data</p>'
+    )
+
+
+def _data_table_for_binding(
+    node: Mapping[str, Any],
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
+) -> Markup:
+    """The package's data-table partial over the bound target's variable
+    set, the honest empty-rows shape (GW-22: no fabricated data rows —
+    headers only, the caption names the absence)."""
+    binding_id = str(node.get("binding_id", ""))
+    binding = bindings.get(binding_id, {})
+    target = targets.get(str(binding.get("target_id", "")), {})
+    variables = [
+        str(row.get("id", ""))
+        for row in target.get("variables", [])
+        if isinstance(row, dict)
+    ]
+    return Markup(  # noqa: S704 - escape()d parts and fixed literals only
+        render_data_table(
+            TableData(
+                caption=f"{binding_id} — no gateway-reported data",
+                headers=tuple(variables),
+                rows=(),
+            )
+        )
+    )
+
+
+def _tiles_for_binding(
+    binding_id: str,
+    bindings: Mapping[str, Mapping[str, Any]],
+    targets: Mapping[str, Mapping[str, Any]],
+    parameter_id: str | None = None,
+) -> list[PresentationTile]:
+    """One tile per value variable of ONE binding's observation target —
+    the layout pass re-homes ``_tiles_for_page``'s tiles to their declared
+    positions."""
+    tiles: list[PresentationTile] = []
+    binding = bindings.get(binding_id, {})
+    target = targets.get(str(binding.get("target_id", "")), {})
+    for variable in target.get("variables", []):
+        if variable.get("axis_role") == "value":
+            tiles.append(
+                PresentationTile(
+                    label=str(variable.get("id", binding_id)),
+                    unit=str(variable.get("unit", "")),
+                    parameter_id=str(target.get("parameter_id", "")) or None,
+                )
+            )
     return tiles

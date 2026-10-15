@@ -932,3 +932,395 @@ def _render_device_page(state: Any) -> str:
             session_warning=None,
         )
     )
+
+
+# --- L4 capability b: the layout block on the production host --------------------
+#
+# The manifest's plugin-ui-class-reference:layout block composes §E.1
+# partials host-side: sections as bw-panels with the declared surface and
+# span, tiles INSIDE their declared sections in DOM order, plot skeletons
+# at plot_ref positions, text verbatim, and every control DISABLED with
+# reason no-authority (the G2 read-only scope line — zero enabled
+# controls). No-block manifests compose byte-identically to pre-L4 (the
+# committed baseline); a schema-invalid block renders the typed
+# classref_layout_invalid refusal, never a partial page.
+
+
+_SIM_PSU_DESCRIPTOR = ROOT / "fixtures" / "execution" / "descriptor-sim-psu.json"
+
+
+def _layout_content(tmp_path: Path) -> tuple[Any, Any]:
+    """A FRESH store per layout test (the shared module gateway carries
+    every earlier test's attachments for the same descriptor digest —
+    the composition resolves catalogues[0] and a stale default-attachment
+    catalogue would shadow the layout fixture's own)."""
+    from benchweave.content.store import ContentStore
+    from benchweave.state.store import Store
+
+    store = Store.open(str(tmp_path / "state-layout.sqlite"), check_same_thread=False)
+    content = ContentStore(store)
+    return content, store
+
+
+def _admit_layout_attachment(
+    content: Any, *, layout_pages: list[dict[str, Any]]
+) -> None:
+    """A readings-page attachment carrying the namespaced layout block —
+    the canonical validator is extension-blind, so this manifest passes
+    check unchanged and the FAMILY schema is the block's only authority."""
+    descriptor_raw = _SIM_PSU_DESCRIPTOR.read_bytes()
+    descriptor_digest = hashlib.sha256(descriptor_raw).hexdigest()
+    manifest = {
+        "contract_version": _PLUGIN_UI,
+        "plugin_id": json.loads(descriptor_raw)["id"],
+        "descriptor_sha256": descriptor_digest,
+        "bindings": [
+            {"id": "reading", "kind": "observation", "target_id": "voltage"}
+        ],
+        "pages": [
+            {
+                "id": "readings",
+                "title": "Readings",
+                "kind": "readings",
+                "bindings": ["reading"],
+                "required": True,
+            }
+        ],
+        "extensions": {
+            "plugin-ui-class-reference:layout": {
+                "contract_version": "0.1.0",
+                "pages": layout_pages,
+            }
+        },
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "targets": [
+            {
+                "id": "voltage",
+                "kind": "observation",
+                "parameter_id": "output_voltage_v",
+                "variables": [
+                    {
+                        "id": "time",
+                        "type": "number",
+                        "unit": "s",
+                        "shape": "scalar",
+                        "axis_role": "receipt_time",
+                    },
+                    {
+                        "id": "value",
+                        "type": "number",
+                        "unit": "V",
+                        "shape": "scalar",
+                        "axis_role": "value",
+                    },
+                ],
+            }
+        ],
+    }
+    envelope = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "resource_root": "ui",
+        "manifest": {"path": "manifest.json", "sha256": hashlib.sha256(manifest_raw).hexdigest()},
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{_PLUGIN_UI}"
+    for raw, parsed, schema in (
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+    ):
+        content.put_document(raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO)
+
+
+_LAYOUT_PAGES = [
+    {
+        "page_id": "readings",
+        "sections": [
+            {
+                "id": "vitals",
+                "title": "Vitals",
+                "surface": "recessed",
+                "span": 6,
+                "children": [
+                    {"binding_id": "reading", "kind": "reading-tile"},
+                    {"body": "Author text, verbatim"},
+                    {"binding_id": "reading", "kind": "data-table"},
+                ],
+            },
+            {
+                "id": "ops",
+                "title": "Ops",
+                "surface": "raised",
+                "span": 6,
+                "children": [{"binding_id": "arm", "kind": "button"}],
+            },
+        ],
+    }
+]
+
+
+def _layout_state(tmp_path: Path) -> Any:
+    content, _store = _layout_content(tmp_path)
+    descriptor_raw = _SIM_PSU_DESCRIPTOR.read_bytes()
+    _admit_layout_attachment(content, layout_pages=_LAYOUT_PAGES)
+    return compose_device_presentation(content, descriptor_raw)
+
+
+def test_layout_sections_render_bw_panels_with_surface_and_span(
+    tmp_path: Path,
+) -> None:
+    """B4: both declared sections render as bw-panel with the declared
+    data-surface and grid span (2/2)."""
+    state = _layout_state(tmp_path)
+    assert state.valid is True, state.findings
+    page = next(p for p in state.pages if p.page_id == "readings")
+    assert len(page.sections) == 2
+    html = _render_device_page(state)
+    assert html.count('class="bw-panel bw-presentation__section"') == 2
+    assert 'data-surface="recessed"' in html
+    assert 'data-surface="raised"' in html
+    assert 'style="grid-column: span 6"' in html
+
+
+def test_layout_tiles_render_inside_declared_sections_in_dom_order(
+    tmp_path: Path,
+) -> None:
+    """B4's DOM-order arm: the tile renders INSIDE the vitals section,
+    before the text and the table node — declared order, not a flat
+    re-render."""
+    state = _layout_state(tmp_path)
+    html = _render_device_page(state)
+    vitals_at = html.index('data-bw-section-id="vitals"')
+    ops_at = html.index('data-bw-section-id="ops"')
+    tile_at = html.index('class="bw-reading"', vitals_at)
+    text_at = html.index("Author text, verbatim", vitals_at)
+    table_at = html.index('class="bw-data-table"', vitals_at)
+    assert vitals_at < tile_at < text_at < table_at < ops_at
+
+
+def test_layout_controls_render_disabled_no_authority(
+    tmp_path: Path,
+) -> None:
+    """B5: every control node renders disabled with reason no-authority
+    and the visible §C.2 label — and the page carries ZERO enabled
+    controls (no enabled button, no input element at all)."""
+    state = _layout_state(tmp_path)
+    html = _render_device_page(state)
+    # 2x: the disabled button element + its §C.2 label span.
+    assert html.count('data-bw-disabled-reason="no-authority"') == 2
+    assert "<input" not in html
+    for fragment in _iter_fragments(html, "<button"):
+        assert "disabled" in fragment.split(">")[0], fragment[:120]
+
+
+def _iter_fragments(html: str, marker: str) -> list[str]:
+    out: list[str] = []
+    at = 0
+    while True:
+        at = html.find(marker, at)
+        if at == -1:
+            return out
+        out.append(html[at : html.index("</button>", at) + len("</button>")])
+        at += 1
+
+
+def test_layout_plot_skeleton_at_ref_and_out_of_range_note(
+    gateway: SimpleNamespace,
+) -> None:
+    """plot_ref places the page's plot skeleton at the referenced
+    position; a plot_ref naming a plot the page does not declare renders
+    the honest note, never silence."""
+    from benchweave.interfaces.ui_presentation import (
+        PresentationPage,
+        compose_layout_sections,
+    )
+    page = PresentationPage(
+        page_id="p",
+        title="P",
+        kind="dataset",
+        required=True,
+        available=True,
+        refused=False,
+        plots=(
+            {
+                "kind": "digital_lanes",
+                "y": ["d0", "d1"],
+                "lane_groups": [
+                    {"label": "D1-D2", "member_ids": ["d0", "d1"], "radix": "hex"}
+                ],
+                "decoder_lanes": [],
+            },
+        ),
+    )
+    sections = compose_layout_sections(
+        page,
+        [
+            {
+                "id": "lanes",
+                "title": "Lanes",
+                "surface": "raised",
+                "span": 12,
+                "children": [{"plot_index": 0}, {"plot_index": 3}],
+            }
+        ],
+        {},
+        {},
+    )
+    assert len(sections) == 1
+    html = str(sections[0].html)
+    assert html.count('data-bw-lane-kind="channel"') == 2
+    assert html.count('data-bw-lane-kind="group"') == 1
+    assert "plot 3 is not declared on this page" in html
+
+
+def test_derived_capture_renders_the_lane_group_skeleton(
+    gateway: SimpleNamespace,
+) -> None:
+    """B1's skeleton arm: the derived capture page's Lanes section renders
+    the lane-group skeleton equal to the derived inventory — F1: 2 channel
+    rows + 1 group row."""
+    _admit_vendor_catalog(gateway)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f1"))
+    capture = next(p for p in state.pages if p.page_id == "capture")
+    assert len(capture.sections) == 2
+    lanes_html = str(capture.sections[0].html)
+    assert lanes_html.count('data-bw-lane-kind="channel"') == 2
+    assert lanes_html.count('data-bw-lane-kind="group"') == 1
+
+
+def test_f2_derived_skeleton_is_32_channels_plus_4_groups(
+    gateway: SimpleNamespace,
+) -> None:
+    """B1's F2 skeleton arm: 32 channel rows + 4 group rows."""
+    _admit_vendor_catalog(gateway)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f2"))
+    capture = next(p for p in state.pages if p.page_id == "capture")
+    lanes_html = str(capture.sections[0].html)
+    assert lanes_html.count('data-bw-lane-kind="channel"') == 32
+    assert lanes_html.count('data-bw-lane-kind="group"') == 4
+
+
+def test_no_block_manifest_composes_byte_identical_to_pre_l4(
+    tmp_path: Path,
+) -> None:
+    """B6's first clause: a manifest without the layout block composes the
+    presentation region BYTE-IDENTICAL to the committed pre-L4 baseline —
+    the layout pass adds nothing when the block is absent. Fresh store on
+    purpose: the shared module store's F1-fold attachments would shadow
+    the default one at the resolution seam (the class
+    test_re_admitted_identical_attachment pins)."""
+    content, _store = _layout_content(tmp_path)
+    descriptor_raw = _SIM_PSU_DESCRIPTOR.read_bytes()
+    _admit_attachment(content, descriptor_raw)
+    state = compose_device_presentation(content, descriptor_raw)
+    assert state.absence is None
+    page = _render_device_page(state)
+    start = page.index('<div class="bw-presentation" data-bw-presentation-pages>')
+    end = page.index("</section>", start)
+    region = page[start:end]
+    baseline = (
+        Path(__file__).resolve().parents[1]
+        / "interfaces_ui"
+        / "baselines"
+        / "l4-no-block-presentation.html"
+    ).read_bytes()
+    assert region.encode() == baseline
+
+
+def test_invalid_layout_block_renders_classref_layout_invalid(
+    gateway: SimpleNamespace,
+) -> None:
+    """B6's second clause: a schema-invalid block renders the typed
+    classref_layout_invalid refusal, never a partial page."""
+    descriptor_raw, _document = _descriptor(gateway)
+    descriptor_digest = hashlib.sha256(descriptor_raw).hexdigest()
+    manifest = {
+        "contract_version": _PLUGIN_UI,
+        "plugin_id": json.loads(descriptor_raw)["id"],
+        "descriptor_sha256": descriptor_digest,
+        "bindings": [],
+        "pages": [
+            {
+                "id": "readings",
+                "title": "Readings",
+                "kind": "readings",
+                "bindings": [],
+                "required": True,
+            }
+        ],
+        "extensions": {
+            "plugin-ui-class-reference:layout": {
+                "contract_version": "9.9.9",
+                "pages": [],
+            }
+        },
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "targets": [],
+    }
+    envelope = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "resource_root": "ui",
+        "manifest": {"path": "manifest.json", "sha256": hashlib.sha256(manifest_raw).hexdigest()},
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{_PLUGIN_UI}"
+    for raw, parsed, schema in (
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+    ):
+        gateway.content.put_document(raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO)
+    state = compose_device_presentation(gateway.content, descriptor_raw)
+    assert state.pages == ()
+    assert any(
+        code == "classref_layout_invalid" for code, _path, _message in state.findings
+    )
+
+
+def test_populate_tiles_reaches_section_tiles(
+    tmp_path: Path,
+) -> None:
+    """The #369 join through the layout: populate_tiles populates a tile
+    re-homed INTO a declared section — the reading-tile join's semantics
+    hold at the re-homed position (CON-5's read-only composition rule)."""
+
+    from benchweave.interfaces.ui_readings import RetainedReading, populate_tiles
+
+    state = _layout_state(tmp_path)
+    page = next(p for p in state.pages if p.page_id == "readings")
+    section = page.sections[0]
+    assert section.nodes and section.nodes[0].tile is not None
+    tile = section.nodes[0].tile
+    assert tile.parameter_id == "output_voltage_v"
+    reading = RetainedReading(
+        parameter="output_voltage",
+        value=12.5,
+        unit="V",
+        observed_at="2026-10-15T00:00:00Z",
+        age_ms_at_land=0,
+        quality="valid",
+        source="device",
+        run_id="run-1",
+        stored_at="2026-10-15T00:00:01Z",
+    )
+    populated = populate_tiles(
+        state,
+        {"output_voltage_v": reading},
+        {"parameters": [{"name": "output_voltage_v"}]},
+        now_epoch_ms=1_800_000_000_000,
+    )
+    populated_section = next(
+        p for p in populated.pages if p.page_id == "readings"
+    ).sections[0]
+    populated_tile = populated_section.nodes[0].tile
+    assert populated_tile is not None and populated_tile is not tile
+    assert populated_tile.value == "12.5"
+    assert populated_tile.stale_verdict == "no-verdict"

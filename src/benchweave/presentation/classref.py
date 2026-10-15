@@ -1389,3 +1389,22 @@ def derive_attachment(
         catalog_actions,
         corpus,
     )
+
+
+def validate_layout_block(block: Any, *, corpus: Path) -> str | None:
+    """The namespaced layout block against the digest-verified corpus
+    layout schema — the block's only validation authority (the canonical
+    manifest validator is extension-blind). ``None`` when the block
+    validates; the first sorted finding's message otherwise (the typed
+    ``classref_layout_invalid`` refusal's text)."""
+    from jsonschema import Draft202012Validator
+
+    findings = sorted(
+        Draft202012Validator(layout_schema(corpus)).iter_errors(block),
+        key=lambda error: list(error.path),
+    )
+    if not findings:
+        return None
+    first = findings[0]
+    where = "/".join(str(part) for part in first.path) or "(root)"
+    return f"{where}: {first.message}"
