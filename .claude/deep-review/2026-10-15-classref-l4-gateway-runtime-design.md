@@ -187,14 +187,17 @@ renders) so the panel and the corpus bytes it interprets move in one reviewable 
 RED controls: B3 and B6 pin the no-regression arms against the pre-L4 tree; B8's RED is
 the pre-parity state (the gateway derivation absent → no triple to compare).
 
-## 6. Row-call candidates (standing protocol — owner decides every row)
+## 6. Row-call dispositions — owner ruling (2026-10-15, standing all-in-plus-nits)
 
-| RC | what | structural reason or "effort only" | recommendation |
+All four candidates resolved to sequenced-in-program; none dropped, none deferred
+indefinitely. The owner's calls, recorded verbatim in intent:
+
+| RC | what | structural reason | disposition (owner) |
 |---|---|---|---|
-| RC-L4-1 | G3 control-surface integration of layout controls (enabled staging, procedure-backed buttons, §C.1 confirms under lease authority) | structural: a separate surface whose safety machinery (leases, armed-confirm, dispatch) lives in `ui_control`/`ui_staging`; bolting enabled controls onto G2 would bypass it | defer to the G3 lane's own increment; this record slots it |
-| RC-L4-2 | live plot drawing on the device page (skeletons → rendered figures) | structural: interface 0.1.0 carries no live observation read (GW-22's own finding); there is no data feed to draw | defer to the observation-read lane |
-| RC-L4-3 | class panels for the other 11 classes | effort only — the composition mechanism is one registry entry each | roll into the sweep landings L11–L21 (each class landing adds its panel) |
-| RC-L4-4 | D14-style Device-features fallback for vendor-only descriptors gateway-side | effort only — the mechanism composes; only the vendor-catalogue resolution is new work | defer to the L6–L10 window (post-#460/#461, pre-sweep) |
+| RC-L4-1 | G3 control-surface integration of layout controls (enabled staging, procedure-backed buttons, §C.1 confirms under lease authority) | separate surface; leases/armed-confirm/dispatch live in `ui_control`/`ui_staging` — enabled controls never bolt onto G2 | **ROLLED IN** to the program at the G3 control-surface lane (its own increment) |
+| RC-L4-2 | live plot drawing on the device page (skeletons → rendered figures) | interface 0.1.0 carries no live observation read (GW-22's own finding); no data feed to draw | **ROLLED IN** at the observation-read lane — skeleton-not-figure stays until the feed exists |
+| RC-L4-3 | class panels for the other 11 classes | effort only — one registry entry each | **ROLLED IN** to the sweep landings L11–L21 (one registry entry per class, as recommended) |
+| RC-L4-4 | D14-style Device-features fallback for vendor-only descriptors gateway-side | effort only — mechanism composes; vendor-catalogue resolution is the new work | **ROLLED IN** to the L6–L10 window |
 
 ## 7. Review tier + keyword scan
 
