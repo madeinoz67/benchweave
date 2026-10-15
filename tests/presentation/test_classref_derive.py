@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -232,6 +233,52 @@ class TestRefusals:
                 json.loads((FIXTURES / "descriptor-f1.json").read_bytes()),
                 references_override=[reference],
             )
+
+
+class TestReferenceIntegrity:
+    """Corpus-integrity arms of the selection walk: a reference file the
+    corpus pins but whose bytes (or parse) fail is a LOUD typed refusal —
+    the same corpus-pin gate loudness every other family read carries —
+    never a silent skip that renders the plain no-attachment absence
+    (the fail-closed table's posture; the design record §1 table's
+    ``fail-closed`` row)."""
+
+    def _tampered_corpus(self, tmp_path: Path) -> Path:
+        copy = tmp_path / "standards"
+        shutil.copytree(corpus_root(), copy)
+        return copy
+
+    def _re_pin(self, corpus: Path, relpath: str, raw: bytes) -> None:
+        """Point the copied corpus manifest's pin at the new bytes, so the
+        arm exercises the DOCUMENT's corruption, not the pin's."""
+        manifest_path = corpus / "corpus-manifest.json"
+        document = json.loads(manifest_path.read_bytes())
+        for row in document["files"]:
+            if str(row["path"]) == relpath:
+                row["sha256"] = hashlib.sha256(raw).hexdigest()
+        manifest_path.write_bytes((json.dumps(document, indent=2) + "\n").encode())
+
+    def test_pin_mismatched_reference_refuses_typed_never_silence(
+        self, tmp_path: Path
+    ) -> None:
+        corpus = self._tampered_corpus(tmp_path)
+        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        tampered = (corpus / relpath).read_bytes() + b"\n"
+        (corpus / relpath).write_bytes(tampered)
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^corpus_pin_mismatch:"):
+            select_references(corpus, descriptor)
+
+    def test_malformed_reference_bytes_refuse_typed_never_silence(
+        self, tmp_path: Path
+    ) -> None:
+        corpus = self._tampered_corpus(tmp_path)
+        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        (corpus / relpath).write_bytes(b"{not json")
+        self._re_pin(corpus, relpath, b"{not json")
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^classref_invalid_reference:"):
+            select_references(corpus, descriptor)
 
 
 def _derive_from_document(

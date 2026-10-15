@@ -907,6 +907,92 @@ def test_refused_derivation_renders_the_typed_finding(
     )
 
 
+def _schema_invalid_reference_corpus(tmp_path: Path) -> Path:
+    """A byte-identical corpus copy whose reference document is pin-valid
+    but fails its own schema (``slots`` deleted, pin re-pointed): the
+    selection walk's schema gate fires on it (the probe's P1a shape)."""
+    import shutil
+
+    probe = tmp_path / "standards"
+    shutil.copytree(corpus_root(), probe)
+    relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+    document = json.loads((probe / relpath).read_bytes())
+    del document["slots"]
+    raw = json.dumps(document, indent=2).encode()
+    (probe / relpath).write_bytes(raw)
+    manifest_path = probe / "corpus-manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    for row in manifest["files"]:
+        if str(row["path"]) == relpath:
+            row["sha256"] = hashlib.sha256(raw).hexdigest()
+    manifest_path.write_bytes((json.dumps(manifest, indent=2) + "\n").encode())
+    return probe
+
+
+def test_schema_invalid_reference_renders_the_typed_finding(
+    gateway: SimpleNamespace,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A schema-invalid corpus reference renders the typed finding list
+    (the fail-closed table's posture) — never an escape that 500s the
+    page, never the silent absence."""
+    import benchweave.interfaces.ui_presentation as ui_presentation
+
+    probe = _schema_invalid_reference_corpus(tmp_path)
+    monkeypatch.setattr(ui_presentation, "corpus_root", lambda: probe)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f1"))
+    assert state.absence is None
+    assert state.valid is False
+    assert state.pages == ()
+    assert any(
+        code == "classref_invalid_reference"
+        for code, _path, _message in state.findings
+    )
+
+
+def test_schema_invalid_reference_route_renders_findings_never_500(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route-level arm: a schema-invalid reference on a class-shaped
+    device renders the finding list at 200 — the unhandled escape this
+    fold closes made ``device_page`` 500."""
+    import benchweave.interfaces.ui_presentation as ui_presentation
+
+    app = build_ui_gateway(tmp_path, name="f1ref-route")
+    store = Store.open(
+        str(tmp_path / "state-f1ref-route.sqlite"), check_same_thread=False
+    )
+    content = ContentStore(store)
+    session = live_session(app)
+    bench, device = "bench-f1ref", "dev-f1ref"
+    descriptor_raw = _f1_descriptor_raw("f1")
+    store.put_bench(bench, 1, "{}", "{}", "seed", NOW_ISO)
+    store.put_device(
+        device, bench, 1, "[]", descriptor_raw.decode(), "commissioned",
+        "seed", NOW_ISO,
+    )
+    content.put_document(
+        descriptor_raw,
+        hashlib.sha256(descriptor_raw).hexdigest(),
+        json.loads(descriptor_raw),
+        "urn:stg:seed-descriptor",
+        NOW_ISO,
+    )
+    probe = _schema_invalid_reference_corpus(tmp_path)
+    monkeypatch.setattr(ui_presentation, "corpus_root", lambda: probe)
+    with TestClient(app, base_url="http://testserver:8125",
+                    raise_server_exceptions=False) as client:
+        response = client.get(
+            f"/ui/benches/{bench}/devices/{device}",
+            cookies={"bw_session": session.session_id},
+        )
+    store.close()
+    assert response.status_code == 200, response.text[:400]
+    assert "classref_invalid_reference" in response.text
+
+
 def _render_device_page(state: Any) -> str:
     """The device template rendered the route's way (the same environment
     and context shape ui.py's page closure passes; the class-shaped device

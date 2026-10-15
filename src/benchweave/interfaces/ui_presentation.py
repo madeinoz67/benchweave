@@ -705,7 +705,21 @@ def _classref_fallback(
         descriptor = json.loads(descriptor_raw)
     except ValueError:
         descriptor = {}
-    references = select_references(corpus_root(), descriptor)
+    try:
+        references = select_references(corpus_root(), descriptor)
+    except ClassRefusal as refusal:
+        # Selection's own fail-closed arms (a reference file whose bytes
+        # break their corpus pin, whose bytes do not parse, or whose
+        # document fails the family schema) render the typed finding like
+        # every other refusal — never an escape to the page's 500 handler,
+        # never the silent absence.
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=((refusal_prefix(refusal), "", str(refusal)),),
+            pages=(),
+            absence=None,
+        )
     if references is None:
         # The fail-open boundary: no profile names a class with a
         # reference — today's honest absence, byte-identical (B3).

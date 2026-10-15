@@ -262,7 +262,14 @@ def _find_reference(
 ) -> dict[str, Any] | None:
     """The corpus reference document for one profile id, or ``None`` —
     digest-verified reads, profile matching by the document's own
-    ``profile_id``, validated against the family schema."""
+    ``profile_id``, validated against the family schema.
+
+    A reference file whose bytes diverge from their manifest pin, or
+    whose bytes do not parse, is corpus corruption on a SERVED family —
+    it refuses loud as a typed refusal (the corpus-pin gate's own
+    loudness everywhere else: ``layout_schema`` and the document set
+    raise on the same state), never a silent skip that renders the
+    plain no-attachment absence."""
     root = corpus / _FAMILY / version
     if not root.is_dir():
         return None
@@ -272,8 +279,17 @@ def _find_reference(
             raw = path.read_bytes()
             _verify_corpus_pin(raw, relpath, pins)
             document = json.loads(raw)
-        except (OSError, StandardsError, ValueError):
+        except OSError:
+            # An unreadable directory entry is not corpus state this
+            # walk can name a finding about; the pin gate stays loud on
+            # the bytes it CAN read.
             continue
+        except StandardsError as exc:
+            raise ClassRefusal(str(exc)) from exc
+        except ValueError as exc:
+            raise _refuse(
+                "classref_invalid_reference", f"{relpath}: {exc}"
+            ) from exc
         if isinstance(document, dict) and str(document.get("profile_id")) == profile_id:
             return validate_reference_document(document, corpus=corpus)
     return None
