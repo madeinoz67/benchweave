@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
 - The pointer's gitlink — b7f8881 (v0.12.0), not the v0.11.1 SHA
 - The analyzer-config example drops the digest-pinned binary
 - Union the docs-literal register across the main merge
+- The target-pattern cases and the structural-numbers set
+- Restore the governance files' original byte forms
+- Fold adversary lanes 1+2 - D2 closures, D7 ledger rule, bounds, grammar
 
 ### Documentation
 
@@ -57,6 +60,13 @@ All notable changes to this project will be documented in this file.
 - #451 sync-completion pacing — mechanism, acceptance, tier call
 - Issue #446 — invoke binds UI targets to corpus profiles only
 - Issue #450 MCP-surface interface revision — design record
+- Class-reference presentations vertical slice on otdp.logic_analyser
+- Fold D13 effective-capability and D14 action-coverage into the class-reference record
+- Roll the recipe vocabulary in via the extension seam; real input_constraints shape
+- Owner ruling all-in — every row-call row rolls into the train
+- Render the plugin-ui-class-reference rows (CON-12, in-arc)
+- Governor fold - the governed-set count and the RC-5 supersession
+- CON-12 render at the v0.13.0 pairing
 
 ### Features
 
@@ -77,6 +87,8 @@ All notable changes to this project will be documented in this file.
 - Profile_shadow check + pinned-$id merge guard riding plugin-ui 0.3.1
 - G-5 — sync-completion pacing replaces the bump time window (#451)
 - Server instructions on the MCP surface (row 1a) + green arms
+- Admit plugin-ui-class-reference 0.1.0 - the class-reference standard
+- The class-reference stamp token and the sync id-set pin
 
 ### Miscellaneous
 
@@ -86,6 +98,12 @@ All notable changes to this project will be documented in this file.
 - The gitlink tracks the moved v0.12.0 tag (b4cb491)
 - Re-render on the fully-resolved tree
 - Regenerate the devices report and README row after the census retirement
+- Remove the class-reference authoring staging
+- Advance the pointer to v0.13.0 — the class-reference pairing
+
+### Style
+
+- Wrap the ALL_IDS set for E501
 
 ### Testing
 
@@ -105,6 +123,9 @@ All notable changes to this project will be documented in this file.
 - Complete the main-merge resolution — fixture digest + seed denominator
 - The G-5 real-tree arm pins the first compliant post-anchor bump
 - Derive the review conditional and the active version, retire the 0.2.2 pins
+- RED tests for the plugin-ui-class-reference 0.1.0 family
+- Carry the admission's denominator and id-set pins
+- RED arms for the admission fold (adversary lanes 1+2)
 
 ### Build
 
