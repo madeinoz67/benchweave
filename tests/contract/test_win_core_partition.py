@@ -319,6 +319,92 @@ def test_teeth_dropped_w1_map_row_refuses(tmp_path: Path) -> None:
     )
 
 
+def test_teeth_added_fake_w1_map_row_refuses(tmp_path: Path) -> None:
+    """Adding a fake w1_map row (no live probe hit) reds --check.
+
+    F3 fold (#471 refute): the only in-suite w1_map tooth fired the unmapped
+    direction (a deleted row); nothing pinned the dead-row direction — an
+    added row with no live win32/msvcrt probe hit must refuse with the
+    drift exit (1), naming the dead row, not merely any nonzero exit.
+    """
+    def mutate(document: Any) -> None:
+        document["w1_map"]["src/benchweave/no_such_dead_module.py"] = []
+
+    proc = _run_script(_doctored_manifest(tmp_path, mutate), "--check")
+    assert proc.returncode == 1, (
+        "--check did not exit 1 (drift) on an added dead w1_map row — the "
+        f"dead-row direction is unpinned or mis-exited:\n{proc.stdout}\n{proc.stderr}"
+    )
+    assert "dead row" in proc.stdout, (
+        "the drift report does not name the dead row (wanted the "
+        f"dead-row problem line):\n{proc.stdout}"
+    )
+
+
+def test_spaced_filename_collect_row_refuses_fail_closed(tmp_path: Path) -> None:
+    """A collected row whose path carries a space must refuse, not drop.
+
+    F2 fold (#471 refute): ``_COLLECT_RE`` (``^([^ :]+): (\\d+)$``) silently
+    dropped any collected per-file line whose path contains a space or a
+    colon — the file RAN in gates and the windows lane but never joined the
+    manifest, ``--check`` stayed 0 and ``--refresh`` never added it. The
+    no-silent-drop rule covers the parse itself: a row-shaped line that was
+    not consumed refuses fail-closed (exit 2), naming the line. The tmp
+    tree carries ``addopts = "-q"`` because the script adds its own ``-q``
+    on top of the project config — the doubled quiet is what produces the
+    per-file ``<path>: <count>`` rows the parser consumes (a bare tree
+    emits node-id lines, which no row parser reads and nothing refused).
+    """
+    tree = tmp_path / "tree"
+    (tree / "tests").mkdir(parents=True)
+    (tree / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'scratch'\n"
+        "version = '0.0.0'\n"
+        "\n"
+        "[tool.pytest.ini_options]\n"
+        'addopts = "-q"\n',
+        encoding="utf-8",
+    )
+    (tree / "tests" / "test_wa probe.py").write_text(
+        "def test_row_shape_line() -> None:\n    assert True\n", encoding="utf-8"
+    )
+    manifest = tree / "win_core_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {"schema": "benchweave.win-core-manifest/1", "w1_map": {}, "files": {}}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with _serial():
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--check",
+                "--manifest",
+                str(manifest),
+                "--root",
+                str(tree),
+            ],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    assert proc.returncode == 2, (
+        f"--check exited {proc.returncode} with an unconsumed row-shaped "
+        f"collect line present — the drop is still silent:\n"
+        f"{proc.stdout}\n{proc.stderr}"
+    )
+    assert "test_wa probe.py" in proc.stderr, (
+        "the refusal does not name the offending line:\n"
+        f"{proc.stdout}\n{proc.stderr}"
+    )
+
+
 def test_probe_pins_the_win32_branching_source_set() -> None:
     """The live win32/msvcrt scan of src equals the manifest's w1_map keys.
 

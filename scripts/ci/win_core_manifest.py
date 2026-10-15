@@ -47,6 +47,7 @@ DEFAULT_MANIFEST = REPO_ROOT / "tests" / "win_core_manifest.json"
 SRC_ROOT = REPO_ROOT / "src" / "benchweave"
 _PROBE_RE = re.compile(r"win32|msvcrt")
 _COLLECT_RE = re.compile(r"^([^ :]+): (\d+)$")
+_ROW_TAIL_RE = re.compile(r".+: \d+$")
 
 
 def probe_set(root: Path = REPO_ROOT) -> set[str]:
@@ -66,8 +67,14 @@ def collect_counts(
     """Per-file collected test counts for a marker expression (or all tests).
 
     Parses pytest's ``--collect-only -q`` per-file summary lines
-    (``<path>: <count>``). Paths are normalized to posix form; lines outside
-    the collected ``tests/`` and ``docs/`` trees are ignored.
+    (``<path>: <count>``). Paths are normalized to posix form. The parse is
+    fail-closed: any ROW-SHAPED line (``...: <digits>``) that was not
+    consumed as a manifest row — a path carrying a space or colon, which
+    ``_COLLECT_RE`` cannot parse, or a path outside the pinned ``tests/`` /
+    ``docs/`` trees — refuses with exit 2 naming the line, instead of the
+    previous silent drop (a spaced file ran in gates and the lane but never
+    joined the manifest). What this still does not catch: a non-row-shaped
+    line the collection failed to emit at all.
     """
     cmd = [sys.executable, "-m", "pytest", "--collect-only", "-q"]
     if marker is not None:
@@ -92,15 +99,30 @@ def collect_counts(
         )
         raise SystemExit(2)
     counts: dict[str, int] = {}
+    unconsumed: list[str] = []
     for line in proc.stdout.splitlines():
-        match = _COLLECT_RE.match(line.strip())
-        if match is None:
-            continue
-        path = match.group(1).replace("\\", "/")
-        if (path.startswith("tests/") or path.startswith("docs/")) and (
-            path.endswith(".py") or path.endswith(".md")
-        ):
-            counts[path] = int(match.group(2))
+        stripped = line.strip()
+        match = _COLLECT_RE.match(stripped)
+        if match is not None:
+            path = match.group(1).replace("\\", "/")
+            if (path.startswith("tests/") or path.startswith("docs/")) and (
+                path.endswith(".py") or path.endswith(".md")
+            ):
+                counts[path] = int(match.group(2))
+                continue
+        if _ROW_TAIL_RE.fullmatch(stripped):
+            unconsumed.append(stripped)
+    if unconsumed:
+        print(
+            "win_core_manifest: refusing fail-closed — the collect output "
+            "carried row-shaped line(s) that were NOT consumed as manifest "
+            "rows (a path with a space or colon defeats the row parser; a "
+            "path outside tests/ or docs/ is not a pinned tree). Name, then "
+            "fix the tree (rename) or extend the pinned trees deliberately:\n  "
+            + "\n  ".join(unconsumed),
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     return counts
 
 
