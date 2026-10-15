@@ -160,6 +160,54 @@ def test_decode_annotations_align_under_the_waveform(mockup_html: str) -> None:
         assert any(re.fullmatch(r"0x[0-9A-F]{2}", t) for t in texts), theme
 
 
+def _frame_window(section: str, lane_index: int) -> tuple[float, float]:
+    """The frame lane's transaction window in plot x-coordinates: from
+    the first transition x to the last (the lead-in from the plot edge is
+    point 0; the lead-out the last point)."""
+    lane_start = section.find(f'data-lane-index="{lane_index}"')
+    assert lane_start != -1, lane_index
+    lane = _extract_group(section, section.rfind("<g", 0, lane_start))
+    points = re.findall(r"([ML])([0-9.]+) ([0-9.]+)", lane)
+    assert len(points) >= 4, (lane_index, len(points))
+    return float(points[1][1]), float(points[-2][1])
+
+
+def test_cursors_bracket_the_frame_window(mockup_html: str) -> None:
+    """The cursors bracket a REAL measurement: X1 and X2 sit at the frame
+    lane's fall and rise (the transaction window), and the context strip's
+    delta is that window's duration."""
+    for theme, section in _themes(mockup_html).items():
+        fall_x, rise_x = _frame_window(section, 1)
+        cursor_xs = [
+            float(m.group(1))
+            for m in re.finditer(r'<line class="cursor-line" x1="([0-9.]+)"', section)
+        ]
+        assert len(cursor_xs) == 2, theme
+        assert abs(cursor_xs[0] - fall_x) < 2, (theme, cursor_xs, fall_x)
+        assert abs(cursor_xs[1] - rise_x) < 2, (theme, cursor_xs, rise_x)
+        assert "Δt X1→X2 1.68 µs" in section, theme
+
+
+def test_decode_chips_sit_in_their_frame_windows(mockup_html: str) -> None:
+    """Annotations visibly align to the lanes they decode: the SPI chips
+    sit inside lane 1's low window, the I2C chips inside lane 9's."""
+    for theme, section in _themes(mockup_html).items():
+        for lane_index, decoder_label in ((1, "SPI"), (9, "I2C")):
+            fall_x, rise_x = _frame_window(section, lane_index)
+            decoder_start = section.find(
+                f'aria-label="{decoder_label} decode annotations"'
+            )
+            assert decoder_start != -1, (theme, decoder_label)
+            decoder = _extract_group(section, section.rfind("<g", 0, decoder_start))
+            chip_xs = [
+                float(m.group(1))
+                for m in re.finditer(r'<text x="([0-9.]+)"', decoder)
+            ]
+            assert chip_xs, (theme, decoder_label)
+            for chip_x in chip_xs:
+                assert fall_x < chip_x < rise_x, (theme, decoder_label, chip_x)
+
+
 def test_capture_context_strip(mockup_html: str) -> None:
     """The capture-context strip: acquired/drawn counts, the rate and the
     capture-time basis."""
