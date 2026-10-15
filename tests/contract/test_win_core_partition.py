@@ -306,7 +306,9 @@ def test_teeth_bumped_core_count_refuses(tmp_path: Path) -> None:
 
 
 def test_teeth_dropped_w1_map_row_refuses(tmp_path: Path) -> None:
-    """Removing a w1_map row (probe hit intact) reds --check (AR-2 dead-row)."""
+    """Removing a w1_map row (probe hit intact) reds --check (the unmapped
+    direction — the 2026-10-15 record addendum corrects AR-2's original
+    text, which mislabeled this the dead-row check)."""
     def mutate(document: Any) -> None:
         w1_map = document["w1_map"]
         victim = sorted(w1_map)[0]
@@ -315,7 +317,8 @@ def test_teeth_dropped_w1_map_row_refuses(tmp_path: Path) -> None:
     proc = _run_script(_doctored_manifest(tmp_path, mutate), "--check")
     assert proc.returncode != 0, (
         "--check exited 0 with a w1_map row removed while its probe hit "
-        f"remains — the dead-row check has no teeth:\n{proc.stdout}\n{proc.stderr}"
+        "remains — the unmapped-direction check has no teeth (the 2026-10-15 "
+        f"record addendum corrects AR-2's direction naming):\n{proc.stdout}\n{proc.stderr}"
     )
 
 

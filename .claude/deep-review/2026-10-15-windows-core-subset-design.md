@@ -117,6 +117,14 @@ Verified in `src/benchweave` this session (`1a2e3b0b`):
 
 ### 2.4 The failure census is the empirical core-class map
 
+> **Addendum (refute fold, 2026-10-15):** the bullet families below itemize 41
+> of the 44 core-class failures this narrative claims (13 promotion + 7
+> dev_pins + 6 check_sdk_submodule_drift + 4 zero_literal + 2 atrest + 5
+> lifecycle + 4 sqlite = 41). The unlisted 3 include the 2 diagnose failures
+> the founding arithmetic counts (tests/cli/test_diagnose.py — the W1 map's
+> cli/diagnose.py row; whole-module marks count every test in the file); the
+> third unlisted failure is itemized nowhere in this record.
+
 The 54 Windows failures in the #464-run artifact classify by the issue's own
 classes (native separators, CRLF writes, encoding defaults, file-locking, sqlite
 I/O):
@@ -231,6 +239,11 @@ carries ≥1 digest-read test, so the eol=lf canary survives the subset.**
 
 ### 4.2 The borderline rows (disclosed, excluded from founding core)
 
+> **Addendum (refute fold, 2026-10-15):** the run_activation row misnames 3 of
+> its 4 ids: the #464 artifact's four run_activation failures are `d1`, `f5`,
+> `r14` ×2 — the table's `test_f5_…` ×4 shorthand wrongly implies four f5
+> runs. Reopen triggers cite ids, so this correction is load-bearing.
+
 Ten of the 54 observed failures are NOT founding-core, with per-row reasons:
 
 | test (abbrev) | failures | why excluded |
@@ -267,6 +280,14 @@ signing rows later — disclosed). The Evidence summary step: unchanged code; it
 message text notes the core selection.
 
 ### 5.2 The no-silent-drop mechanism (rule 2)
+
+> **Addendum (refute fold, 2026-10-15):** the closing cost note ("the check
+> adds ~5-10s to gates") names `--check` alone (5.8s, the refute lanes'
+> measurement). The partition MODULE costs more in gates: ~15 subprocess
+> pytest collections, 39.1s suite time / 39.6s wall at the post-fold
+> 11-test module (this machine, 2026-10-15; the lanes measured ~33-35s over
+> 12 collections pre-fold). AR-3's budget walk carries the file-level
+> number.
 
 Three machines, all test-side (pre-merge, on Linux in `gates`):
 
@@ -330,6 +351,17 @@ Zero `standards/` bytes; no dependency change (no `uv.lock` move); no src change
 
 ## 6. Census (the design's denominator; every number says whose measurement)
 
+> **Addendum (refute fold, 2026-10-15):** census reconciliation. The record's
+> full-collection row (4,030/228) EXCLUDED the ui-contract.md contract gate
+> the manifest pins (`docs/internal/ui-contract.md`, 196 items — manifest
+> row core 0 / total 196). Reconciled at the #471 tip: full 4,226/229
+> (+196 from the md), gates selection 4,075/222 (measured this session; the
+> record's 3,879/221 excluded the md), core 214 (manifest sum), complement
+> 3,861 (= 4,075 − 214). The record's complement (~3,661 = 3,879 − 218
+> estimated core) and the reconciled one name different denominators — the
+> record's is the design-time estimate, the reconciled one is the
+> manifest-pinned tip; both stand as labeled.
+
 All collection counts: THIS checkout, `origin/main` `1a2e3b0b`, macOS arm64,
 `venv`, `UV_PROJECT_ENVIRONMENT=venv uv run pytest --collect-only -q`, counts
 read from the raw per-file lines (junitxml/exit-code evidence protocol — the rtk
@@ -349,6 +381,15 @@ filter's summary line is untrustworthy, 5 documented instances):
 | observed-failure classification | 44 core-class / 10 borderline-excluded (of 54) |
 
 ## 7. Acceptance rules (pre-committed)
+
+> **Addendum (refute fold, 2026-10-15):** AR-2's second sentence names the
+> wrong direction: removing a `w1_map` row with its probe hit intact fires
+> the UNMAPPED check (a live win32/msvcrt hit with no map row). The
+> dead-row check fires when a map row exists with NO live hit — an ADDED
+> fake row (pinned in-suite by `test_teeth_added_fake_w1_map_row_refuses`)
+> or a row whose src branch disappeared. The deletion tooth
+> (`test_teeth_dropped_w1_map_row_refuses`) fires the unmapped direction;
+> its docstring's "(AR-2 dead-row)" citation is corrected in-suite.
 
 - **AR-1 (partition integrity + teeth).** At build: the partition test is GREEN
   on the branch (manifest `--check` exit 0; subset/disjointness holds); and its
