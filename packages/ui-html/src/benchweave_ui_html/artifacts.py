@@ -166,6 +166,7 @@ _COMPONENT_RENDERERS: dict[str, Callable[[], str]] = {
     "rotary-control": lambda: partials.render_rotary_control(fixtures.rotary_control()),
     "text-input": lambda: partials.render_text_input(fixtures.text_input()),
     "select": lambda: partials.render_select(fixtures.select()),
+    "select-fixed": lambda: partials.render_select(fixtures.select_fixed()),
     "boolean-input": lambda: partials.render_boolean(fixtures.boolean_input()),
     "reading-tile": lambda: partials.render_reading(fixtures.reading()),
     "alert-bubble": lambda: partials.render_alert_bubble(fixtures.alert_bubble()),

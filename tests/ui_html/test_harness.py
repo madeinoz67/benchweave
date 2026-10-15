@@ -21,12 +21,12 @@ CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
 
 
 def _expected_row_failures() -> int:
-    """Rows red at a plain invocation = 171 minus the auto-registered set —
+    """Rows red at a plain invocation = 172 minus the auto-registered set —
     0 since G1d slice 2 registered the ten behaviour rows. Clears first:
     earlier in-process arms legitimately leave partial registrations."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
-    return 171 - len(registry.REGISTRY)
+    return 172 - len(registry.REGISTRY)
 
 
 def _run_pytest(*args: str, junit: Path) -> tuple[int, dict[str, str]]:
@@ -50,7 +50,7 @@ def _run_pytest(*args: str, junit: Path) -> tuple[int, dict[str, str]]:
 
 def test_only_files_named_ui_contract_md_are_claimed(tmp_path: Path) -> None:
     """A byte-identical copy under another name collects nothing; the same
-    bytes as ui-contract.md collect the full 196."""
+    bytes as ui-contract.md collect the full population."""
     other = tmp_path / "not-a-contract.md"
     other.write_text(CONTRACT.read_text(encoding="utf-8"), encoding="utf-8")
     code, attrib = _run_pytest(str(other), "-q", junit=tmp_path / "other.xml")
@@ -66,19 +66,19 @@ def test_only_files_named_ui_contract_md_are_claimed(tmp_path: Path) -> None:
     # (failures == the unregistered rows == 0; the mechanism is derived, so
     # a future deferral would show here as its red count).
     assert code == 0
-    assert attrib.get("tests") == "199"
+    assert attrib.get("tests") == "200"
     assert attrib.get("failures") == str(_expected_row_failures())
 
 
 def test_every_generated_item_carries_the_contract_marker(tmp_path: Path) -> None:
-    """`-m contract` keeps all 199; `-m 'not contract'` deselects all — so
+    """`-m contract` keeps all 200; `-m 'not contract'` deselects all — so
     both layers are uniformly marked (no unmarked escape item)."""
     junit_all = tmp_path / "all.xml"
     code, attrib = _run_pytest(
         str(CONTRACT), "-q", "-m", "contract", junit=junit_all
     )
     assert code == 0  # the fully-registered population is green
-    assert attrib.get("tests") == "199"
+    assert attrib.get("tests") == "200"
 
     junit_none = tmp_path / "none.xml"
     code, attrib = _run_pytest(
@@ -94,12 +94,12 @@ def test_every_generated_item_carries_the_contract_marker(tmp_path: Path) -> Non
 def test_default_invocation_collects_the_contract() -> None:
     """The G1e fail-closed pin: the BARE default invocation (no path args —
     exactly CI's gates shape) collects the whole contract gate through the
-    testpaths entry: 199 items (the 28 pin + 171 row decomposition is pinned
+    testpaths entry: 200 items (the 28 pin + 172 row decomposition is pinned
     by the marker and mixed-invocation arms on explicit invocations; this
     arm proves the DEFAULT run carries the file at all). The repo addopts
     already carry -q, so the bare `--collect-only -q` is double-quiet and
     pytest prints per-file counts — the pin parses that format
-    (`docs/internal/ui-contract.md: 199`). Editing testpaths back to
+    (`docs/internal/ui-contract.md: 200`). Editing testpaths back to
     ["tests"] reds here (the line vanishes); the pin lives in tests/, inside
     the very collection it pins, so CI runs it on every push and removal of
     either half is a visible editorial diff (obligation 12's register class
@@ -120,9 +120,9 @@ def test_default_invocation_collects_the_contract() -> None:
         for line in proc.stdout.splitlines()
         if line.startswith("docs/internal/ui-contract.md:")
     ]
-    assert contract_lines == ["docs/internal/ui-contract.md: 199"], (
+    assert contract_lines == ["docs/internal/ui-contract.md: 200"], (
         "the default (no-args) collection must carry the contract file via "
-        f"testpaths with exactly 199 items; got: {contract_lines!r}"
+        f"testpaths with exactly 200 items; got: {contract_lines!r}"
     )
 
 

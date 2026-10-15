@@ -108,6 +108,29 @@ def test_select_empty_options_renders_the_honest_empty_display_not_a_crash() -> 
     assert "Staged value; use Apply to request the change" not in html
 
 
+def test_select_const_arm_carries_the_select_labelling() -> None:
+    """F1a (issue #463 refute, LOW): the const/single-option arm escapes its
+    own contract row — the §E.1 select row requires the for/aria-describedby
+    labelling shape, and labelling applies to read-only displays too. The
+    fixed display keeps the for/id association and aria-describedby at a
+    real target element, shows the single admitted value, and stages
+    nothing (the staging sentence is the editable arm's disclosure)."""
+    html = partials.render_select(
+        SelectData(label="Fixed mode", options=("single",), value="single")
+    )
+    assert '<div class="bw-select">' in html
+    assert 'class="bw-select__label"' in html
+    assert 'class="bw-select__field"' in html
+    assert 'for="bw-select-field"' in html
+    assert 'id="bw-select-field"' in html
+    assert 'aria-describedby="bw-select-help"' in html
+    assert 'id="bw-select-help"' in html
+    assert "single" in html
+    assert "<select" not in html
+    assert "<option" not in html
+    assert "Staged value; use Apply to request the change" not in html
+
+
 def test_select_const_shape_renders_the_read_only_fixed_display() -> None:
     """A const (or single-option enum) renders the read-only fixed display,
     never an editable offer: no <select> element, no staged sentence (a

@@ -86,6 +86,14 @@ def select() -> SelectData:
     )
 
 
+def select_fixed() -> SelectData:
+    """§E.1 ``select-fixed``: the select's read-only fixed-display arm — a
+    single-option (``const``) enum. The value shown is the one admitted
+    value; the display stages nothing (the staging sentence is the editable
+    arm's disclosure)."""
+    return SelectData(label="Trigger source", options=("internal",), value="internal")
+
+
 def boolean_input() -> BooleanInputData:
     """§E.1 ``boolean-input``: the canonical staged switch, checked."""
     return BooleanInputData(label="Holdoff enabled", checked=True)

@@ -417,12 +417,14 @@ set and the bounds.
 
 A `type: string` field with a `pattern` derives no input control. A `const`
 field, or an enum field with one admitted value, renders the read-only fixed
-display. It never offers an editable menu.
+display. It never offers an editable menu. The staging line shows on the
+editable select; the fixed display shows the single admitted value.
 
-The three inputs are staging controls. Each control carries the help line
-`Staged value; use Apply to request the change`. A staged value is a request.
-It is not a write to the device. Authority, policy and device verification
-still apply to the applied change. The staging lane stays the one submit path.
+The three inputs are staging controls. Each editable control carries the
+help line `Staged value; use Apply to request the change`. A staged value is
+a request. It is not a write to the device. Authority, policy and device
+verification still apply to the applied change. The staging lane stays the
+one submit path.
 
 An energy-removing action never takes a staging control. It is one action,
 never confirmed, never gated.

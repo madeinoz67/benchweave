@@ -9,10 +9,11 @@ F1 fold (2026-10-01): every entry also pins its exact ORDERED key list — the
 identity pin, the same coupling as the TS fold-P5 key arrays. A row swap
 between same-schema tables, a delete-and-pad, a duplicated key or a reorder
 keeps counts and header cells green; the key list is what reds it, naming the
-first divergence. The 171 literal keys ARE the pin (168 through the G1d era;
-L5's input trio added three — gateway issue #463, PR-1).
+first divergence. The 172 literal keys ARE the pin (168 through the G1d era;
+L5's input trio added three, and the L5 refute fold added the select's
+fixed-display row — gateway issue #463, PR-1).
 
-Counts are the build-time-corrected values (171 rows / 28 tables). Three
+Counts are the build-time-corrected values (172 rows / 28 tables). Three
 entries were corrected against the contract at build time — §E.4.2 State
 rendering 3→4 (the +1 that made the design's original total 167), and a
 net-zero adjacent swap §E.2.4 Reference lines 3→4 / §E.2.5 Acquisition
@@ -197,7 +198,7 @@ MANIFEST: tuple[ManifestTable, ...] = (
             "Required text",
             "Notes",
         ),
-        14,
+        15,
         "component_render",
         (
             "button",
@@ -213,6 +214,7 @@ MANIFEST: tuple[ManifestTable, ...] = (
             "confirm-action",
             "text-input",
             "select",
+            "select-fixed",
             "boolean-input",
         ),
     ),

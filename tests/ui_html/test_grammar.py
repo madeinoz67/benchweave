@@ -79,7 +79,7 @@ def test_literal_strips_one_backtick_pair() -> None:
 def test_pristine_real_contract_parses_with_zero_defects() -> None:
     contract = parse_contract(CONTRACT_TEXT, MANIFEST)
     assert len(contract.tables) == 28
-    assert contract.row_count == 171
+    assert contract.row_count == 172
     for table in contract.tables:
         assert table.defects == (), (table.slug, table.defects)
         assert table.stated_count == len(table.body)
@@ -92,8 +92,8 @@ def test_pristine_real_contract_parses_with_zero_defects() -> None:
 def test_row_ids_are_unique_across_the_contract() -> None:
     contract = parse_contract(CONTRACT_TEXT, MANIFEST)
     ids = [row.row_id for table in contract.tables for row in table.body]
-    assert len(ids) == 171
-    assert len(set(ids)) == 171
+    assert len(ids) == 172
+    assert len(set(ids)) == 172
 
 
 def test_pristine_mini_contract_has_no_defects() -> None:

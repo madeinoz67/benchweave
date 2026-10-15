@@ -31,7 +31,7 @@ The first slice establishes the Layered Precision design language and representa
 Run commands from the repository root (`UV_PROJECT_ENVIRONMENT=venv`):
 
 ```sh
-uv run pytest docs/internal/ui-contract.md   # the contract gate alone (199 items)
+uv run pytest docs/internal/ui-contract.md   # the contract gate alone (200 items)
 uv run pytest                                # the default root-suite run — the contract gate rides testpaths
 uv run pytest tests/ui_html -q               # the ported proofs and harness arms
 uv run python -m benchweave_ui_html ...      # the pattern-library export (static tree; the docs site stages it at build)
