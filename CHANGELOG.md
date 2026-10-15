@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
 - The target-pattern cases and the structural-numbers set
 - Restore the governance files' original byte forms
 - Fold adversary lanes 1+2 - D2 closures, D7 ledger rule, bounds, grammar
+- Serialize the win-core partition's subprocess work under xdist (#471)
+- Stop the windows-job extraction at hyphenated job keys (#471)
+- Refuse unconsumed collect rows fail-closed; pin the dead-row tooth (#471)
 - The reference-integrity walk refuses loud, typed (F1)
 - A dual-invalid manifest renders canonical + layout findings (F4)
 - Nested layout sections keep the reading-tile join alive (B1)
@@ -72,13 +75,16 @@ All notable changes to this project will be documented in this file.
 - Render the plugin-ui-class-reference rows (CON-12, in-arc)
 - Governor fold - the governed-set count and the RC-5 supersession
 - CON-12 render at the v0.13.0 pairing
-- L4 gateway-runtime landing — class-reference consumption, fallback, panels
-- Fold owner row-call dispositions into the L4 record (§6)
 - The class-reference reconciliation (Landing 3)
 - STE register pass on the class-reference sections
 - CON-12 render at the v0.14.0 pairing
 - BPE trim of the agent instruction set
 - Fold the verify lenses — provenance carve-out, tool-contract home, recipe single-home (#468)
+- Windows core-subset lane design of record (#471)
+- Refute-fold addenda + reconciled complement census (#471)
+- Refresh the stale complement count in the windows-full comment — 3,861 with its denominator (the fold's out-of-scope row) (#471)
+- L4 gateway-runtime landing — class-reference consumption, fallback, panels
+- Fold owner row-call dispositions into the L4 record (§6)
 - The CON-5 composition-inventory amendment + the presentation row (B4)
 
 ### Features
@@ -107,6 +113,7 @@ All notable changes to this project will be documented in this file.
 - The mockup analyzer composition in the real-analyser idiom
 - Reference-fidelity capture view + the one-language doctrine
 - Adopt the owner-authored spec composition (spec-drop)
+- Scope the Windows evidence lane to the core subset; weekly full lane (#471)
 - Class-reference derivation module (L4 capability a)
 - The no-manifest class-reference fallback (L4 capability a)
 - Layout-block consumption on the production host (L4 capability b)
@@ -125,6 +132,7 @@ All notable changes to this project will be documented in this file.
 - Advance the pointer to v0.13.0 — the class-reference pairing
 - Advance the pointer to v0.14.0 — the expander pairing
 - Register the L4 corpus-pin provenance literals (obligation 20)
+- Manifest refresh on the L4 merge — 230 rows, core 214, L4's tests land complement per the written rule (AR-4's first inter-train catch) (#471)
 
 ### Refactoring
 
