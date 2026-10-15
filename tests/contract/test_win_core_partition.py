@@ -36,10 +36,20 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+try:  # POSIX: serialize the subprocess work under xdist. On Windows the
+    # gates suite does not run (the windows lane runs -m wincore instead),
+    # so the no-op fallback there costs nothing the lane needs.
+    import fcntl
+except ImportError:  # pragma: no cover - platform-dependent import
+    fcntl = None  # type: ignore[assignment]
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "ci" / "win_core_manifest.py"
@@ -54,21 +64,43 @@ def _path_env() -> str:
     return os.environ.get("PATH", "/usr/bin:/bin")
 
 
+@contextmanager
+def _serial() -> Iterator[None]:
+    """Serialize the subprocess work across xdist workers.
+
+    The partition arms spawn real pytest collections; left unserialized under
+    ``-n auto`` they run concurrently with the battery's pacing-sensitive
+    integration tier and redden flake-prone arms there (observed twice on
+    this branch: test_issue146_e2e twice, run_activation's r11/d1/f5 once
+    each — all green in isolation and on the pre-change tree's full
+    battery). One at a time keeps the added parallel load near zero.
+    """
+    # The lock lives in the temp dir, not the repo: a repo-root lock file
+    # would need unlink-on-release, and unlinking a lock another worker may
+    # still hold lets a third worker lock a fresh inode (two inside at once).
+    lock_path = Path(tempfile.gettempdir()) / "benchweave-win-core-partition.lock"
+    with open(lock_path, "w") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield
+
+
 def _collect(marker: str) -> dict[str, int]:
     """Per-file collected counts for one marker expression."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-m", marker],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        timeout=300,
-        env={
-            "PYTEST_ADDOPTS": "",
-            "PATH": _path_env(),
-            "UV_PROJECT_ENVIRONMENT": "venv",
-        },
-        check=False,
-    )
+    with _serial():
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", "-m", marker],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={
+                "PYTEST_ADDOPTS": "",
+                "PATH": _path_env(),
+                "UV_PROJECT_ENVIRONMENT": "venv",
+            },
+            check=False,
+        )
     if proc.returncode not in (0, 5):
         raise AssertionError(
             f"collection failed for -m {marker!r} (exit {proc.returncode}):\n"
@@ -93,14 +125,15 @@ def _collect(marker: str) -> dict[str, int]:
 
 def _run_script(manifest: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run the manifest script against an explicit manifest path."""
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), "--manifest", str(manifest), *args],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        timeout=600,
-        check=False,
-    )
+    with _serial():
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--manifest", str(manifest), *args],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
 
 
 def _windows_job_text(workflow_text: str) -> str:
@@ -122,34 +155,18 @@ def _windows_job_text_full(workflow_text: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def wincore_counts() -> dict[str, int]:
-    """Cached per-file wincore counts (one collection per module)."""
-    return _collect("wincore")
-
-
-@pytest.fixture(scope="module")
-def subset_counts() -> dict[str, int]:
-    """Cached per-file counts of wincore ∩ gates-selection."""
-    return _collect("wincore and not timing and not browser")
-
-
-@pytest.fixture(scope="module")
-def timing_counts() -> dict[str, int]:
-    """Cached per-file counts of wincore ∩ timing."""
-    return _collect("wincore and timing")
-
-
-@pytest.fixture(scope="module")
-def browser_counts() -> dict[str, int]:
-    """Cached per-file counts of wincore ∩ browser."""
-    return _collect("wincore and browser")
+def selections() -> dict[str, dict[str, int]]:
+    """All four marker selections in one cached pass (one worker's worth)."""
+    return {
+        "wincore": _collect("wincore"),
+        "subset": _collect("wincore and not timing and not browser"),
+        "timing": _collect("wincore and timing"),
+        "browser": _collect("wincore and browser"),
+    }
 
 
 def test_wincore_subset_of_gates_selection_and_disjoint_from_lanes(
-    wincore_counts: dict[str, int],
-    subset_counts: dict[str, int],
-    timing_counts: dict[str, int],
-    browser_counts: dict[str, int],
+    selections: dict[str, dict[str, int]],
 ) -> None:
     """wincore ⊆ gates selection, wincore ∩ timing = ∅, wincore ∩ browser = ∅.
 
@@ -158,16 +175,17 @@ def test_wincore_subset_of_gates_selection_and_disjoint_from_lanes(
     combos collect zero (disjointness). The core must also be nonempty — an
     empty core would make every other arm vacuous.
     """
-    assert sum(wincore_counts.values()) > 0, "the founding core is empty"
-    assert subset_counts == wincore_counts, (
+    wincore = selections["wincore"]
+    assert sum(wincore.values()) > 0, "the founding core is empty"
+    assert selections["subset"] == wincore, (
         "wincore is not a subset of the gates selection: per-file counts of "
         "-m 'wincore and not timing and not browser' differ from -m wincore — "
         "a wincore test carries a timing/browser mark"
     )
-    assert sum(timing_counts.values()) == 0, (
+    assert sum(selections["timing"].values()) == 0, (
         "wincore ∩ timing is not empty: a wincore test carries the timing mark"
     )
-    assert sum(browser_counts.values()) == 0, (
+    assert sum(selections["browser"].values()) == 0, (
         "wincore ∩ browser is not empty: a wincore test carries the browser mark"
     )
 
