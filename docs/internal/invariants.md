@@ -480,6 +480,16 @@ rather than rewriting the history — that is how this file earns trust.
   §4 promised): this row is the CON-5 composition inventory the design named; the
   three capabilities above are its entries, and the design record carries the dated
   addendum at its §12.
+  Amendment (2026-10, L5 — the §E.1 input trio, gateway issue #463): the layout
+  consumption gains three disabled-control arms in
+  `src/benchweave/interfaces/ui_presentation.py` `_section_children` — a layout
+  node of kind `text`, `select` or `boolean` renders the read-only
+  `bw-classref-control` span carrying its kind's class hook (`bw-text` /
+  `bw-select` / `bw-boolean`), the field label, and the §C.2 `no-authority`
+  disabled label. Same read-only posture as the L4 arms: zero enabled controls,
+  no input/select/button element, no control authority across the boundary — the
+  live trio partials render only in hosts that own staging (the SDK host's
+  render lane), never in the gateway's read-only page.
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller

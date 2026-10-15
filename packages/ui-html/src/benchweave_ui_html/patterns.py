@@ -6,8 +6,9 @@ severity cells, §D.1 wording cells), so the library cannot drift from the
 contract without the gate's own rows reding first.
 
 The export writes a static tree — plain rendered HTML files, no server:
-``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; twelve pages
-(one per §E.1 component + one refusal page) × two themes; every page root
+``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; sixteen pages
+(one per §E.1 component + one refusal page + one class-reference capture
+page) × two themes; every page root
 carries ``data-bw-pattern-library``. Screenshots (UR-13) are captured into
 the same tree by the browser lane (slice 4). Styling inlines the REAL token
 CSS read through G1a's path constants (one mirror, no copy) and the export
@@ -229,6 +230,9 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         "button": lambda: partials.render_button(fixtures.button()),
         "numeric-input": lambda: partials.render_numeric_input(fixtures.numeric_input()),
         "rotary-control": lambda: partials.render_rotary_control(fixtures.rotary_control()),
+        "text-input": lambda: partials.render_text_input(fixtures.text_input()),
+        "select": lambda: partials.render_select(fixtures.select()),
+        "boolean-input": lambda: partials.render_boolean(fixtures.boolean_input()),
         "reading-tile": lambda: partials.render_reading(fixtures.reading()),
         "alert-bubble": lambda: partials.render_alert_bubble(fixtures.alert_bubble()),
         "engineering-plot": lambda: partials.render_plot(fixtures.engineering_plot()),
@@ -360,6 +364,9 @@ _PAGE_TITLES: dict[str, str] = {
     "button": "Button",
     "numeric-input": "Numeric input",
     "rotary-control": "Rotary control",
+    "text-input": "Text input",
+    "select": "Select",
+    "boolean-input": "Boolean input",
     "reading-tile": "Reading tile",
     "alert-bubble": "Alert bubble",
     "engineering-plot": "Engineering plot",
@@ -375,7 +382,7 @@ _PAGE_TITLES: dict[str, str] = {
 
 def pages() -> tuple[str, ...]:
     """The library's page slugs: one per §E.1 component plus the refusal
-    page plus the class-reference capture page (13), the components in
+    page plus the class-reference capture page (16), the components in
     §E.1's own order."""
     ordered = [key for key in _keys("e-1-components")]
     ordered.append("refusals")

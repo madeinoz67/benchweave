@@ -49,10 +49,11 @@ def test_every_enumerated_key_is_a_fixture_row(slug: str) -> None:
 
 def test_one_page_per_component_plus_the_refusal_page() -> None:
     """The §E.1 component pages plus the refusal page plus the
-    class-reference capture page (Landing 3): 13 pages."""
+    class-reference capture page (Landing 3): 16 pages (14 §E.1 components
+    since L5's input trio)."""
     pages = patterns.pages()
     assert pages == _manifest_keys("e-1-components") + ("refusals", "class-capture")
-    assert len(pages) == 13
+    assert len(pages) == 16
 
 
 def test_every_page_has_entries_and_every_entry_names_a_page() -> None:
@@ -99,9 +100,9 @@ def test_the_row_checkers_fixture_population_is_the_librarys() -> None:
 def test_export_writes_the_page_tree_both_themes_and_the_index(
     tmp_path: Path,
 ) -> None:
-    """26 pages (13 × 2 themes) + the index."""
+    """32 pages (16 × 2 themes) + the index."""
     result = patterns.export(tmp_path)
-    assert len(result.pages) == 26, result.pages
+    assert len(result.pages) == 32, result.pages
     assert set(result.themes) == {"light", "dark"}
     assert result.index == "patterns/index.html"
     for theme in ("light", "dark"):

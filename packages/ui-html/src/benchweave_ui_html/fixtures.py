@@ -16,6 +16,7 @@ from typing import cast
 
 from benchweave_ui_html.data import (
     AlertBubbleData,
+    BooleanInputData,
     ButtonData,
     ConfirmActionData,
     ModeBannerData,
@@ -24,8 +25,10 @@ from benchweave_ui_html.data import (
     PanelData,
     ReadingData,
     RotaryControlData,
+    SelectData,
     TableData,
     TableDataRow,
+    TextInputData,
 )
 from benchweave_ui_html.decimate import LaneState
 from benchweave_ui_html.lanes import (
@@ -65,6 +68,27 @@ def rotary_control() -> RotaryControlData:
     return RotaryControlData(
         label="Supply voltage", now="12.5", minimum="0", maximum="24", unit="V"
     )
+
+
+def text_input() -> TextInputData:
+    """§E.1 ``text-input``: the canonical staged free-string field with NO
+    bounds declared — the A02 bound-honesty canonical (an absent bound
+    renders the absent attribute; the bound-carrying shape is the mutation
+    fixture in tests/ui_html/test_input_trio.py)."""
+    return TextInputData(label="Site label", value="Bench 1")
+
+
+def select() -> SelectData:
+    """§E.1 ``select``: the canonical staged enum field over a closed
+    three-option set."""
+    return SelectData(
+        label="Trigger mode", options=("auto", "normal", "single"), value="auto"
+    )
+
+
+def boolean_input() -> BooleanInputData:
+    """§E.1 ``boolean-input``: the canonical staged switch, checked."""
+    return BooleanInputData(label="Holdoff enabled", checked=True)
 
 
 def reading() -> ReadingData:

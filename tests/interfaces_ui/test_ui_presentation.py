@@ -1236,6 +1236,97 @@ def _iter_fragments(html: str, marker: str) -> list[str]:
         at += 1
 
 
+_TRIO_CHILDREN = [
+    {"field": "Sensor label", "kind": "text"},
+    {"field": "Trigger mode", "kind": "select"},
+    {"field": "Holdoff enabled", "kind": "boolean"},
+]
+
+
+def test_layout_trio_kinds_render_disabled_no_authority(
+    gateway: SimpleNamespace,
+) -> None:
+    """L5's disabled-control arms (design record §4, PR-1): a layout node of
+    each new kind renders the read-only control span carrying its kind's
+    class hook (bw-text / bw-select / bw-boolean), the field label, and the
+    §C.2 no-authority disabled label — 3/3 kinds, and ZERO enabled controls:
+    no input, no select, no button element at all (CON-5's read-only
+    posture holds byte-for-byte; no control authority crosses the
+    boundary)."""
+    from benchweave.interfaces.ui_presentation import compose_layout_sections
+
+    sections = compose_layout_sections(
+        {"id": "p", "plots": []},
+        [
+            {
+                "id": "ops",
+                "title": "Ops",
+                "surface": "raised",
+                "span": 12,
+                "children": _TRIO_CHILDREN,
+            }
+        ],
+        {},
+        {},
+    )
+    assert len(sections) == 1
+    html = str(sections[0].html)
+    for kind, hook, label in (
+        ("text", "bw-text", "Sensor label"),
+        ("select", "bw-select", "Trigger mode"),
+        ("boolean", "bw-boolean", "Holdoff enabled"),
+    ):
+        assert hook in html, f"kind {kind} rendered nothing"
+        span_at = html.index(hook)
+        span_html = html[span_at:]
+        control_end = span_html.index("</span></span>") + len("</span></span>")
+        fragment = span_html[:control_end]
+        assert 'data-bw-disabled-reason="no-authority"' in fragment, hook
+        assert label in fragment, hook
+        assert "No lease or policy authority" in fragment, hook
+    # The read-only posture: zero live controls of any kind.
+    assert "<input" not in html
+    assert "<select" not in html
+    assert "<button" not in html
+    # 2x per trio node (the outer control span + the §C.2 disabled-label
+    # span each carry the reason): 6 total for the three nodes.
+    assert html.count('data-bw-disabled-reason="no-authority"') == 6
+
+
+def test_layout_old_kinds_render_zero_trio_hooks(
+    gateway: SimpleNamespace,
+) -> None:
+    """B1(c)'s regression arm (design record §9): a block whose kinds are
+    the pre-L5 vocabulary renders compose_layout_sections output with ZERO
+    bw-text / bw-select / bw-boolean occurrences — the widening gains the
+    trio nowhere on the old path."""
+    from benchweave.interfaces.ui_presentation import compose_layout_sections
+
+    old_kind_children = [
+        {"binding_id": "arm", "kind": "button"},
+        {"field": "Supply voltage", "kind": "numeric"},
+        {"field": "Course set", "kind": "rotary"},
+        {"body": "Author text, verbatim"},
+    ]
+    sections = compose_layout_sections(
+        {"id": "p", "plots": []},
+        [
+            {
+                "id": "ops",
+                "title": "Ops",
+                "surface": "raised",
+                "span": 12,
+                "children": old_kind_children,
+            }
+        ],
+        {},
+        {},
+    )
+    html = str(sections[0].html)
+    for hook in ("bw-text", "bw-select", "bw-boolean"):
+        assert hook not in html, hook
+
+
 def test_layout_plot_skeleton_at_ref_and_out_of_range_note(
     gateway: SimpleNamespace,
 ) -> None:

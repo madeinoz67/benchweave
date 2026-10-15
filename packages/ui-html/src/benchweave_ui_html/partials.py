@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from benchweave_ui_html.data import (
     AlertBubbleData,
+    BooleanInputData,
     ButtonData,
     ConfirmActionData,
     DisabledLabelData,
@@ -19,7 +20,9 @@ from benchweave_ui_html.data import (
     ReadingData,
     RefusalData,
     RotaryControlData,
+    SelectData,
     TableData,
+    TextInputData,
 )
 from benchweave_ui_html.env import ENV
 from benchweave_ui_html.lanes import ComposedLanes
@@ -43,6 +46,26 @@ def render_numeric_input(data: NumericInputData) -> str:
 def render_rotary_control(data: RotaryControlData) -> str:
     """§E.1 ``rotary-control``: a dial that stages intent (never commands)."""
     return _render("rotary-control.j2", data)
+
+
+def render_text_input(data: TextInputData) -> str:
+    """§E.1 ``text-input``: labelled free-text field, staged help; bounds
+    render only when declared (A02 bound honesty)."""
+    return _render("text-input.j2", data)
+
+
+def render_select(data: SelectData) -> str:
+    """§E.1 ``select``: labelled closed-enum field over the effective
+    schema's options; a single option (a ``const``) renders the read-only
+    fixed display, never an editable offer."""
+    return _render("select.j2", data)
+
+
+def render_boolean(data: BooleanInputData) -> str:
+    """§E.1 ``boolean-input``: a switch that stages intent — the control
+    carries ``role="switch"`` + ``aria-checked``; staging/Apply stays the
+    one submit path."""
+    return _render("boolean-input.j2", data)
 
 
 def render_reading(data: ReadingData) -> str:

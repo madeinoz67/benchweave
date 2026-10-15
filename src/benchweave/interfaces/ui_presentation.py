@@ -1058,6 +1058,54 @@ def _section_children(
                 )
             )
             continue
+        if kind == "text":
+            field_label = str(node.get("field") or node.get("binding_id", ""))
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - escape()d label + fixed literals
+                        f'<span class="bw-classref-control bw-text" '
+                        f'data-bw-disabled-reason="{_NO_AUTHORITY}">'
+                        f'<span class="bw-classref-control__label">{escape(field_label)}</span>'
+                        f"{render_disabled_label(
+                            DisabledLabelData(reason=_NO_AUTHORITY, label=_NO_AUTHORITY_LABEL)
+                        )}"
+                        "</span>"
+                    )
+                )
+            )
+            continue
+        if kind == "select":
+            field_label = str(node.get("field") or node.get("binding_id", ""))
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - escape()d label + fixed literals
+                        f'<span class="bw-classref-control bw-select" '
+                        f'data-bw-disabled-reason="{_NO_AUTHORITY}">'
+                        f'<span class="bw-classref-control__label">{escape(field_label)}</span>'
+                        f"{render_disabled_label(
+                            DisabledLabelData(reason=_NO_AUTHORITY, label=_NO_AUTHORITY_LABEL)
+                        )}"
+                        "</span>"
+                    )
+                )
+            )
+            continue
+        if kind == "boolean":
+            field_label = str(node.get("field") or node.get("binding_id", ""))
+            nodes.append(
+                SectionNode(
+                    markup=Markup(  # noqa: S704 - escape()d label + fixed literals
+                        f'<span class="bw-classref-control bw-boolean" '
+                        f'data-bw-disabled-reason="{_NO_AUTHORITY}">'
+                        f'<span class="bw-classref-control__label">{escape(field_label)}</span>'
+                        f"{render_disabled_label(
+                            DisabledLabelData(reason=_NO_AUTHORITY, label=_NO_AUTHORITY_LABEL)
+                        )}"
+                        "</span>"
+                    )
+                )
+            )
+            continue
         if kind == "data-table":
             nodes.append(SectionNode(markup=_data_table_for_binding(node, bindings, targets)))
             continue

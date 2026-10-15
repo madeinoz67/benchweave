@@ -1,0 +1,14 @@
+<div class="bw-select">
+  {%- if data.options | length > 1 -%}
+  <label class="bw-select__label" for="{{ data.select_id }}">{{ data.label }}</label>
+  <select class="bw-select__field" id="{{ data.select_id }}" aria-describedby="{{ data.help_id }}">
+    {%- for option in data.options -%}
+    <option value="{{ option }}"{{ ' selected' if option == data.value else '' }}>{{ option }}</option>
+    {%- endfor -%}
+  </select>
+  <p class="bw-select__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
+  {%- else -%}
+  <span class="bw-select__label">{{ data.label }}</span>
+  <span class="bw-select__field" data-bw-select-fixed>{{ data.options[0] }}</span>
+  {%- endif -%}
+</div>

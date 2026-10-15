@@ -4,17 +4,18 @@ Runs the contract-gate plugin in subprocesses against the real contract and
 scratch mutations, and asserts the acceptance rule's exact cardinalities from
 junitxml attributes only (never a summary line). Written before the plugin
 exists; against a missing plugin every metric fails for the right reason
-(collected 0, not 196).
+(collected 0, not 199).
 
 Layer scoping (ruled at build time): the primary acceptance numbers are the
-ROW layer (168 collected / 168 failed / 0 passed / 0 skipped at an empty
+ROW layer (171 collected / 171 failed / 0 passed / 0 skipped at an empty
 registry); the pin layer (28 collected / 28 passed) and the suite totals
-(tests=196 failures=168) are additional evidence from the same junitxml.
+(tests=199 failures=171) are additional evidence from the same junitxml.
 
 G1b reconciliation (design record §1.5, open item O1): the plugin now
 auto-registers the canonical artifacts at collection, so the plain-invocation
 arms assert the REGISTERED state (every unregistered row red with exactly
-the no-canonical-artifact message class) instead of the empty-registry 168.
+the no-canonical-artifact message class) instead of the empty-registry 168
+(168 rows through the G1d era; L5's trio makes the row population 171).
 The empty-registry control moved to the pure function
 (``tests/ui_html/test_artifacts_meta.py``) with a collection-level variant
 here that explicitly neutralizes the registration hook; the prelude-based
@@ -37,13 +38,14 @@ from pathlib import Path
 
 import pytest
 
-# --- pre-committed constants (design record sections 2/5/8, corrected 168) ----
+# --- pre-committed constants (design record sections 2/5/8; 168 through the
+# --- G1d era, L5's input trio added three) ------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
 
 PIN_ITEMS = 28
-ROW_ITEMS = 168
+ROW_ITEMS = 171
 TOTAL_ITEMS = PIN_ITEMS + ROW_ITEMS
 
 # Item naming: "pin::<heading-slug>" and "row::<heading-slug>::<key-cell>"
@@ -196,7 +198,7 @@ def _assert_registered_state_shape(
     attrib: dict[str, str], buckets: dict[str, list[ET.Element]]
 ) -> None:
     """The plain-invocation invariants that hold at every G1b slice: 28 green
-    pins, 168 rows split passed+failed with no skips, nothing outside the two
+    pins, 171 rows split passed+failed with no skips, nothing outside the two
     layers, and every failed row carrying exactly the missing-artifact message
     class (a failed row with ``unsatisfied contract items`` there would mean
     something registered-and-failed — a different defect)."""
@@ -220,9 +222,10 @@ def _assert_registered_state_shape(
 def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
     """The plain invocation auto-registers the artifacts: pins green, the
     registered rows green. Since G1d slice 2 the registration is the FULL
-    168 (the ten behaviour rows included), so the plain invocation is fully
-    green — the pre-G1d run's ten no-canonical-artifact reds are the slice's
-    RED half, recorded in its commit. The failed count is exactly the
+    row population (the ten behaviour rows included), so the plain
+    invocation is fully green — the pre-G1d run's ten no-canonical-artifact
+    reds are the slice's RED half, recorded in its commit. The failed count
+    is exactly the
     unregistered rows — no more (an over-count would mean a registered row
     failing its own items), no fewer (an under-count would mean an
     unregistered row going green)."""
@@ -372,7 +375,7 @@ def test_metric_c_registering_one_artifact_greens_exactly_that_row(tmp_path: Pat
         f"registry.REGISTRY.register({BUTTON_ROW_ID!r}, _FakeArtifact())\n"
     )
     exit_code = _run(CONTRACT, junit, prelude=prelude)
-    assert exit_code != 0, "167 of 168 rows still red keeps the run red"
+    assert exit_code != 0, "170 of 171 rows still red keeps the run red"
     _attrib, buckets = _suite(junit)
     rows = _stats(buckets["row"])
     assert rows == {
@@ -398,8 +401,8 @@ def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path
     discriminates again. Since G1d registered the full population the bare
     toggle was vacuous (auto-registration made both states green); with the
     registry held empty the pair discriminates the constant's effect —
-    toggle-off runs fully green (196/0) while the un-flipped neutralized
-    run reds its 168 rows. A dead constant (never read) fails the green
+    toggle-off runs fully green (199/0) while the un-flipped neutralized
+    run reds its 171 rows. A dead constant (never read) fails the green
     half exactly like the sabotage arm proved."""
     junit_green = tmp_path / "toggle-green.xml"
     prelude_green = (
@@ -417,7 +420,7 @@ def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path
     assert attrib.get("tests") == str(TOTAL_ITEMS), attrib
     assert attrib.get("failures") == "0", attrib
     # The contrast half: the SAME neutralization without the flip reds the
-    # 168 rows — the green above is the toggle's effect, not the
+    # 171 rows — the green above is the toggle's effect, not the
     # registration's absence alone.
     junit_red = tmp_path / "toggle-red.xml"
     exit_red = _run(CONTRACT, junit_red, prelude=NEUTRALIZE_REGISTRATION)
@@ -596,12 +599,12 @@ for _table in manifest.MANIFEST:
 
 def test_full_registration_runs_fully_green_on_the_pristine_contract(tmp_path: Path) -> None:
     """The G1b end-state control: every manifest key registered, no orphans —
-    196 passed, exit 0, and no false positive from the orphan check."""
+    199 passed, exit 0, and no false positive from the orphan check."""
     junit = tmp_path / "full-green.xml"
     exit_code = _run(CONTRACT, junit, prelude=FULL_REGISTRATION_PRELUDE)
     assert exit_code == 0
     attrib, buckets = _suite(junit)
-    assert attrib.get("tests") == "196", attrib
+    assert attrib.get("tests") == "199", attrib
     assert attrib.get("failures") == "0", attrib
     assert _stats(buckets["row"]) == {
         "collected": ROW_ITEMS,
@@ -642,7 +645,7 @@ def test_delete_and_pad_with_full_registration_reds_via_orphaned_artifact(
 
 def test_mixed_invocation_collects_the_gate(tmp_path: Path) -> None:
     """F2 residual pin: `pytest tests/... docs/internal/ui-contract.md`
-    collects BOTH the ordinary suite and the 196 contract items. The refuter's
+    collects BOTH the ordinary suite and the 199 contract items. The refuter's
     PYTEST_ADDOPTS="-m 'not contract'" attack deselects the contract items on
     exactly this shape — the residual class, disclosed in the design record;
     this arm goes red under that attack (a shrunk collection fails the

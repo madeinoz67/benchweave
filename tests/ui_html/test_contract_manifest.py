@@ -1,4 +1,5 @@
-"""Manifest unit tests: the corrected 28-table / 168-row enumeration."""
+"""Manifest unit tests: the 28-table / 171-row enumeration (168 through the
+G1d era; L5's input trio added three)."""
 
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ CORRECTED_ENTRIES = {
 
 def test_totals() -> None:
     assert TOTAL_TABLES == 28
-    assert TOTAL_ROWS == 168
+    assert TOTAL_ROWS == 171
 
 
 def test_slugs_and_headings_unique() -> None:
@@ -53,11 +54,11 @@ def test_manifest_agrees_with_the_real_contract_parse() -> None:
         assert table.stated_count == entry.row_count, entry.slug
 
 
-def test_manifest_carries_the_168_ordered_identity_keys() -> None:
+def test_manifest_carries_the_ordered_identity_keys() -> None:
     """F1 fold: every entry pins its exact ordered key list — the identity
     pin, same coupling as the TS fold-P5 key arrays."""
     total = sum(len(table.keys) for table in MANIFEST)
-    assert total == 168
+    assert total == 171
     for table in MANIFEST:
         assert len(table.keys) == table.row_count, table.slug
         assert len(set(table.keys)) == table.row_count, table.slug
