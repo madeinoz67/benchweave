@@ -41,6 +41,28 @@ class _Balance(HTMLParser):
             self.stack.pop()
 
 
+def _extract_group(html: str, start: int) -> str:
+    """Balanced extraction of one <g ...>...</g> block: count the tags,
+    never trust .*? past a nested group."""
+    depth = 0
+    for match in re.finditer(r"<g\b|</g>", html[start:]):
+        if match.group(0) == "<g":
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                return html[start : start + match.end()]
+    raise AssertionError(f"unbalanced group at {start}")
+
+
+def _find_all_groups(html: str, cls: str) -> list[str]:
+    """All balanced <g> blocks whose opening tag carries cls."""
+    blocks = []
+    for match in re.finditer(f'<g class="{cls}"', html):
+        blocks.append(_extract_group(html, match.start()))
+    return blocks
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockup.html"
 
@@ -67,24 +89,85 @@ def test_both_theme_sections_carry_the_analyzer_composition(mockup_html: str) ->
 
 def test_lane_groups_are_eight_lanes_with_decimal_labels(mockup_html: str) -> None:
     """8-lane groups with DECIMAL positional labels D{first}-D{last}; the
-    bus VALUES carry the hex formatting (F4: the values' formatting, not
-    the prose header) — every value cell is two uppercase hex digits and
-    every unknown cell is the unknown marker."""
+    grouped-bus HEX READOUT rows carry the values (the values' formatting,
+    not the prose header) — every readout chip is a 0x-prefixed hex value
+    and every unknown chip is the unknown marker."""
     for theme, section in _themes(mockup_html).items():
         assert "D1-D8" in section, theme
         assert "D9-D16" in section, theme
-        blocks = re.findall(
-            r'<div class="bus-values">(.*?)</div>', section, re.DOTALL
-        )
-        assert len(blocks) == 2, theme
-        for block in blocks:
-            cells = re.findall(r"<span(?: class=\"unk\")?>([^<]*)</span>", block)
-            assert len(cells) == 12, theme
-            for cell in cells:
-                assert cell == UNKNOWN_CELL or re.fullmatch(r"[0-9A-F]{2}", cell), (
+        groups = _find_all_groups(section, "lane-group")
+        assert len(groups) == 2, theme
+        for group in groups:
+            assert "D1-D8" in group or "D9-D16" in group, theme
+            readout_blocks = _find_all_groups(group, "bus-readout")
+            assert len(readout_blocks) == 1, theme
+            chips = re.findall(r"<text[^>]*>([^<]*)</text>", readout_blocks[0])
+            assert len(chips) >= 3, theme
+            for chip in chips:
+                assert chip == UNKNOWN_CELL or re.fullmatch(r"0x[0-9A-F]{1,2}", chip), (
                     theme,
-                    cell,
+                    chip,
                 )
+
+
+def test_group_bracket_ties_members_to_the_readout(mockup_html: str) -> None:
+    """The group bracket: within each lane-group element the hex readout
+    row rides ABOVE its member lanes (document order), the bracket device
+    that ties members to their group's values."""
+    for theme, section in _themes(mockup_html).items():
+        groups = _find_all_groups(section, "lane-group")
+        assert len(groups) == 2, theme
+        for group in groups:
+            readout = group.find('class="bus-readout"')
+            first_member = group.find('class="lane-trace"')
+            assert -1 < readout < first_member, theme
+
+
+def test_time_axis_carries_cursors_trigger_and_delta(mockup_html: str) -> None:
+    """The time axis: X1/X2 cursor markers and the T trigger marker on the
+    axis, the delta readout in the context strip."""
+    for theme, section in _themes(mockup_html).items():
+        axis_blocks = _find_all_groups(section, "time-axis")
+        assert len(axis_blocks) == 1, theme
+        axis_text = " ".join(re.findall(r"<text[^>]*>([^<]*)</text>", axis_blocks[0]))
+        for marker in ("X1", "X2", "T"):
+            assert marker in axis_text, (theme, marker)
+        assert "Δt X1→X2" in section, theme
+        assert re.search(r"Δt X1→X2 [0-9.]+ µs", section), theme
+
+
+def test_decode_annotations_align_under_the_waveform(mockup_html: str) -> None:
+    """Decoded transaction chips ride the SAME plot grid as the lanes:
+    every decoder row is inside the single lanes <svg>, beneath the lane
+    traces (document order), with hex field chips."""
+    for theme, section in _themes(mockup_html).items():
+        svg_match = re.search(
+            r'<svg class="lanes-plot"[^>]*>(.*?)</svg>', section, re.DOTALL
+        )
+        assert svg_match, theme
+        svg = svg_match.group(1)
+        assert svg.count('data-lane-kind="decoder"') == 3, theme
+        last_trace = svg.rfind('class="lane-trace"')
+        for decoder_match in re.finditer(
+            r'<g data-lane-kind="decoder"[^>]*>', svg
+        ):
+            assert decoder_match.start() > last_trace, theme
+        decoder_blocks = [
+            _extract_group(svg, m.start())
+            for m in re.finditer(r'<g data-lane-kind="decoder"', svg)
+        ]
+        texts = re.findall(r"<text[^>]*>([^<]*)</text>", "".join(decoder_blocks))
+        assert any(re.fullmatch(r"0x[0-9A-F]{2}", t) for t in texts), theme
+
+
+def test_capture_context_strip(mockup_html: str) -> None:
+    """The capture-context strip: acquired/drawn counts, the rate and the
+    capture-time basis."""
+    for theme, section in _themes(mockup_html).items():
+        assert re.search(r"[0-9,]+ samples acquired", section), theme
+        assert re.search(r"→ [0-9,]+ drawn", section), theme
+        assert "1 MHz" in section, theme
+        assert "capture time" in section, theme
 
 
 def test_arm_control_is_a_staging_pair(mockup_html: str) -> None:
