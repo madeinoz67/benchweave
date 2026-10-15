@@ -1,0 +1,95 @@
+{
+  "contract_version": "0.3.1",
+  "descriptor_sha256": "98205b1c9d7c0cb2bbeb8296586ac7822e2edab956872d93f8c109fbe84e102b",
+  "targets": [
+    {
+      "id": "capture",
+      "kind": "dataset",
+      "action_id": "otdp.logic_analyser.fetch/1.0.0",
+      "profile_ids": [
+        "otdp.logic_analyser/1.0.0"
+      ],
+      "measurement_schema_id": "urn:otdp:measurement:0.2.3",
+      "variables": [
+        {
+          "id": "t",
+          "type": "number",
+          "unit": "s",
+          "shape": "vector",
+          "axis_role": "x"
+        },
+        {
+          "id": "d0",
+          "type": "string",
+          "unit": null,
+          "shape": "vector"
+        },
+        {
+          "id": "d1",
+          "type": "string",
+          "unit": null,
+          "shape": "vector"
+        }
+      ]
+    },
+    {
+      "id": "decode",
+      "kind": "dataset",
+      "action_id": "otdp.logic_analyser.decode/1.0.0",
+      "profile_ids": [
+        "otdp.logic_analyser/1.0.0"
+      ],
+      "measurement_schema_id": "urn:otdp:measurement:0.2.3",
+      "variables": [
+        {
+          "id": "t",
+          "type": "number",
+          "unit": "s",
+          "shape": "vector",
+          "axis_role": "x"
+        },
+        {
+          "id": "d0",
+          "type": "string",
+          "unit": null,
+          "shape": "vector"
+        },
+        {
+          "id": "d1",
+          "type": "string",
+          "unit": null,
+          "shape": "vector"
+        }
+      ]
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "action_id": "otdp.logic_analyser.configure/1.0.0",
+      "profile_ids": [
+        "otdp.logic_analyser/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:logic_analyser.configure:1.0.0:input",
+      "schema_asset_id": "settings/configure.schema.json",
+      "preset_asset_ids": []
+    },
+    {
+      "id": "arm",
+      "kind": "procedure",
+      "action_id": "otdp.logic_analyser.arm/1.0.0",
+      "profile_ids": [
+        "otdp.logic_analyser/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:logic_analyser.arm:1.0.0:input"
+    },
+    {
+      "id": "abort",
+      "kind": "procedure",
+      "action_id": "otdp.logic_analyser.abort/1.0.0",
+      "profile_ids": [
+        "otdp.logic_analyser/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:logic_analyser.abort:1.0.0:input"
+    }
+  ]
+}

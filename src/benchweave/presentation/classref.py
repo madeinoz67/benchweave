@@ -1001,6 +1001,7 @@ def _assemble_triple(
     actions: Mapping[str, Any],
     catalog_actions: Mapping[str, Any],
     corpus: Path,
+    decoder_docs: Mapping[str, bytes] | None,
 ) -> DerivedAttachment:
     """The derived triple (the SDK expander's ``_finish`` assembly, minus
     the SDK-side surfaces the gateway does not consume — the expectation
@@ -1024,6 +1025,25 @@ def _assemble_triple(
         page_for_slot,
         merged["expect"]["controls"],
     )
+    # RC-4's decode_annotated overlay: the annotation form derives the
+    # same pinned-decoder lanes (same code surface); its coverage rides
+    # them. The plan row demotes the action to L4 on the plot page — it
+    # renders through the decoder lanes, never as a bare control.
+    plot_page = next(
+        (str(page["id"]) for page in merged["pages"] if page.get("plot")),
+        "",
+    )
+    for urn in actions:
+        if urn.split("/")[0].rsplit(".", 1)[-1] != "decode_annotated":
+            continue
+        if descriptor.get("decoders") and plot_page:
+            plan[urn] = {
+                "level": "L4",
+                "page": plot_page,
+                "fields": [],
+                "declared_deviation": False,
+                "rendered_by": "decoder annotation lanes",
+            }
     return _assemble_documents(
         descriptor,
         descriptor_raw,
@@ -1034,6 +1054,7 @@ def _assemble_triple(
         catalog_actions,
         plan,
         corpus,
+        decoder_docs,
     )
 
 
@@ -1047,6 +1068,7 @@ def _assemble_documents(
     catalog_actions: Mapping[str, Any],
     plan: dict[str, dict[str, Any]],
     corpus: Path,
+    decoder_docs: Mapping[str, bytes] | None,
 ) -> DerivedAttachment:
     """The document assembly (the SDK expander's ``_finish`` port):
     bindings, targets, pages, assets, the layout block and the triple,
@@ -1103,13 +1125,57 @@ def _assemble_documents(
     if (
         (decode_declared or decode_annotated_urn)
         and descriptor.get("decoders")
+        and decoder_docs is not None
     ):
         # The SDK resolves decoder documents from descriptor-relative
-        # files; the gateway's equivalent is the admission store, and a
-        # pin the store cannot resolve skips the decoder (the SDK's own
-        # unreadable-document arm). The F1/F2 fixtures carry none.
-        for _pin in descriptor["decoders"]:
-            continue
+        # files; the gateway's equivalent is the admission store (keyed
+        # by the pins' digests), and a pin the store cannot resolve skips
+        # the decoder (the SDK's own unreadable-document arm).
+        for pin in descriptor["decoders"]:
+            raw = decoder_docs.get(str(pin.get("sha256", "")))
+            if raw is None:
+                continue
+            try:
+                document = json.loads(raw)
+                if not isinstance(document, dict):
+                    # The SDK's expander crashes on a non-object decoder
+                    # document (its check-ui gates it at authoring time);
+                    # the gateway's only gate is this derivation, so a
+                    # non-object joins the unreadable arm — never a 500.
+                    raise ValueError("decoder document is not an object")
+                line_ids = [
+                    str(row.get("id"))
+                    for row in (
+                        document.get("optional_channels")
+                        or document.get("channels")
+                        or []
+                    )
+                    if isinstance(row, dict) and row.get("id")
+                ]
+            except ValueError:
+                line_ids = []
+            if not line_ids or len(line_ids) > len(lanes):
+                continue
+            sources = [row["id"] for row in lanes[: len(line_ids)]]
+            settings = {
+                str(line): source
+                for line, source in zip(line_ids, sources, strict=False)
+            }
+            decoder_lanes.append(
+                {
+                    "id": f"decode-{pin['id']}",
+                    "label": str(document.get("name", pin["id"])),
+                    "decoder": str(pin["id"]),
+                    "settings": settings,
+                    "source_channel_ids": sources,
+                    "binding_id": decode_key,
+                }
+            )
+    if decoder_lanes and decode_key and not decode_declared:
+        # Annotation-form lanes with no decode declaration bind the capture
+        # dataset binding (no decode target exists to carry them).
+        for lane_row in decoder_lanes:
+            lane_row["binding_id"] = capture_binding_id
     if decode_key and decode_declared:
         targets.append(
             {
@@ -1213,6 +1279,19 @@ def _assemble_documents(
                 "required": True,
             }
         )
+    if decoder_lanes and decode_key and capture_key:
+        # Decoder lanes name the decode dataset binding on the plot's page
+        # (the other-action rule): the lanes render there even when the
+        # reference's own page template did not list the decode slot.
+        plot_page_id = next(
+            (str(row["id"]) for row in merged["pages"] if row.get("plot")),
+            None,
+        )
+        for page in pages_out:
+            if plot_page_id is not None and page["id"] == plot_page_id:
+                if decode_key not in page["bindings"]:
+                    page["bindings"].append(decode_key)
+                break
     plots: list[dict[str, Any]] = []
     for page in pages_out:
         template = next(
@@ -1302,6 +1381,7 @@ def derive_attachment(
     corpus: Path,
     vendor_catalogs: Mapping[str, bytes] | None = None,
     references_override: list[dict[str, Any]] | None = None,
+    decoder_docs: Mapping[str, bytes] | None = None,
 ) -> DerivedAttachment:
     """Expand (descriptor × reference) into the derived attachment triple.
 
@@ -1312,7 +1392,11 @@ def derive_attachment(
     ``no-attachment`` absence (B3), never a derivation.
 
     ``references_override`` exists for the refusal arms that mutate a
-    reference document in tests; production callers never pass it."""
+    reference document in tests; production callers never pass it.
+    ``decoder_docs`` maps the descriptor's decoder pins' digests to
+    admitted bytes (the composition's resolution, mirroring
+    ``vendor_catalogs``); ``None`` is the SDK's no-descriptor-path
+    posture — no decoder resolution, no lanes."""
     descriptor = json.loads(descriptor_raw)
     if references_override is not None:
         references = [
@@ -1404,6 +1488,7 @@ def derive_attachment(
         actions,
         catalog_actions,
         corpus,
+        decoder_docs,
     )
 
 

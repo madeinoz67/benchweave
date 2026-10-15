@@ -38,10 +38,12 @@ def _vendor_catalogs() -> dict[str, bytes]:
 
 def _derive(tag: str) -> DerivedAttachment:
     descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
+    decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
     return derive_attachment(
         descriptor_raw,
         corpus=corpus_root(),
         vendor_catalogs=_vendor_catalogs(),
+        decoder_docs={hashlib.sha256(decoder_raw).hexdigest(): decoder_raw},
     )
 
 
@@ -51,10 +53,11 @@ def _serialize(document: dict[str, Any]) -> bytes:
 
 class TestParityB8:
     def test_f1_f2_triples_byte_equal_committed_sdk_fixtures(self) -> None:
-        """B8 (2/2): the gateway derivation's canonical-JSON triples equal
-        the committed SDK-expansion fixtures byte for byte — the two
-        derivations agree over the same corpus reference bytes."""
-        for tag in ("f1", "f2"):
+        """B8 (3/3 after the decoder fold): the gateway derivation's
+        canonical-JSON triples equal the committed SDK-expansion fixtures
+        byte for byte — the two derivations agree over the same corpus
+        reference bytes, decoder-carrying descriptors included."""
+        for tag in ("f1", "f2", "f1-da"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -105,6 +108,58 @@ class TestParityB8:
                 firmware="1.0",
             )
             assert report.valid, report.findings
+
+
+class TestDecoderDerivation:
+    """The decoder behaviors the derivation mirrors from the SDK expander
+    (v0.14.0, read-not-imported — REG-4): pinned-decoder lane rows, the
+    annotation form's capture rebinding, and the decode binding's page
+    append on the plot page."""
+
+    def test_decoder_lanes_derive_from_admitted_decoder_documents(self) -> None:
+        derived = _derive("f1-da")
+        plot_page = next(page for page in derived.manifest["pages"] if page.get("plots"))
+        plot = plot_page["plots"][0]
+        lanes = plot["decoder_lanes"]
+        assert len(lanes) == 1, lanes
+        row = lanes[0]
+        assert row["id"] == "decode-uart"
+        assert row["label"] == "UART"
+        assert row["decoder"] == "uart"
+        assert row["settings"] == {"rx": "d0", "tx": "d1"}
+        assert row["source_channel_ids"] == ["d0", "d1"]
+        # decode is DECLARED on f1-da: the lanes name the decode binding.
+        assert row["binding_id"] == "decode"
+        # The plot page carries the decode binding (the page append).
+        assert plot_page["bindings"] == ["capture", "decode"]
+
+    def test_annotation_only_descriptor_rebinds_lanes_to_capture(self) -> None:
+        """The annotation form (decode_annotated declared, the plain decode
+        action absent) binds the lanes to the CAPTURE dataset binding — no
+        decode target exists to carry them — while the page append still
+        lists the decode slot key (the SDK's own emission, mirrored)."""
+        raw = json.loads((FIXTURES / "descriptor-f1-da.json").read_bytes())
+        del raw["actions"]["otdp.logic_analyser.decode/1.0.0"]
+        derived = _derive_from_document(raw)
+        plot_page = next(page for page in derived.manifest["pages"] if page.get("plots"))
+        lanes = plot_page["plots"][0]["decoder_lanes"]
+        assert [row["binding_id"] for row in lanes] == ["capture"]
+        binding_ids = {row["id"] for row in derived.manifest["bindings"]}
+        assert "decode" not in binding_ids
+        assert plot_page["bindings"] == ["capture", "decode"]
+
+    def test_unresolvable_decoder_pin_skips_the_decoder(self) -> None:
+        """A pin the resolution source cannot serve skips that decoder (the
+        SDK's unreadable-document arm), never a partial lane."""
+        descriptor_raw = (FIXTURES / "descriptor-f1-da.json").read_bytes()
+        derived = derive_attachment(
+            descriptor_raw,
+            corpus=corpus_root(),
+            vendor_catalogs=_vendor_catalogs(),
+            decoder_docs={},
+        )
+        plot_page = next(page for page in derived.manifest["pages"] if page.get("plots"))
+        assert plot_page["plots"][0]["decoder_lanes"] == []
 
 
 class TestSelection:
@@ -289,9 +344,11 @@ def _derive_from_document(
     """A raw-bytes derivation with the vendor catalog admitted, for the
     refusal arms that mutate the descriptor document."""
     descriptor_raw = json.dumps(document).encode()
+    decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
     return derive_attachment(
         descriptor_raw,
         corpus=corpus_root(),
         vendor_catalogs=_vendor_catalogs(),
+        decoder_docs={hashlib.sha256(decoder_raw).hexdigest(): decoder_raw},
         references_override=references_override,
     )

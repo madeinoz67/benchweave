@@ -739,6 +739,7 @@ def _classref_fallback(
                 if vendor_catalogs is not None
                 else _admitted_vendor_catalogs(content, descriptor)
             ),
+            decoder_docs=_admitted_decoder_docs(content, descriptor),
         )
     except ClassRefusal as refusal:
         return PresentationState(
@@ -830,6 +831,23 @@ def _admitted_vendor_catalogs(
         identifier = str(row.get("id", ""))
         if identifier.startswith("urn:otdp:"):
             continue
+        pin = str(row.get("sha256", ""))
+        document = content.get_document(pin)
+        if document is not None:
+            resolved[pin] = bytes(document["raw_bytes"])
+    return resolved
+
+
+def _admitted_decoder_docs(
+    content: ContentStore, descriptor: Mapping[str, Any]
+) -> dict[str, bytes]:
+    """The descriptor's pinned decoder documents, resolved from the
+    ADMISSION store by digest (the derivation's ``decoder_docs`` seam;
+    the vendor-catalog resolution's shape). A pin the store cannot serve
+    is absent from the map — the derivation's own unreadable-document
+    arm skips it."""
+    resolved: dict[str, bytes] = {}
+    for row in descriptor.get("decoders") or []:
         pin = str(row.get("sha256", ""))
         document = content.get_document(pin)
         if document is not None:
