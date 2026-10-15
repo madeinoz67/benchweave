@@ -521,15 +521,10 @@ def compose_device_presentation(
     descriptor = json.loads(descriptor_raw)
     identity = descriptor.get("identity", {})
     firmware_values = identity.get("supported_firmware") or []
-    layout_finding = _layout_invalid_finding(manifest, corpus_root())
-    if layout_finding is not None:
-        return PresentationState(
-            envelope_sha256=envelope_row["sha256"],
-            valid=False,
-            findings=(layout_finding,),
-            pages=(),
-            absence=None,
-        )
+    # Canonical validation runs FIRST: the layout degrade rule renders the
+    # finding list it already renders for invalid attachments — a
+    # dual-invalid manifest renders canonical + layout findings, never the
+    # layout finding alone (adversary lane A F4).
     report = validate_attachment(
         envelope_row["raw_bytes"],
         descriptor_raw=descriptor_raw,
@@ -543,6 +538,18 @@ def compose_device_presentation(
         # runtime firmware value; None when the descriptor lists none).
         firmware=str(firmware_values[0]) if firmware_values else None,
     )
+    layout_finding = _layout_invalid_finding(manifest, corpus_root())
+    if layout_finding is not None:
+        return PresentationState(
+            envelope_sha256=envelope_row["sha256"],
+            valid=False,
+            findings=tuple(
+                (finding.code, finding.path, finding.message)
+                for finding in report.findings
+            ) + (layout_finding,),
+            pages=(),
+            absence=None,
+        )
     unavailable = set(report.unavailable_pages)
     targets = {
         str(row["id"]): row

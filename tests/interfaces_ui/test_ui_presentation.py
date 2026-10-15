@@ -1372,6 +1372,64 @@ def test_invalid_layout_block_renders_classref_layout_invalid(
     )
 
 
+def test_dual_invalid_manifest_renders_canonical_and_layout_findings(
+    gateway: SimpleNamespace,
+) -> None:
+    """A manifest invalid BOTH canonically and in its layout block renders
+    the full finding list (canonical + layout) — the layout check must not
+    mask the canonical findings (adversary lane A F4)."""
+    descriptor_raw, _document = _descriptor(gateway)
+    descriptor_digest = hashlib.sha256(descriptor_raw).hexdigest()
+    manifest = {
+        "contract_version": _PLUGIN_UI,
+        "plugin_id": json.loads(descriptor_raw)["id"],
+        "descriptor_sha256": descriptor_digest,
+        "bindings": 17,
+        "pages": [
+            {
+                "id": "readings",
+                "title": "Readings",
+                "kind": "readings",
+                "bindings": [],
+                "required": True,
+            }
+        ],
+        "extensions": {
+            "plugin-ui-class-reference:layout": {
+                "contract_version": "9.9.9",
+                "pages": [],
+            }
+        },
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "targets": [],
+    }
+    envelope = {
+        "contract_version": _PLUGIN_UI,
+        "descriptor_sha256": descriptor_digest,
+        "resource_root": "ui",
+        "manifest": {"path": "manifest.json", "sha256": hashlib.sha256(manifest_raw).hexdigest()},
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{_PLUGIN_UI}"
+    for raw, parsed, schema in (
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+    ):
+        gateway.content.put_document(raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO)
+    state = compose_device_presentation(gateway.content, descriptor_raw)
+    codes = [code for code, _path, _message in state.findings]
+    assert state.valid is False
+    assert state.pages == ()
+    assert "classref_layout_invalid" in codes, codes
+    assert len(codes) >= 2, (
+        "the layout finding must not mask the canonical findings"
+    )
+
+
 def test_populate_tiles_reaches_section_tiles(
     tmp_path: Path,
 ) -> None:
