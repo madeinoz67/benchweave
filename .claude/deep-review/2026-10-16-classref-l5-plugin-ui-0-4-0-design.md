@@ -180,6 +180,15 @@ note: rows are honest windows; add a row only with its citation).
 
 ## 4. The corpus-motion census (exact bytes)
 
+> **Addendum (2026-10-16, refute fold — F2; ruling recorded, no code change in
+> this fold):** the SDK bullet below says "`_build_layout` … (const still
+> emits no node)". RULED otherwise post-refute: the landed contract row (§E.1
+> `select`), the renderer (the const/single-option arm renders the read-only
+> fixed display), and the device-developer guide all say a const renders the
+> fixed display — the parenthetical is prose against machine sources and
+> loses (prose defers to machine sources). Leg 2 emits select nodes for
+> literal consts; leg 2's brief carries the ruling.
+
 Gateway repo, `standards/`:
 
 - **Added** `standards/plugin-ui/0.4.0/`: `ui-manifest.schema.json`,
@@ -295,6 +304,19 @@ SDK repo:
 
 ## 5. The merge-order choreography (L1-proven shape)
 
+> **Addendum (2026-10-16, refute fold — F4):** §5.1's "The wincore ratchet
+> needs no motion" is true for the CORE set (the W1 keying; every row this
+> branch touched carries `core: 0`) and FALSE for totals — the ratchet
+> manifest also pins per-file test totals and `--check` refuses total drift,
+> so the ratchet DID move. Measured on this branch (base `6d94ade0` → the
+> refute-fold tip; JSON-parsed manifest diff, five file rows):
+> `docs/internal/ui-contract.md` 196→200,
+> `tests/interfaces_ui/test_ui_presentation.py` 38→40,
+> `tests/ui_html/test_browser_patterns.py` 34→42,
+> `tests/ui_html/test_input_trio.py` new (7), `tests/ui_html/test_roles.py`
+> 13→14. The surviving discipline: any test-count motion is a visible
+> `win_core_manifest.py --refresh` diff, `--check`-green at push.
+
 **Owner-fixed landing order: SDK release → gateway pointer → #465.** The structural
 constraint set: `check-sdk-standards`'s served-set comparison is bidirectional and
 exact (`src/benchweave/standards/check.py:276-288` — `served_set_drift` fires both
@@ -367,6 +389,15 @@ treats the tripwire hit as a leak; the governor pass is mandatory (rubric Step-1
   layout consumption stays a read-only projection (CON-5 L4 amendment's terms).
 
 ## 7. Review tier and Step-1 keyword scan (#254)
+
+> **Addendum (2026-10-16, refute fold — F5):** the tier rule's keyword scan
+> self-referentially captures this record's own §7 prose in the branch diff —
+> the scan table itself names `sha256`, so landing the record makes the
+> diff-text rule fire on prose. PR-1 re-derives Tier 3 by the letter;
+> substance covered — the refute lane ran as the second independent
+> reviewer. The class is named so a future scan reads those hits as
+> self-capture (the record's own scan table), not as a digest or lock
+> surface.
 
 **Tier call (per slice):**
 - **PR-1 (renderer): Tier 2** — rule: "Any other change to production or test code
