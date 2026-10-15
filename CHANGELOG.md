@@ -35,6 +35,9 @@ All notable changes to this project will be documented in this file.
 - Nested layout sections keep the reading-tile join alive (B1)
 - An unserved corpus fails open to the absence note (B2)
 - The panel pin guard has no None-corpus exemption (B5)
+- Select renders the honest empty display, never a crash (F3, gateway #463)
+- The select const arm keeps its own labelling; contract row + coverage (F1, gateway #463)
+- Refresh the docs literal baseline for the trio's 0.3.0 sentence (battery catch)
 
 ### Documentation
 
@@ -86,6 +89,10 @@ All notable changes to this project will be documented in this file.
 - L4 gateway-runtime landing — class-reference consumption, fallback, panels
 - Fold owner row-call dispositions into the L4 record (§6)
 - The CON-5 composition-inventory amendment + the presentation row (B4)
+- L5 plugin-ui 0.4.0 — the §E.1 input trio (slot L5, issue #463)
+- The input trio for device developers — STE register (#463)
+- L5 record addenda — the refute rulings and corrections (F4, F5, F2; gateway #463)
+- Refresh the ui-html provenance stamps to 0.3.0 — the readiness audit's M2 (banner version rides PR-1's ui-html bump) (#463)
 
 ### Features
 
@@ -119,6 +126,7 @@ All notable changes to this project will be documented in this file.
 - Layout-block consumption on the production host (L4 capability b)
 - The gateway-owned panel registry (L4 capability c)
 - The derivation mirrors the SDK decoder behaviors (F2)
+- The L5 input trio — renderer partials, contract rows, gateway read-only arms (PR-1)
 
 ### Miscellaneous
 
