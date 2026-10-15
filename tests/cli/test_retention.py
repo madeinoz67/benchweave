@@ -850,6 +850,7 @@ def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
     _assert_fw5_property(rows)
 
 
+@pytest.mark.wincore
 def test_fw5_no_tzset_platform_takes_the_guard_and_keeps_the_property(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -865,6 +866,7 @@ def test_fw5_no_tzset_platform_takes_the_guard_and_keeps_the_property(
     _assert_fw5_property(rows)
 
 
+@pytest.mark.wincore
 def test_fw5_parse_utc_sabotage_reds_in_both_tzset_modes(
     tmp_path: Path,
 ) -> None:

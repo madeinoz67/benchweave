@@ -82,6 +82,7 @@ def _build(out: Path) -> None:
 
 
 @requires_signing_keys
+@pytest.mark.wincore
 def test_builder_is_deterministic(tmp_path: Path) -> None:
     out = tmp_path / "registry"
     _build(out)

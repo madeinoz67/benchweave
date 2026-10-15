@@ -71,6 +71,7 @@ def test_canonical_json_is_sorted_compact_and_lf_terminated() -> None:
     assert canonical_json({"b": 1, "a": [2, 3]}) == b'{"a":[2,3],"b":1}\n'
 
 
+@pytest.mark.wincore
 def test_export_is_byte_identical_across_runs(tmp_path: Path) -> None:
     first, second = tmp_path / "a", tmp_path / "b"
     export_bundle(ROOT, first)
@@ -521,6 +522,7 @@ def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     ).read_bytes()
 
 
+@pytest.mark.wincore
 def test_export_refuses_a_separator_spoofed_normative_row(tmp_path: Path) -> None:
     """Issue #238: a normative row that dodges the ``standards/`` prefix
     dodges the corpus-pin second authority, and the basename mapping ships

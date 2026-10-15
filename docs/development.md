@@ -144,11 +144,16 @@ Change propagation, end to end:
   from `docs/internal/ui-contract.md` via `testpaths` since the G1e
   cutover. A **timing** job runs the real-paced, marker-selected set
   (`pytest -q -m timing`) serialized on its own fresh VM. A **windows** job
-  runs the gates selection on windows-latest as an evidence lane
-  (issue #207). In slice 1, a test red is carried by the warning
-  annotation, the job summary and the junitxml artifact. It does not block
-  merges. Setup reds block. A **systemd** template-verification job runs on
-  Linux. The former **ui** Node job was deleted at the G1e cutover with
+  runs the cross-platform core subset (`-m wincore`, issue #471) on
+  windows-latest as an evidence lane — W1 platform-branching units, W2
+  platform-sensitive semantics, W3 the digest canary; the selection is
+  ratcheted by `tests/win_core_manifest.json`, checked by a contract test
+  in the default run. The evidence posture is unchanged: a test red is
+  carried by the warning annotation, the job summary and the junitxml
+  artifact. It does not block merges. Setup reds block. A weekly
+  **windows-full** job runs the full gates selection on a schedule (R1)
+  so the complement keeps Windows evidence. A **systemd**
+  template-verification job runs on Linux. The former **ui** Node job was deleted at the G1e cutover with
   the React renderer it gated.
 - **Device plugins** checks independent plugin projects per manufacturer
   and model, in their own locked environments.

@@ -180,6 +180,7 @@ def _run(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 # --- D1 (wheel arm): a packaged posture cannot resolve a dev head -----------------
 
 
+@pytest.mark.wincore
 def test_d1_wheel_posture_refuses_by_name_never_falling_back(tmp_path: Path) -> None:
     """D1's wheel arm: with the head's bytes ON DISK but no git object store
     (the packaged/wheel posture — a wheel physically cannot carry one), the
@@ -199,6 +200,7 @@ def test_d1_wheel_posture_refuses_by_name_never_falling_back(tmp_path: Path) -> 
     )
 
 
+@pytest.mark.wincore
 def test_d1_wheel_posture_never_resolves_the_released_row(tmp_path: Path) -> None:
     """The structural half of never-fallback: a dev opt-in that cannot
     resolve leaves NO lock behind — the resolution raises rather than
@@ -256,6 +258,7 @@ def test_d2_dev_pin_locks_with_content_identity(tmp_path: Path) -> None:
     assert resolution.document["directory"] == f"standards/otdp/{HEAD_LABEL}"
 
 
+@pytest.mark.wincore
 def test_d2_pre_edit_lock_validates_then_the_edit_refuses_naming_the_digest(
     tmp_path: Path,
 ) -> None:
@@ -285,6 +288,7 @@ def test_d2_pre_edit_lock_validates_then_the_edit_refuses_naming_the_digest(
     assert moved_digest in moved.stderr, "the refusal must name the head's current digest"
 
 
+@pytest.mark.wincore
 def test_low5_upgrade_lock_runs_the_dev_head_state_check(tmp_path: Path) -> None:
     """LOW 5 (issue #288): ``upgrade_lock`` skipped ``_dev_head_state`` —
     a package carrying a dev row whose head MOVED under the pin re-locked
@@ -308,6 +312,7 @@ def test_low5_upgrade_lock_runs_the_dev_head_state_check(tmp_path: Path) -> None
     assert "device-classes.md" in message
 
 
+@pytest.mark.wincore
 def test_d2_repinning_at_the_moved_sha_heals_the_drift(tmp_path: Path) -> None:
     """The remediation the refusal names: commit the head's new state, move
     the opt-in to the new sha, re-pin — the drift refusal clears and the lock
@@ -475,6 +480,7 @@ def test_the_interval_block_still_refuses_dev_shapes_pointing_at_opt_in(
 # --- refute fold (lane A): the always-on check lane sees dev drift -----------------
 
 
+@pytest.mark.wincore
 def test_check_lane_refuses_a_moved_dev_head_naming_both_digests(
     tmp_path: Path,
 ) -> None:
@@ -498,6 +504,7 @@ def test_check_lane_refuses_a_moved_dev_head_naming_both_digests(
     assert hashlib.sha256(head_file.read_bytes()).hexdigest() in drift[0]
 
 
+@pytest.mark.wincore
 def test_an_added_head_file_trips_drift(tmp_path: Path) -> None:
     """Lane A's C-arm: a file ADDED to the head after locking is drift the
     lock cannot name — the head-state check must enumerate the head

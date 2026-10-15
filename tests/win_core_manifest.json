@@ -1,0 +1,948 @@
+{
+  "files": {
+    "docs/internal/ui-contract.md": {
+      "core": 0,
+      "total": 196
+    },
+    "tests/architecture/test_plugin_ui_class_reference_contracts.py": {
+      "core": 0,
+      "total": 74
+    },
+    "tests/architecture/test_plugin_ui_contracts.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/cli/test_atrest.py": {
+      "core": 32,
+      "total": 32
+    },
+    "tests/cli/test_commands.py": {
+      "core": 12,
+      "total": 12
+    },
+    "tests/cli/test_diagnose.py": {
+      "core": 41,
+      "total": 41
+    },
+    "tests/cli/test_dispose.py": {
+      "core": 0,
+      "total": 50
+    },
+    "tests/cli/test_env_file.py": {
+      "core": 25,
+      "total": 25
+    },
+    "tests/cli/test_lifecycle.py": {
+      "core": 50,
+      "total": 50
+    },
+    "tests/cli/test_live.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/cli/test_render.py": {
+      "core": 0,
+      "total": 27
+    },
+    "tests/cli/test_report.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/cli/test_retention.py": {
+      "core": 2,
+      "total": 60
+    },
+    "tests/cli/test_serve.py": {
+      "core": 0,
+      "total": 27
+    },
+    "tests/cli/test_ui_login_cmd.py": {
+      "core": 0,
+      "total": 25
+    },
+    "tests/contract/test_adapter_config_vectors.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/contract/test_baseline.py": {
+      "core": 0,
+      "total": 19
+    },
+    "tests/contract/test_decoder_declarations.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/contract/test_docs_site_standards_cli.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/contract/test_docs_site_versioned.py": {
+      "core": 0,
+      "total": 37
+    },
+    "tests/contract/test_dps150_lock.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/contract/test_fault_matrix.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/contract/test_host_abi.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/contract/test_plugin_descriptor_dialect.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/contract/test_publishing_baseline.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/contract/test_publishing_design_supersession.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/contract/test_read_side_effect_vectors.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/contract/test_registry_admission.py": {
+      "core": 0,
+      "total": 20
+    },
+    "tests/contract/test_registry_authenticity.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/contract/test_registry_configuration_role.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/contract/test_registry_fixtures.py": {
+      "core": 1,
+      "total": 5
+    },
+    "tests/contract/test_registry_resolver.py": {
+      "core": 0,
+      "total": 20
+    },
+    "tests/contract/test_registry_review_block.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/contract/test_registry_schemas.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/contract/test_registry_semantics.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/contract/test_registry_unsigned.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/contract/test_sign_release.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/contract/test_sim_layout.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/contract/test_sim_plugins.py": {
+      "core": 0,
+      "total": 33
+    },
+    "tests/contract/test_sim_psu_streaming.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/contract/test_sim_scope_plugin.py": {
+      "core": 0,
+      "total": 48
+    },
+    "tests/contract/test_website_plugins_teaser.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/contract/test_website_stamps.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/contract/test_win_core_partition.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/contracts/test_architecture.py": {
+      "core": 0,
+      "total": 72
+    },
+    "tests/contracts/test_manifest_version_discovery.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/control/test_adapter_configuration.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/control/test_capture_admission.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/control/test_capture_projection.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/control/test_corpus_seam.py": {
+      "core": 1,
+      "total": 9
+    },
+    "tests/control/test_documents_cross_constraint.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/control/test_documents_derivation.py": {
+      "core": 0,
+      "total": 17
+    },
+    "tests/control/test_documents_devpin.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/control/test_documents_fullform.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/control/test_documents_perpin.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/control/test_documents_provider.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/control/test_execution_pin.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/control/test_executor_derivation.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/control/test_executor_dispatch_composition.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/control/test_normative_seam.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/control/test_range_narrowing.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/control/test_read_side_effect.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/control/test_record_lane.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/control/test_retention_policy.py": {
+      "core": 0,
+      "total": 17
+    },
+    "tests/control/test_run_pins.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/control/test_sample_freshness.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/control/test_stream_polling.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/control/test_unattended_grant.py": {
+      "core": 0,
+      "total": 27
+    },
+    "tests/faults/test_capture_forensics.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/faults/test_capture_recovery.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/faults/test_derivation_faults.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/faults/test_disposition_faults.py": {
+      "core": 3,
+      "total": 5
+    },
+    "tests/faults/test_lifecycle_faults.py": {
+      "core": 7,
+      "total": 7
+    },
+    "tests/faults/test_protection.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/faults/test_recovery_sweep_faults.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/faults/test_state_recovery.py": {
+      "core": 1,
+      "total": 13
+    },
+    "tests/faults/test_worker_drain_faults.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/integration/test_adapter_configuration_loading.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/integration/test_backup_restore.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/integration/test_capture_run.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/integration/test_capture_sequential_model.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/integration/test_clean_install.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/integration/test_cross_instance_continuity.py": {
+      "core": 0,
+      "total": 66
+    },
+    "tests/integration/test_demo_lattice_streaming.py": {
+      "core": 0,
+      "total": 1
+    },
+    "tests/integration/test_event_recovery.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/integration/test_failure_detail.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/integration/test_interface_parity.py": {
+      "core": 0,
+      "total": 54
+    },
+    "tests/integration/test_issue146_e2e.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/integration/test_mcp_baseline.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/integration/test_mcp_fidelity_spike.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/integration/test_mcp_tools.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/integration/test_otdp_loading.py": {
+      "core": 0,
+      "total": 29
+    },
+    "tests/integration/test_poc_acceptance.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/integration/test_procedures.py": {
+      "core": 0,
+      "total": 116
+    },
+    "tests/integration/test_registry_activation.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/integration/test_registry_changes.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/integration/test_registry_dev_publish.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/integration/test_registry_reuse.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/integration/test_rest_routes.py": {
+      "core": 0,
+      "total": 26
+    },
+    "tests/integration/test_run_activation.py": {
+      "core": 0,
+      "total": 43
+    },
+    "tests/integration/test_run_path_provider.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/integration/test_seam_prechecks.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/integration/test_startup_admission_refusal.py": {
+      "core": 0,
+      "total": 1
+    },
+    "tests/integration/test_stream_engine_end_to_end.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/integration/test_takeover.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/integration/test_wheel_dev_exclusion.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/interfaces_ui/test_session_bridges.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/interfaces_ui/test_session_control_tables.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/interfaces_ui/test_ui_admin_apply.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/interfaces_ui/test_ui_admin_browser.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/interfaces_ui/test_ui_admin_inhibited.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/interfaces_ui/test_ui_admin_session_index.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/interfaces_ui/test_ui_admin_submit.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/interfaces_ui/test_ui_browser.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/interfaces_ui/test_ui_control_browser.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/interfaces_ui/test_ui_control_leases.py": {
+      "core": 0,
+      "total": 53
+    },
+    "tests/interfaces_ui/test_ui_control_runs.py": {
+      "core": 0,
+      "total": 40
+    },
+    "tests/interfaces_ui/test_ui_guards.py": {
+      "core": 0,
+      "total": 25
+    },
+    "tests/interfaces_ui/test_ui_login.py": {
+      "core": 0,
+      "total": 17
+    },
+    "tests/interfaces_ui/test_ui_observe.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/interfaces_ui/test_ui_presentation.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/interfaces_ui/test_ui_read_views.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/interfaces_ui/test_ui_readings.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/interfaces_ui/test_ui_refusals.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/interfaces_ui/test_ui_route_mapping.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/interfaces_ui/test_ui_routing.py": {
+      "core": 0,
+      "total": 26
+    },
+    "tests/interfaces_ui/test_ui_runs_browser.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/interfaces_ui/test_ui_stream.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/interfaces_ui/test_ui_stream_gaps.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/sdk/test_adapter_agreement.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/sdk/test_cli_frameworks.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/sdk/test_derivation_agreement.py": {
+      "core": 0,
+      "total": 54
+    },
+    "tests/sdk/test_descriptor_equivalence.py": {
+      "core": 0,
+      "total": 144
+    },
+    "tests/sdk/test_plugin_developer_skill_content.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/sdk/test_presentation_cli.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/sdk/test_presentation_packaging.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/sdk/test_publishing_parity.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/sdk/test_registry_contract.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/sdk/test_scaffold_skills.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/sdk/test_sdk.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/sdk/test_sim_scope_presets.py": {
+      "core": 0,
+      "total": 35
+    },
+    "tests/sdk/test_standards_sync.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/standards/test_check.py": {
+      "core": 0,
+      "total": 36
+    },
+    "tests/standards/test_cross_constraints.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/standards/test_dependency.py": {
+      "core": 0,
+      "total": 86
+    },
+    "tests/standards/test_dependency_policy.py": {
+      "core": 0,
+      "total": 28
+    },
+    "tests/standards/test_dev_pins.py": {
+      "core": 7,
+      "total": 16
+    },
+    "tests/standards/test_execution_promotion.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/standards/test_export.py": {
+      "core": 2,
+      "total": 16
+    },
+    "tests/standards/test_manifest.py": {
+      "core": 0,
+      "total": 54
+    },
+    "tests/standards/test_matrix.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/standards/test_migration_notes.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/standards/test_promotion.py": {
+      "core": 13,
+      "total": 33
+    },
+    "tests/standards/test_provider_claims.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/standards/test_repin.py": {
+      "core": 2,
+      "total": 25
+    },
+    "tests/standards/test_scenarios.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/standards/test_train_window.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/standards/test_why.py": {
+      "core": 0,
+      "total": 23
+    },
+    "tests/standards/test_zero_literal_gate.py": {
+      "core": 4,
+      "total": 55
+    },
+    "tests/test_package.py": {
+      "core": 0,
+      "total": 1
+    },
+    "tests/ui_html/test_artifacts_meta.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/ui_html/test_assertions.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/ui_html/test_browser_patterns.py": {
+      "core": 0,
+      "total": 34
+    },
+    "tests/ui_html/test_classref_page.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/ui_html/test_compositions.py": {
+      "core": 0,
+      "total": 46
+    },
+    "tests/ui_html/test_compositions_mutations.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/ui_html/test_contract_manifest.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/ui_html/test_families.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/ui_html/test_fold_tier3.py": {
+      "core": 0,
+      "total": 17
+    },
+    "tests/ui_html/test_grammar.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/ui_html/test_harness.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/ui_html/test_items.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/ui_html/test_lane_reduction.py": {
+      "core": 0,
+      "total": 6
+    },
+    "tests/ui_html/test_lanes.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/ui_html/test_meta_acceptance.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/ui_html/test_package_boundary.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/ui_html/test_patterns.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/ui_html/test_plot.py": {
+      "core": 0,
+      "total": 34
+    },
+    "tests/ui_html/test_registry.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/ui_html/test_roles.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/ui_html/test_series_colour_proofs.py": {
+      "core": 0,
+      "total": 48
+    },
+    "tests/ui_html/test_styleguide_mockup.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/ui_html/test_templates_packaged.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/ui_html/test_threshold_verbatim.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/ui_html/test_tokens.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/ui_html/test_vendored_assets.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/ui_html/test_vendored_js.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/ui_html/test_version_single_source.py": {
+      "core": 0,
+      "total": 1
+    },
+    "tests/unit/test_app_entry_defaults.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/unit/test_assemble_docs_site.py": {
+      "core": 0,
+      "total": 1
+    },
+    "tests/unit/test_bootstrap_admission.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/unit/test_capture_services.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/unit/test_capture_store.py": {
+      "core": 0,
+      "total": 28
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py": {
+      "core": 6,
+      "total": 36
+    },
+    "tests/unit/test_content_store.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/unit/test_dataset_services.py": {
+      "core": 0,
+      "total": 31
+    },
+    "tests/unit/test_derivation.py": {
+      "core": 0,
+      "total": 99
+    },
+    "tests/unit/test_error_model.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/unit/test_evidence.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/unit/test_gate_wrapper.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/unit/test_identity_tokens.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/unit/test_json_document.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/unit/test_lease_default_limits.py": {
+      "core": 0,
+      "total": 3
+    },
+    "tests/unit/test_operator_acknowledgements.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/unit/test_otdp_bridge.py": {
+      "core": 0,
+      "total": 140
+    },
+    "tests/unit/test_performance.py": {
+      "core": 0,
+      "total": 5
+    },
+    "tests/unit/test_presentation_admission.py": {
+      "core": 0,
+      "total": 11
+    },
+    "tests/unit/test_presentation_contracts.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/unit/test_presentation_digital_lanes.py": {
+      "core": 0,
+      "total": 31
+    },
+    "tests/unit/test_presentation_manifest.py": {
+      "core": 0,
+      "total": 25
+    },
+    "tests/unit/test_presentation_presets.py": {
+      "core": 0,
+      "total": 22
+    },
+    "tests/unit/test_presentation_profiles.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/unit/test_presentation_specimens.py": {
+      "core": 0,
+      "total": 9
+    },
+    "tests/unit/test_protection_receive_time.py": {
+      "core": 0,
+      "total": 10
+    },
+    "tests/unit/test_provider_settings.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/unit/test_provider_transport.py": {
+      "core": 0,
+      "total": 12
+    },
+    "tests/unit/test_run_projection.py": {
+      "core": 0,
+      "total": 2
+    },
+    "tests/unit/test_seam_admin.py": {
+      "core": 0,
+      "total": 21
+    },
+    "tests/unit/test_seam_control.py": {
+      "core": 0,
+      "total": 25
+    },
+    "tests/unit/test_seam_events.py": {
+      "core": 0,
+      "total": 4
+    },
+    "tests/unit/test_seam_observe.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/unit/test_seam_validation.py": {
+      "core": 0,
+      "total": 7
+    },
+    "tests/unit/test_sessions.py": {
+      "core": 0,
+      "total": 16
+    },
+    "tests/unit/test_store_busy_window.py": {
+      "core": 0,
+      "total": 8
+    },
+    "tests/unit/test_store_hold_portable.py": {
+      "core": 5,
+      "total": 5
+    },
+    "tests/unit/test_store_hygiene.py": {
+      "core": 0,
+      "total": 14
+    },
+    "tests/unit/test_store_v2.py": {
+      "core": 0,
+      "total": 13
+    },
+    "tests/unit/test_stream_services.py": {
+      "core": 0,
+      "total": 18
+    },
+    "tests/unit/test_vendoring.py": {
+      "core": 0,
+      "total": 9
+    }
+  },
+  "schema": "benchweave.win-core-manifest/1",
+  "w1_map": {
+    "src/benchweave/cli/atrest.py": [
+      "tests/cli/test_atrest.py"
+    ],
+    "src/benchweave/cli/commands.py": [
+      "tests/cli/test_commands.py"
+    ],
+    "src/benchweave/cli/diagnose.py": [
+      "tests/cli/test_diagnose.py"
+    ],
+    "src/benchweave/cli/env_file.py": [
+      "tests/cli/test_env_file.py"
+    ],
+    "src/benchweave/cli/lifecycle.py": [
+      "tests/cli/test_lifecycle.py"
+    ],
+    "src/benchweave/interfaces/supervision.py": [
+      "tests/cli/test_lifecycle.py"
+    ],
+    "src/benchweave/state/hold.py": [
+      "tests/unit/test_store_hold_portable.py"
+    ],
+    "src/benchweave/supervision.py": [
+      "tests/cli/test_lifecycle.py",
+      "tests/faults/test_lifecycle_faults.py"
+    ]
+  }
+}

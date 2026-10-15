@@ -426,6 +426,7 @@ def _run_script(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.mark.wincore
 def test_black_box_current_gitlink_exits_zero(tmp_path: Path) -> None:
     """Green WITHOUT --remote: the .gitmodules url + pin carry the whole
     declaration (the F2 single-home)."""
@@ -436,6 +437,7 @@ def test_black_box_current_gitlink_exits_zero(tmp_path: Path) -> None:
     assert "::warning::" not in proc.stdout  # pin == latest: window closed
 
 
+@pytest.mark.wincore
 def test_black_box_pin_without_the_mount_reads_drift(tmp_path: Path) -> None:
     """m4 black-box: the mount moved without the pin (or the pin without
     the mount) — red, both SHAs named, the same-commit rule enforced."""
@@ -449,6 +451,7 @@ def test_black_box_pin_without_the_mount_reads_drift(tmp_path: Path) -> None:
     assert "v0.4.1" in combined
 
 
+@pytest.mark.wincore
 def test_black_box_trailing_pin_warns(tmp_path: Path) -> None:
     """The mount/pin sit at v0.3.0 while the remote's latest is v0.4.1 —
     green + the pairing-pending annotation (F3: a walk row reads it)."""
@@ -469,6 +472,7 @@ def test_black_box_trailing_pin_warns(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.wincore
 def test_black_box_sha_pin_declared_train_green(tmp_path: Path) -> None:
     """The era-bind mid-train state the OLD gate reddened by construction:
     a SHA pin whose mount matches — green, with the non-tag warning; and
@@ -562,6 +566,7 @@ def test_fixture_repositories_carry_their_own_git_identity(
 # --- fold wave 2, L-3: the pin is read from HEAD BYTES, not the working tree ---
 
 
+@pytest.mark.wincore
 def test_working_tree_pin_edit_cannot_green_a_committed_red_repo(
     tmp_path: Path,
 ) -> None:
@@ -662,6 +667,7 @@ def test_gitlink_reader_wraps_undecodable_output_as_indeterminate(
 # --- review fold row 2: the remote derives from .gitmodules ------------------
 
 
+@pytest.mark.wincore
 def test_gitmodules_url_is_the_configured_remote(tmp_path: Path) -> None:
     """Governor F1: the SDK URL is named once, in .gitmodules — the gate
     reads it from there instead of re-hardcoding it."""

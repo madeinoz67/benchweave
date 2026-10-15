@@ -19,6 +19,11 @@ from benchweave.state.hold import (
     holder_info,
 )
 
+# W1 (issue #471): this module exercises state/hold.py, which carries the
+# msvcrt/fcntl store-hold branch — selected WHOLE-MODULE because the branch
+# executes at module-level call depth per-test curation cannot bound.
+pytestmark = [pytest.mark.wincore]
+
 
 def test_second_holder_is_refused_and_named(tmp_path: Path) -> None:
     db = tmp_path / "state.db"

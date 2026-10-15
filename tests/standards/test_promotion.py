@@ -444,6 +444,7 @@ def _honest_record(root: Path, facts: dict[str, str]) -> dict[str, Any]:
 # --- the honest record passes, and D4 holds --------------------------------------
 
 
+@pytest.mark.wincore
 def test_the_honest_record_passes_all_gates(tmp_path: Path) -> None:
     """The GREEN spine: a record whose digest matches the sha's tree, whose
     landing sha resolves, over a token-only sweep — validates clean."""
@@ -452,6 +453,7 @@ def test_the_honest_record_passes_all_gates(tmp_path: Path) -> None:
     validate_promotion_records(root)
 
 
+@pytest.mark.wincore
 def test_d4_the_dev_edit_sha_is_unreachable_from_main_and_still_passes(
     tmp_path: Path,
 ) -> None:
@@ -503,6 +505,7 @@ def test_d3_dev_tree_digest_mismatch_refuses(tmp_path: Path) -> None:
     assert flipped in message
 
 
+@pytest.mark.wincore
 def test_d3_planted_non_version_edit_refuses_sweep_violation(tmp_path: Path) -> None:
     """The sweep gate: the diff between the dev tree at dev_edit_sha and
     the promoted directory may contain ONLY lines carrying the version
@@ -518,6 +521,7 @@ def test_d3_planted_non_version_edit_refuses_sweep_violation(tmp_path: Path) -> 
     assert "otdp-device-descriptor.schema.json" in message
 
 
+@pytest.mark.wincore
 def test_d3_pending_record_with_a_successor_refuses(tmp_path: Path) -> None:
     """Pendingness must not outlive a train: a pending record (landing_sha
     unfilled) refuses once a SUCCESSOR version of the same standard exists
@@ -530,6 +534,7 @@ def test_d3_pending_record_with_a_successor_refuses(tmp_path: Path) -> None:
         validate_promotion_records(root)
 
 
+@pytest.mark.wincore
 def test_a_pending_record_without_a_successor_only_warns(tmp_path: Path) -> None:
     """The immediate post-landing window (the append not yet made): a
     pending record with NO successor validates — the drift-check lane
@@ -576,6 +581,7 @@ def test_an_absent_records_file_is_an_empty_history_not_a_refusal(
     validate_promotion_records(root)
 
 
+@pytest.mark.wincore
 def test_the_founded_real_tree_validates() -> None:
     """The PERMANENT posture (was: ``test_the_real_tree_refuses_until_the_
     founding_record_lands`` — the temporary pre-founding state). The
@@ -760,6 +766,7 @@ def test_a_re_stamp_line_carrying_a_fake_digest_refuses(tmp_path: Path) -> None:
 # --- issue #288 M1: no admission by token presence; digests pair --------------------
 
 
+@pytest.mark.wincore
 def test_m1_semantic_edit_on_a_token_bearing_line_refuses(tmp_path: Path) -> None:
     """M1 attack 1 (executed pre-fold): a semantic edit on a line that
     MERELY CONTAINS a version token admitted via the token fast-admit —
@@ -809,6 +816,7 @@ def test_m1_token_riding_comment_injection_refuses(tmp_path: Path) -> None:
     assert "device-classes.md" in message
 
 
+@pytest.mark.wincore
 def test_m1_real_to_real_digest_swap_refuses(tmp_path: Path) -> None:
     """M1 attack 3 (executed pre-fold): swapping two REAL digests between
     cross-referencing citation fields — every digest a member of the right
@@ -851,6 +859,7 @@ def test_m1_real_to_real_digest_swap_refuses(tmp_path: Path) -> None:
 # --- issue #288 refute slate: the sweep digest lane's five executed shapes ----------
 
 
+@pytest.mark.wincore
 def test_m1_reordered_digest_swap_refuses(tmp_path: Path) -> None:
     """Slate shape 1 (executed pre-overhaul): the swap REORDERED so every
     positional pair path-agrees — the bench line carries report's digest
@@ -875,6 +884,7 @@ def test_m1_reordered_digest_swap_refuses(tmp_path: Path) -> None:
     assert "commissioning.json" in message
 
 
+@pytest.mark.wincore
 def test_m1_intra_line_digest_swap_refuses(tmp_path: Path) -> None:
     """Slate shape 2 (executed pre-overhaul): both digests on ONE compact
     line, swapped in place — the path SET is unchanged so set-based
@@ -901,6 +911,7 @@ def test_m1_intra_line_digest_swap_refuses(tmp_path: Path) -> None:
     assert "commissioning.json" in message
 
 
+@pytest.mark.wincore
 def test_m1_key_rename_on_a_digest_line_refuses(tmp_path: Path) -> None:
     """Slate shape 3 (executed pre-overhaul): a non-digest payload edit on
     a paired digest line — the key renamed ``bench_sha256`` to
@@ -924,6 +935,7 @@ def test_m1_key_rename_on_a_digest_line_refuses(tmp_path: Path) -> None:
     assert "commissioning.json" in message
 
 
+@pytest.mark.wincore
 def test_m1_digest_line_deletion_refuses(tmp_path: Path) -> None:
     """Slate shape 4 (executed pre-overhaul): DELETING a digest line
     shifts the positional pairing so the surviving digest line pairs
@@ -1093,6 +1105,7 @@ def test_m2_organic_bump_citing_predecessor_stays_green(tmp_path: Path) -> None:
     validate_promotion_records(root)
 
 
+@pytest.mark.wincore
 def test_m2_on_main_head_with_honest_record_stays_green(tmp_path: Path) -> None:
     """The sanctioned flow completed honestly: head opened on main, dev
     edit on the train, laundered-shaped rows, and the RECORD present —

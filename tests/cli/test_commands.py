@@ -41,6 +41,11 @@ from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
 from benchweave.state.store import Store
 
+# W1 (issue #471): this module exercises cli/commands.py's win32 arm (the
+# setup message). WHOLE-MODULE selection: the branch executes at module-level
+# call depth per-test curation cannot bound.
+pytestmark = [pytest.mark.wincore]
+
 COMMANDS = ["setup", "status", "demo", "report", "retention", "dispose",
             "backup", "restore", "verify", "serve"]
 # Tasks 10-13 made the at-rest commands, demo and report live; Task 14 made
