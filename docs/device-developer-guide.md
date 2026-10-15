@@ -400,6 +400,38 @@ legend) with a visible "no preview data" row. A declared plot is never
 silently dropped. Plots never fabricate a limit line: `$defs.plot` carries
 no threshold, and the preview adds none.
 
+### Declared settings inputs
+
+The [UI renderer-neutral component contract](internal/ui-contract.md) §E.1
+defines the input components normatively. Since benchweave-ui-html 0.3.0 the
+reference renderer renders three input kinds on a settings page: `text-input`,
+`select` and `boolean-input`. Each control derives from a field of the settings
+schema. You author the schema. The host derives the component kind, the option
+set and the bounds.
+
+| Settings schema field | The host renders |
+|---|---|
+| `type: string` without `pattern` | `text-input`. A free text field. The label is the field name. The host writes the `minlength` and `maxlength` attributes only when the effective schema declares them. An absent bound renders no attribute. |
+| `enum` | `select`. A menu with a closed option set. The options are the enum values. The effective schema admits every option in the set. |
+| `type: boolean` | `boolean-input`. A switch. The control carries `role="switch"` and `aria-checked`. The `for` attribute of the label names the control. |
+
+A `type: string` field with a `pattern` derives no input control. A `const`
+field, or an enum field with one admitted value, renders the read-only fixed
+display. It never offers an editable menu.
+
+The three inputs are staging controls. Each control carries the help line
+`Staged value; use Apply to request the change`. A staged value is a request.
+It is not a write to the device. Authority, policy and device verification
+still apply to the applied change. The staging lane stays the one submit path.
+
+An energy-removing action never takes a staging control. It is one action,
+never confirmed, never gated.
+
+A gateway device page gives no control authority to the reader. On such a
+page, the host renders every input disabled. The attribute
+`data-bw-disabled-reason` carries the value `no-authority`. The visible label
+is `No lease or policy authority`.
+
 ### Declared protocol decoders (OTDP 0.2.3)
 
 A logic-analyser descriptor may declare protocol decoders. A declaration is a JSON
