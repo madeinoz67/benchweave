@@ -273,10 +273,71 @@ def populate_tiles(
         for row in descriptor.get("parameters", [])
         if isinstance(row, dict)
     }
+    def _populate_node(node: Any) -> Any:
+        """One section node: a tile populates from its retained reading,
+        a nested section recurses its child NODES (the layout vocabulary's
+        nesting is SectionNode.section, so the recursion is over nodes —
+        adversary lane B B1's defect passed child nodes where child
+        sections were expected and crashed the join)."""
+        if node.tile is not None:
+            key = node.tile.parameter_id
+            reading = readings.get(key) if key is not None else None
+            if key is None or reading is None:
+                return node
+            window: float | None = None
+            policy = parameters.get(key, {}).get("read_policy")
+            if isinstance(policy, dict):
+                raw_window = policy.get("max_age_ms")
+                if isinstance(raw_window, (int, float)) and not isinstance(
+                    raw_window, bool
+                ):
+                    window = float(raw_window)
+            moment = _parse_observed(reading.observed_at)
+            freshness_ms: float | None = (
+                now_epoch_ms - round(moment.timestamp() * 1000)
+                if moment is not None
+                else None
+            )
+            unit = node.tile.unit
+            if reading.unit is not None and reading.unit != node.tile.unit:
+                unit = reading.unit
+            return replace(
+                node,
+                tile=replace(
+                    node.tile,
+                    value=str(reading.value),
+                    unit=unit,
+                    quality=reading.quality,
+                    freshness=(
+                        f"{reading.observed_at}"
+                        f" (retained observation from run {reading.run_id})"
+                    ),
+                    stale_verdict=reading_staleness(freshness_ms, window),
+                ),
+            )
+        if node.section is not None:
+            return replace(
+                node,
+                section=replace(
+                    node.section,
+                    nodes=tuple(_populate_node(child) for child in node.section.nodes),
+                ),
+            )
+        return node
+
+    def _sections(sections: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Tiles re-homed into declared layout sections populate at their
+        re-homed positions (the #369 join's semantics hold through the
+        layout pass — section nodes carry tile OBJECTS)."""
+        return tuple(
+            replace(section, nodes=tuple(_populate_node(n) for n in section.nodes))
+            for section in sections
+        )
+
     pages = []
     for page in state.pages:
         if not page.tiles:
-            pages.append(page)
+            pages.append(replace(page, sections=_sections(page.sections)))
             continue
         tiles = []
         for tile in page.tiles:
@@ -313,5 +374,7 @@ def populate_tiles(
                     stale_verdict=reading_staleness(freshness_ms, window),
                 )
             )
-        pages.append(replace(page, tiles=tuple(tiles)))
+        pages.append(
+            replace(page, tiles=tuple(tiles), sections=_sections(page.sections))
+        )
     return replace(state, pages=tuple(pages))

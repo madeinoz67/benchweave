@@ -382,6 +382,148 @@ def test_a1_fresh_observation_populates_tile(gateway: SimpleNamespace) -> None:
     assert 'data-bw-stale="true"' not in zone, "250 ms inside a 500 ms window is fresh"
 
 
+def test_nested_layout_section_tiles_populate_at_their_positions(
+    gateway: SimpleNamespace, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The layout vocabulary's nesting (depth ≤ 3 by construction): a
+    reading-tile inside a NESTED section populates from a fresh retained
+    observation at its re-homed position — the tile walker recurses the
+    section's child NODES, never AttributeError-ing into the
+    conservative-tile fallback (adversary lane B B1; the per-render
+    'reading-tile join failed' log the defect emitted is the RED's other
+    arm)."""
+    bench, device = "bench-b1", "dev-b1"
+    descriptor = _descriptor_raw([_param("voltage", max_age_ms=500)])
+    _seed_bench(gateway.store, gateway.content, bench, [(device, descriptor)])
+    plugin_ui = next(
+        entry["version"]
+        for entry in json.loads(
+            (FIXTURES.parent.parent / "standards" / "standards-manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )["standards"]
+        if entry["id"] == "plugin-ui"
+    )
+    digest = hashlib.sha256(descriptor).hexdigest()
+    manifest = {
+        "contract_version": plugin_ui,
+        "plugin_id": json.loads(descriptor)["id"],
+        "descriptor_sha256": digest,
+        "bindings": [
+            {"id": "reading-voltage", "kind": "observation", "target_id": "voltage"}
+        ],
+        "pages": [
+            {
+                "id": "readings",
+                "title": "Readings",
+                "kind": "readings",
+                "bindings": ["reading-voltage"],
+                "required": True,
+            }
+        ],
+        "extensions": {
+            "plugin-ui-class-reference:layout": {
+                "contract_version": "0.1.0",
+                "pages": [
+                    {
+                        "page_id": "readings",
+                        "sections": [
+                            {
+                                "id": "outer",
+                                "title": "Outer",
+                                "surface": "raised",
+                                "span": 12,
+                                "children": [
+                                    {
+                                        "id": "inner",
+                                        "title": "Inner",
+                                        "surface": "recessed",
+                                        "span": 6,
+                                        "children": [
+                                            {
+                                                "binding_id": "reading-voltage",
+                                                "kind": "reading-tile",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        },
+    }
+    manifest_raw = json.dumps(manifest).encode()
+    catalogue = {
+        "contract_version": plugin_ui,
+        "descriptor_sha256": digest,
+        "targets": [
+            {
+                "id": "voltage",
+                "kind": "observation",
+                "parameter_id": "voltage",
+                "variables": [
+                    {
+                        "id": "time",
+                        "type": "number",
+                        "unit": "s",
+                        "shape": "scalar",
+                        "axis_role": "receipt_time",
+                    },
+                    {
+                        "id": "value",
+                        "type": "number",
+                        "unit": "V",
+                        "shape": "scalar",
+                        "axis_role": "value",
+                    },
+                ],
+            }
+        ],
+    }
+    envelope = {
+        "contract_version": plugin_ui,
+        "descriptor_sha256": digest,
+        "resource_root": "ui",
+        "manifest": {
+            "path": "manifest.json",
+            "sha256": hashlib.sha256(manifest_raw).hexdigest(),
+        },
+    }
+    prefix = f"https://benchweave.dev/contracts/plugin-ui/{plugin_ui}"
+    for raw, parsed, schema in (
+        (manifest_raw, manifest, f"{prefix}/ui-manifest.schema.json"),
+        (json.dumps(catalogue).encode(), catalogue, f"{prefix}/binding-catalogue.schema.json"),
+        (json.dumps(envelope).encode(), envelope, f"{prefix}/presentation-envelope.schema.json"),
+    ):
+        gateway.content.put_document(
+            raw, hashlib.sha256(raw).hexdigest(), parsed, schema, NOW_ISO
+        )
+    _seed_run(gateway.store, "run-b1", bench, [device], updated_at=NOW_ISO)
+    _land(
+        gateway.store,
+        "run-b1",
+        [{"parameter": "voltage", "observed_ms": _NOW_MS - 250, "value": 9.75}],
+    )
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.ui_read"):
+        zone = _tile_zone(_page(gateway, bench, device))
+    assert "9.75" in zone, "the landed value did not reach the nested tile"
+    assert zone.find('data-bw-section-id="outer"') < zone.find("9.75"), (
+        "the populated tile renders inside its declared nested section"
+    )
+    join_failures = [
+        record for record in caplog.records
+        if "reading-tile join failed" in record.getMessage()
+    ]
+    assert join_failures == [], (
+        "the join must not fall back: "
+        f"{[r.getMessage()[:120] for r in join_failures]}"
+    )
+
+
 def test_a2_stale_observation_renders_value_with_stale_marker(
     gateway: SimpleNamespace,
 ) -> None:

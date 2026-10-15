@@ -1,0 +1,418 @@
+{
+  "contract_version": "0.3.1",
+  "plugin_id": "dev.veridian.f2-la",
+  "descriptor_sha256": "d80266c42fb2e319864b161f85e660266d7fa1df175f00682e450c790223891e",
+  "bindings": [
+    {
+      "id": "capture",
+      "kind": "dataset",
+      "target_id": "capture"
+    },
+    {
+      "id": "decode",
+      "kind": "dataset",
+      "target_id": "decode"
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "target_id": "configure"
+    },
+    {
+      "id": "arm",
+      "kind": "procedure",
+      "target_id": "arm"
+    },
+    {
+      "id": "abort",
+      "kind": "procedure",
+      "target_id": "abort"
+    }
+  ],
+  "pages": [
+    {
+      "id": "capture",
+      "title": "Capture",
+      "kind": "dataset",
+      "bindings": [
+        "capture"
+      ],
+      "required": true,
+      "plots": [
+        {
+          "kind": "digital_lanes",
+          "binding_id": "capture",
+          "x": "t",
+          "y": [
+            "d0",
+            "d1",
+            "d2",
+            "d3",
+            "d4",
+            "d5",
+            "d6",
+            "d7",
+            "d8",
+            "d9",
+            "d10",
+            "d11",
+            "d12",
+            "d13",
+            "d14",
+            "d15",
+            "d16",
+            "d17",
+            "d18",
+            "d19",
+            "d20",
+            "d21",
+            "d22",
+            "d23",
+            "d24",
+            "d25",
+            "d26",
+            "d27",
+            "d28",
+            "d29",
+            "d30",
+            "d31"
+          ],
+          "channel_hints": [
+            {
+              "variable_id": "d0",
+              "visible": true
+            },
+            {
+              "variable_id": "d1",
+              "visible": true
+            },
+            {
+              "variable_id": "d2",
+              "visible": true
+            },
+            {
+              "variable_id": "d3",
+              "visible": true
+            },
+            {
+              "variable_id": "d4",
+              "visible": true
+            },
+            {
+              "variable_id": "d5",
+              "visible": true
+            },
+            {
+              "variable_id": "d6",
+              "visible": true
+            },
+            {
+              "variable_id": "d7",
+              "visible": true
+            },
+            {
+              "variable_id": "d8",
+              "visible": true
+            },
+            {
+              "variable_id": "d9",
+              "visible": true
+            },
+            {
+              "variable_id": "d10",
+              "visible": true
+            },
+            {
+              "variable_id": "d11",
+              "visible": true
+            },
+            {
+              "variable_id": "d12",
+              "visible": true
+            },
+            {
+              "variable_id": "d13",
+              "visible": true
+            },
+            {
+              "variable_id": "d14",
+              "visible": true
+            },
+            {
+              "variable_id": "d15",
+              "visible": true
+            },
+            {
+              "variable_id": "d16",
+              "visible": true
+            },
+            {
+              "variable_id": "d17",
+              "visible": true
+            },
+            {
+              "variable_id": "d18",
+              "visible": true
+            },
+            {
+              "variable_id": "d19",
+              "visible": true
+            },
+            {
+              "variable_id": "d20",
+              "visible": true
+            },
+            {
+              "variable_id": "d21",
+              "visible": true
+            },
+            {
+              "variable_id": "d22",
+              "visible": true
+            },
+            {
+              "variable_id": "d23",
+              "visible": true
+            },
+            {
+              "variable_id": "d24",
+              "visible": true
+            },
+            {
+              "variable_id": "d25",
+              "visible": true
+            },
+            {
+              "variable_id": "d26",
+              "visible": true
+            },
+            {
+              "variable_id": "d27",
+              "visible": true
+            },
+            {
+              "variable_id": "d28",
+              "visible": true
+            },
+            {
+              "variable_id": "d29",
+              "visible": true
+            },
+            {
+              "variable_id": "d30",
+              "visible": true
+            },
+            {
+              "variable_id": "d31",
+              "visible": true
+            }
+          ],
+          "lane_groups": [
+            {
+              "id": "lanes-1",
+              "label": "D1-D8",
+              "member_ids": [
+                "d0",
+                "d1",
+                "d2",
+                "d3",
+                "d4",
+                "d5",
+                "d6",
+                "d7"
+              ],
+              "radix": "hex"
+            },
+            {
+              "id": "lanes-2",
+              "label": "D9-D16",
+              "member_ids": [
+                "d8",
+                "d9",
+                "d10",
+                "d11",
+                "d12",
+                "d13",
+                "d14",
+                "d15"
+              ],
+              "radix": "hex"
+            },
+            {
+              "id": "lanes-3",
+              "label": "D17-D24",
+              "member_ids": [
+                "d16",
+                "d17",
+                "d18",
+                "d19",
+                "d20",
+                "d21",
+                "d22",
+                "d23"
+              ],
+              "radix": "hex"
+            },
+            {
+              "id": "lanes-4",
+              "label": "D25-D32",
+              "member_ids": [
+                "d24",
+                "d25",
+                "d26",
+                "d27",
+                "d28",
+                "d29",
+                "d30",
+                "d31"
+              ],
+              "radix": "hex"
+            }
+          ],
+          "decoder_lanes": []
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "title": "Configuration",
+      "kind": "configuration",
+      "bindings": [
+        "configure"
+      ],
+      "required": true
+    },
+    {
+      "id": "device-features",
+      "title": "Device features",
+      "kind": "configuration",
+      "bindings": [],
+      "required": true
+    }
+  ],
+  "assets": [
+    {
+      "id": "settings/configure.schema.json",
+      "path": "settings/configure.schema.json",
+      "sha256": "9be6382423fb0d3d88c86cd01014ce33faa0832f721832c117f564f453771f41"
+    }
+  ],
+  "extensions": {
+    "plugin-ui-class-reference:layout": {
+      "contract_version": "0.1.0",
+      "pages": [
+        {
+          "page_id": "capture",
+          "sections": [
+            {
+              "id": "lanes",
+              "title": "Lanes",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "plot_index": 0
+                }
+              ]
+            },
+            {
+              "id": "run",
+              "title": "Run",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "arm",
+                  "kind": "numeric",
+                  "field": "max_duration_ms"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "abort",
+                  "kind": "button"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "configuration",
+          "sections": [
+            {
+              "id": "configuration-section",
+              "title": "Configuration",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "channels[].threshold_v"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "sample_rate_hz"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "sample_count"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "trigger.level_v"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "device-features",
+          "sections": [
+            {
+              "id": "device-features-section",
+              "title": "Device features",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "auto-threshold",
+                  "kind": "numeric",
+                  "field": "margin_ppm"
+                },
+                {
+                  "binding_id": "auto-threshold",
+                  "kind": "numeric",
+                  "field": "hysteresis_mv"
+                },
+                {
+                  "binding_id": "auto-threshold",
+                  "kind": "numeric",
+                  "field": "margin_ppm"
+                },
+                {
+                  "binding_id": "auto-threshold",
+                  "kind": "numeric",
+                  "field": "hysteresis_mv"
+                },
+                {
+                  "binding_id": "auto-threshold",
+                  "kind": "button"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
