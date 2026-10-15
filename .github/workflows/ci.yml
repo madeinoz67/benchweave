@@ -314,7 +314,8 @@ jobs:
     # R1 (issue #471): the WEEKLY full-selection Windows run — the
     # complement-corroboration lane. Runs the SAME selection the windows
     # job ran before the core subset (~18 min measured, PR #464's lane),
-    # so the ~3,853-test complement keeps a reproduction surface and the
+    # so the ~3,861-test complement (gates 4,075 − core 214, at the fold tip)
+    # keeps a reproduction surface and the
     # #207 census's whole-run comparability survives the scoping. Same
     # evidence posture: continue-on-error on the test step only, junitxml
     # artifact, failing-id summary; setup failures block; the artifact
