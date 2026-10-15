@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision light/dark mock-up](ui-styleguide-mockup.html)
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
