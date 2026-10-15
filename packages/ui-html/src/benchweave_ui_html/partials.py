@@ -57,7 +57,9 @@ def render_text_input(data: TextInputData) -> str:
 def render_select(data: SelectData) -> str:
     """§E.1 ``select``: labelled closed-enum field over the effective
     schema's options; a single option (a ``const``) renders the read-only
-    fixed display, never an editable offer."""
+    fixed display, never an editable offer; an empty option set (a typed
+    authoring error) renders the honest empty fixed display — never a
+    crash, never an invented value."""
     return _render("select.j2", data)
 
 

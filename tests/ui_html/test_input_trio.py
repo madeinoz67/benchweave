@@ -73,6 +73,41 @@ def test_select_canonical_renders_the_enum_field() -> None:
     assert '<option value="auto" selected' in html
 
 
+def test_select_empty_options_renders_the_honest_empty_display_not_a_crash() -> None:
+    """F3 (issue #463 refute, MEDIUM must-fold): ``options=()`` is a typed
+    authoring error — an empty enum admits no value, so there is nothing to
+    offer and nothing to show as the value. The renderer must never crash
+    (the old fixed-display arm read ``options[0]`` unguarded: UndefinedError
+    under StrictUndefined) and never invent a value: it renders the honest
+    empty fixed display — the select labelling (for/id association,
+    aria-describedby at a real target), a visible ``No options declared``
+    disclosure instead of a value, marked ``data-bw-select-empty``, no
+    editable offer and no staging sentence (an empty set stages nothing).
+
+    Posture disclosure: the design record §2's select contract names the
+    const fixed-display rule but is silent on an EMPTY option set, so the
+    honest empty fixed display is the implemented choice (never a crash,
+    never a partial invention — the record's own error posture)."""
+    html = partials.render_select(SelectData(label="Mode", options=()))
+    assert '<div class="bw-select">' in html
+    assert 'class="bw-select__label"' in html
+    assert 'class="bw-select__field"' in html
+    # The honest disclosure replaces the value; no invented option renders.
+    assert "No options declared" in html
+    assert "data-bw-select-fixed" in html
+    assert "data-bw-select-empty" in html
+    # Labelling applies to the read-only display too: for/id association
+    # and aria-describedby at a REAL target element (never a dangling id).
+    assert 'for="bw-select-field"' in html
+    assert 'id="bw-select-field"' in html
+    assert 'aria-describedby="bw-select-help"' in html
+    assert 'id="bw-select-help"' in html
+    # Never an editable offer, never a staged intent.
+    assert "<select" not in html
+    assert "<option" not in html
+    assert "Staged value; use Apply to request the change" not in html
+
+
 def test_select_const_shape_renders_the_read_only_fixed_display() -> None:
     """A const (or single-option enum) renders the read-only fixed display,
     never an editable offer: no <select> element, no staged sentence (a

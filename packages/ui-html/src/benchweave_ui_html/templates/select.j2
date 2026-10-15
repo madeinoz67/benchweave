@@ -7,8 +7,12 @@
     {%- endfor -%}
   </select>
   <p class="bw-select__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
-  {%- else -%}
+  {%- elif data.options | length == 1 -%}
   <span class="bw-select__label">{{ data.label }}</span>
   <span class="bw-select__field" data-bw-select-fixed>{{ data.options[0] }}</span>
+  {%- else -%}
+  <label class="bw-select__label" for="{{ data.select_id }}">{{ data.label }}</label>
+  <span class="bw-select__field" id="{{ data.select_id }}" aria-describedby="{{ data.help_id }}" data-bw-select-fixed data-bw-select-empty>No options declared</span>
+  <p class="bw-select__help" id="{{ data.help_id }}">No options are declared; no value is admitted.</p>
   {%- endif -%}
 </div>

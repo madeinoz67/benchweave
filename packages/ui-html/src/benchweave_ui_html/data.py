@@ -100,7 +100,11 @@ class SelectData:
     construction).
 
     A ``const`` (or single-option ``options``) renders the read-only fixed
-    display, never an editable offer.
+    display, never an editable offer. An EMPTY ``options`` is a typed
+    authoring error (an empty enum admits no value); the renderer neither
+    crashes nor invents a value — it renders the honest empty fixed display
+    (``data-bw-select-empty``, "No options declared", the select labelling,
+    no staging sentence).
     """
 
     label: str
