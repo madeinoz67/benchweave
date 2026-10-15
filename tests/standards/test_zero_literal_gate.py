@@ -1205,6 +1205,14 @@ class TestAssemblyShapesBattery:
             ROOT / "src/benchweave/presentation/contracts.py",
             scratch / "src/benchweave/presentation/contracts.py",
         )
+        # The L4 register rows must hold in the scratch too (same rule as
+        # the contracts.py row: the registered gateway rows carry their
+        # literals in every tree the counter runs over).
+        for registered in (
+            "src/benchweave/presentation/classref.py",
+            "src/benchweave/presentation/panels.py",
+        ):
+            shutil.copy(ROOT / registered, scratch / registered)
         return scratch
 
     def _scratch_battery_repo(self, tmp_path: Path) -> Path:
@@ -1352,7 +1360,10 @@ class TestRegisteredDisposition:
         assert result.returncode == 0
         sites = json.loads(result.stdout)["scopes"]["gateway"]["sites"]
         reasons = {row["reason"] for row in sites if row.get("exempt")}
-        assert len(reasons) == 1
-        reason = reasons.pop()
-        assert "VR-25" in reason and "D2" in reason
-        assert len([row for row in sites if row.get("exempt")]) == 3
+        # L4: the classref.py + panels.py corpus-pin provenance rows joined
+        # the register (obligation 20's visible editorial diff); the D2 row
+        # still cites its trigger.
+        assert len(reasons) == 3
+        assert any("VR-25" in reason and "D2" in reason for reason in reasons)
+        assert any("corpus_pin" in reason for reason in reasons)
+        assert len([row for row in sites if row.get("exempt")]) == 5

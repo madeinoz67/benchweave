@@ -464,6 +464,22 @@ rather than rewriting the history — that is how this file earns trust.
   re-read fresh, content-addressed and immutable, and a self-approval or a
   non-binding approval refuses pre-send with no seam call) —
   `src/benchweave/interfaces/ui_admin.py`.
+  Amendment (2026-10, L4 — the class-reference gateway-runtime design record, gateway
+  issue #463): the `/ui` adapter's G2 read-only device surface gains three composition
+  capabilities behind the adapter boundary — the manifest's layout block composes the
+  page's §E.1 sections (`ui_presentation.compose_layout_sections` over corpus-schema
+  validated block data), a class-shaped descriptor with no admitted envelope derives
+  its default presentation read-time (`presentation/classref.py` — read-time composition
+  over admitted bytes plus digest-verified corpus bytes; the derived documents never
+  enter the admitted store, and the page carries `data-bw-presentation-derived` plus a
+  visible disclosure), and the gateway-owned panel registry
+  (`presentation/panels.py` — ids map to gateway functions over composed page DATA; no
+  plugin code executes, A05/NFR-S9 unchanged). All three stay read-only projections:
+  no control authority, no dispatch, no admission act, no cursor.
+  Amendment (2026-10, B4 fold — the composition inventory row the design record
+  §4 promised): this row is the CON-5 composition inventory the design named; the
+  three capabilities above are its entries, and the design record carries the dated
+  addendum at its §12.
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller

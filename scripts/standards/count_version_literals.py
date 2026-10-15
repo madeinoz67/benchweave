@@ -504,6 +504,29 @@ SCRIPTS_EXCLUDED_FILES = ("scripts/standards/count_version_literals.py",)
 # digest-pinned whole by tests/sdk/test_presentation_packaging.py.
 REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
     "gateway": {
+        "src/benchweave/presentation/classref.py": (
+            "FOUNDING_FAMILY_VERSION — the authored documentation constant "
+            "naming the family version the corpus-pin provenance cites "
+            "(design record 2026-10-15 section 3: the registry's corpus "
+            "pin moves with the family bump in one reviewable unit, R4); "
+            "the SERVED version is derived (family_version(corpus)) and "
+            "no render path reads the constant; motion: moves with the "
+            "family bump's corpus-pin re-pin, in the same arc",
+            1,
+            ("0.1.0",),
+        ),
+        "src/benchweave/presentation/panels.py": (
+            "the classref-logic-analyser panel's authored corpus_pin — the "
+            "registry's own citation of the family version it renders "
+            "(design record 2026-10-15 section 3, R4's mitigation): the "
+            "render path DERIVES the served version "
+            "(served_family_version) and refuses the composition on "
+            "mismatch, so the literal is provenance data, not a served "
+            "reference; motion: moves with the family bump's corpus-pin "
+            "re-pin, in the same arc as the classref.py row",
+            1,
+            ("0.1.0",),
+        ),
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
             "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "

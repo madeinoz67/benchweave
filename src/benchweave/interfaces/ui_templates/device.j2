@@ -16,6 +16,11 @@
   </p>
   {% else %}
   <div class="bw-presentation" data-bw-presentation-pages>
+    {% if presentation.derived %}
+    <div class="bw-presentation-derived" data-bw-presentation-derived>
+      <p class="bw-presentation-derived__disclosure">Default class presentation — derived, no plugin attachment.</p>
+    </div>
+    {% endif %}
     {% if presentation.findings %}
     <ul class="bw-presentation-findings" data-bw-presentation-findings>
       {% for code, path, message in presentation.findings %}
@@ -38,6 +43,15 @@
       {% elif not page.available %}
       <p class="bw-panel-note" data-bw-panel-unavailable-note>Unavailable on this host.</p>
       {% else %}
+      {% if page.panel %}
+      {{ page.panel }}
+      {% elif page.sections %}
+      <div class="bw-presentation__sections">
+        {% for section in page.sections %}
+        {{ section.html }}
+        {% endfor %}
+      </div>
+      {% endif %}
       {% if page.tiles %}
       <div class="bw-presentation__tiles">
         {% for tile in page.tiles %}
