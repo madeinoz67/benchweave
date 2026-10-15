@@ -67,6 +67,8 @@ All notable changes to this project will be documented in this file.
 - Render the plugin-ui-class-reference rows (CON-12, in-arc)
 - Governor fold - the governed-set count and the RC-5 supersession
 - CON-12 render at the v0.13.0 pairing
+- The class-reference reconciliation (Landing 3)
+- STE register pass on the class-reference sections
 
 ### Features
 
@@ -89,6 +91,11 @@ All notable changes to this project will be documented in this file.
 - Server instructions on the MCP surface (row 1a) + green arms
 - Admit plugin-ui-class-reference 0.1.0 - the class-reference standard
 - The class-reference stamp token and the sync id-set pin
+- The pattern-library logic_analyser capture page (Landing 3)
+- The digital-analyzer composition in the mockup (#462 row 1)
+- The mockup analyzer composition in the real-analyser idiom
+- Reference-fidelity capture view + the one-language doctrine
+- Adopt the owner-authored spec composition (spec-drop)
 
 ### Miscellaneous
 
@@ -100,6 +107,10 @@ All notable changes to this project will be documented in this file.
 - Regenerate the devices report and README row after the census retirement
 - Remove the class-reference authoring staging
 - Advance the pointer to v0.13.0 — the class-reference pairing
+
+### Refactoring
+
+- Per-device mockups over the shipped token set (split + single source)
 
 ### Style
 
@@ -126,6 +137,7 @@ All notable changes to this project will be documented in this file.
 - RED tests for the plugin-ui-class-reference 0.1.0 family
 - Carry the admission's denominator and id-set pins
 - RED arms for the admission fold (adversary lanes 1+2)
+- Fold the L3 refute rows - bounds arm, staging pair, value-level hex arm
 
 ### Build
 

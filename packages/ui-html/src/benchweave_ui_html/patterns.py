@@ -29,7 +29,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
-from benchweave_ui_html import artifacts, compositions, fixtures, partials
+from benchweave_ui_html import artifacts, classref, compositions, fixtures, partials
 from benchweave_ui_html.data import (
     AlertBubbleData,
     ButtonData,
@@ -66,6 +66,7 @@ PatternKind = Literal[
     "refusal",
     "mode",
     "composition",
+    "class-page",
 ]
 
 
@@ -333,6 +334,20 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
             )
         )
 
+    # The class-reference capture page (Landing 3, gateway issues #462
+    # rows 1-2): the analyser class's capture-page composition, rendered
+    # from the committed reference/descriptor expansion (classref.py —
+    # host composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-logic_analyser",
+            fixture_id="capture",
+            kind="class-page",
+            page="class-capture",
+            render=classref.render_capture_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -354,14 +369,17 @@ _PAGE_TITLES: dict[str, str] = {
     "mode-banner": "Mode banner",
     "confirm-action": "Confirm action",
     "refusals": "Refusals",
+    "class-capture": "Logic analyser capture (class reference)",
 }
 
 
 def pages() -> tuple[str, ...]:
     """The library's page slugs: one per §E.1 component plus the refusal
-    page (12), in §E.1's own order."""
+    page plus the class-reference capture page (13), the components in
+    §E.1's own order."""
     ordered = [key for key in _keys("e-1-components")]
     ordered.append("refusals")
+    ordered.append("class-capture")
     return tuple(ordered)
 
 

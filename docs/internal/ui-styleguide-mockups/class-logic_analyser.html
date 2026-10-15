@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<title>BenchWeave mock — Logic analyser (class-logic_analyser)</title>
+<style>
+/* bw-shipped:tokens — embedded from packages/ui-html assets (drift-guarded) */
+:root {
+  --bw-space-1: 0.25rem;
+  --bw-space-2: 0.5rem;
+  --bw-space-3: 0.75rem;
+  --bw-space-4: 1rem;
+  --bw-space-5: 1.5rem;
+  --bw-space-6: 2rem;
+  --bw-radius-control: 0.5rem;
+  --bw-radius-panel: 0.875rem;
+  --bw-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bw-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --bw-shadow-raised: 0.5rem 0.625rem 1.5rem var(--bw-shadow-dark), -0.35rem -0.35rem 1rem var(--bw-shadow-light);
+  --bw-shadow-recessed: inset 0.25rem 0.25rem 0.625rem var(--bw-shadow-dark), inset -0.2rem -0.2rem 0.5rem var(--bw-shadow-light);
+  --bw-focus-ring: 0 0 0 0.2rem color-mix(in srgb, var(--bw-focus), transparent 55%);
+  --bw-transition-fast: 120ms ease;
+}
+/* /bw-shipped:tokens */
+/* bw-shipped:themes */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bw-canvas: #e4ebef;
+  --bw-surface: #f5f8f9;
+  --bw-surface-recessed: #dce5ea;
+  --bw-text: #17242c;
+  --bw-text-muted: #5b6a73;
+  --bw-border: #c3cfd5;
+  --bw-accent: #0b7181;
+  --bw-accent-contrast: #ffffff;
+  --bw-focus: #087f8c;
+  --bw-shadow-dark: #b9c5cc;
+  --bw-shadow-light: #ffffff;
+  --bw-advisory: #2476b8;
+  --bw-warning: #a96608;
+  --bw-critical: #b63830;
+  --bw-trip: #a92858;
+  --bw-success: #177158;
+  --bw-limiting: #274076;
+  --bw-series-1: #253421;
+  --bw-series-2: #8e7588;
+  --bw-series-3: #2f3300;
+  --bw-series-4: #00379d;
+  --bw-series-5: #7e002d;
+  --bw-series-6: #746084;
+  --bw-series-7: #5a1538;
+  --bw-series-8: #183058;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bw-canvas: #19252c;
+  --bw-surface: #26363f;
+  --bw-surface-recessed: #101a20;
+  --bw-text: #eef5f7;
+  --bw-text-muted: #aebbc2;
+  --bw-border: #40515b;
+  --bw-accent: #42cee2;
+  --bw-accent-contrast: #07161a;
+  --bw-focus: #59d9eb;
+  --bw-shadow-dark: #0c1317;
+  --bw-shadow-light: #354852;
+  --bw-advisory: #62aee8;
+  --bw-warning: #ffb342;
+  --bw-critical: #ff6d63;
+  --bw-trip: #ff5d91;
+  --bw-success: #67d8b2;
+  --bw-limiting: #5f9500;
+  --bw-series-1: #00744a;
+  --bw-series-2: #e3d7ff;
+  --bw-series-3: #567200;
+  --bw-series-4: #805e71;
+  --bw-series-5: #007df3;
+  --bw-series-6: #ae686e;
+  --bw-series-7: #755d9a;
+  --bw-series-8: #7d8f00;
+}
+/* /bw-shipped:themes */
+/* bw-shipped:globals */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+  font-family: var(--bw-font-ui);
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 0.125rem solid var(--bw-focus);
+  outline-offset: 0.125rem;
+  box-shadow: var(--bw-focus-ring);
+}
+
+.bw-story-canvas {
+  min-height: 100vh;
+  padding: var(--bw-space-5);
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+}
+
+.bw-data {
+  font-family: var(--bw-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+/* /bw-shipped:globals */
+    /* Composition wrappers (genuinely-new layout only); components use
+       the shipped class vocabulary over the embedded token set. */
+    .mock-banner { display:flex; gap:10px; margin-bottom:16px; }
+    .mock-banner p { margin:0; padding:6px 14px; border-radius:999px; font-size:13px; font-weight:600; letter-spacing:.04em; background:var(--bw-surface-recessed); color:var(--bw-warning); border:1px solid color-mix(in srgb,var(--bw-warning),transparent 50%); }
+    .mock-banner p.muted { color:var(--bw-text-muted); border-color:var(--bw-border); }
+    .mock-head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; }
+    .mock-eyebrow { display:block; font-size:13px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bw-accent); margin-bottom:4px; }
+    .mock-head h2 { margin:0; font-size:28px; font-weight:650; }
+    .mock-head h2 code { font-family:var(--bw-font-data); font-size:22px; color:var(--bw-text-muted); font-weight:400; }
+    .mock-badges { display:flex; gap:8px; }
+    .mock-badge { padding:6px 14px; border-radius:var(--bw-radius-control); font-size:14px; font-weight:600; border:1px solid; }
+    .mock-badge.b-ok { color:var(--bw-success); border-color:color-mix(in srgb,var(--bw-success),transparent 50%); }
+    .mock-badge.b-adv { color:var(--bw-advisory); border-color:color-mix(in srgb,var(--bw-advisory),transparent 50%); }
+    .mock-strip { display:flex; gap:18px; align-items:center; font-size:14px; color:var(--bw-text-muted); background:var(--bw-surface-recessed); border-radius:var(--bw-radius-control); padding:10px 16px; margin-bottom:18px; box-shadow:var(--bw-shadow-recessed); }
+    .mock-strip strong { color:var(--bw-text); }
+    .mock-tiles { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; margin-bottom:20px; }
+    .mock-grid { display:grid; grid-template-columns:1fr 390px; gap:20px; }
+    .bw-panel { border-radius:var(--bw-radius-panel); padding:16px 18px; }
+    .bw-panel[data-surface="raised"] { background:var(--bw-surface); box-shadow:var(--bw-shadow-raised); }
+    .bw-panel[data-surface="recessed"] { background:var(--bw-surface-recessed); box-shadow:var(--bw-shadow-recessed); }
+    .bw-panel__header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+    .bw-panel__eyebrow { font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bw-text-muted); }
+    .bw-panel__meta { font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bw-text-muted); }
+    .bw-panel__title { font-size:18px; font-weight:650; margin-left:10px; }
+    .bw-reading { background:var(--bw-surface); border-radius:var(--bw-radius-panel); padding:14px 16px; box-shadow:var(--bw-shadow-raised); display:flex; flex-direction:column; gap:4px; position:relative; }
+    .bw-reading__header { font-size:13px; font-weight:600; color:var(--bw-text-muted); text-transform:uppercase; letter-spacing:.06em; }
+    .bw-reading__severity { position:absolute; right:14px; top:13px; font-size:12px; font-weight:600; }
+    .bw-reading[data-severity="advisory"] .bw-reading__severity { color:var(--bw-advisory); }
+    .bw-reading[data-severity="neutral"] .bw-reading__severity { color:var(--bw-text-muted); }
+    .bw-reading[data-severity="success"] .bw-reading__severity { color:var(--bw-success); }
+    .bw-reading__value { margin:4px 0 0; font-family:var(--bw-font-data); font-size:30px; font-weight:600; }
+    .bw-reading__value small { font-family:var(--bw-font-ui); font-size:15px; color:var(--bw-text-muted); font-weight:500; }
+    .bw-reading__set { font-size:12px; color:var(--bw-accent); }
+    .bw-reading__quality { margin:0; font-size:12.5px; color:var(--bw-text-muted); }
+    svg .ln { fill:var(--bw-text); font:600 14px Inter,sans-serif; }
+    svg .lc { fill:var(--bw-text-muted); font:12px var(--bw-font-data); }
+    svg .lm { fill:var(--bw-text-muted); font:italic 13px Inter,sans-serif; }
+    svg .pl { fill:var(--bw-text); font:12px var(--bw-font-data); }
+    svg .tg { fill:var(--bw-accent-contrast); font:600 12px Inter,sans-serif; }
+    svg .cu { fill:var(--bw-text); font:600 13px Inter,sans-serif; }
+    .mock-axis { display:flex; justify-content:space-between; font-size:13px; color:var(--bw-text-muted); margin-top:6px; }
+    .mock-axis b { color:var(--bw-text); font-weight:600; }
+    .bw-panel table { width:100%; border-collapse:collapse; font-size:13.5px; }
+    .bw-panel th { text-align:left; color:var(--bw-text-muted); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--bw-border); }
+    .bw-panel td { padding:7px 4px; border-bottom:1px solid var(--bw-border); }
+    .bw-panel td.m { font-family:var(--bw-font-data); }
+    .mock-btns { display:flex; gap:10px; margin-top:14px; }
+    .bw-button { font:inherit; font-size:14px; font-weight:600; padding:9px 16px; border-radius:var(--bw-radius-control); border:1px solid var(--bw-border); background:var(--bw-surface); color:var(--bw-text); box-shadow:var(--bw-shadow-raised); }
+    .bw-button[data-variant="primary"] { background:var(--bw-accent); color:var(--bw-accent-contrast); border-color:var(--bw-accent); }
+    .bw-button[disabled] { opacity:.45; box-shadow:none; }
+    .mock-reason { margin-top:8px; font-size:12.5px; color:var(--bw-warning); }
+    .mock-theme { padding:18px; margin-bottom:20px; background:var(--bw-canvas); color:var(--bw-text); }
+    .mock-theme section[data-theme] { color:var(--bw-text); }
+</style>
+</head>
+<body>
+<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.2.1</p></div>
+<section class="mock-theme" data-theme="light" aria-label="Light theme mock-up">
+  <div class="mock-head"><div><span class="mock-eyebrow">Device overview</span><h2>Veridian LA-32 <code>· veridian.la32</code></h2></div>
+  <div class="mock-badges"><span class="mock-badge b-adv">Armed · waiting for trigger</span><span class="mock-badge b-ok">Connected</span></div></div>
+  <div class="mock-strip"><span>Controller lease</span><strong>bench-01</strong><span>Renews in 42 s</span><span style="margin-left:auto">FPGA image</span><strong class="mono">la32-fpga.bin · slot 0 · 9298a5ea…</strong></div>
+  <div class="mock-tiles"><section class="bw-reading" data-severity="advisory"><header class="bw-reading__header">Status</header>
+  <span class="bw-reading__severity"><i></i>advisory</span><p class="bw-reading__value">0xE0 <small></small></p>
+  <p class="bw-reading__quality">armed · pre-fill 11 · 1 s</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Sample rate</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">100 <small>MHz</small></p><span class="bw-reading__set" data-bw-reading-role="set">Set 100 MHz</span>
+  <p class="bw-reading__quality">timing mode · internal clock</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Threshold</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">1.50 <small>V</small></p><span class="bw-reading__set" data-bw-reading-role="set">Set 1.50 V</span>
+  <p class="bw-reading__quality">DAC code 578 · all channels</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Trigger position</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">1024 <small>samples</small></p>
+  <p class="bw-reading__quality">50% pre-trigger · 1 s</p></section><section class="bw-reading" data-severity="success"><header class="bw-reading__header">CLK1 frequency</header>
+  <span class="bw-reading__severity"><i></i>success</span><p class="bw-reading__value">25.000 <small>MHz</small></p>
+  <p class="bw-reading__quality">counter ch 0 · ×10 Hz res</p></section></div>
+  <div class="mock-grid">
+  <section class="bw-panel" data-surface="recessed"><header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Digital lanes</span><span class="bw-panel__title">Logic capture · 34 channels</span></div><span class="bw-panel__meta">Last capture · SPI JEDEC ID read</span></header>
+  <svg viewBox="0 0 1160 372" style="width:100%;height:auto;display:block" role="img" aria-label="Logic capture mock">
+  <defs><pattern id="hatch-l" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--bw-text-muted)" stroke-width="1.5" opacity=".5"/></pattern></defs>
+  <line x1="150.0" y1="0" x2="150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="275.0" y1="0" x2="275.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="400.0" y1="0" x2="400.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="525.0" y1="0" x2="525.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="650.0" y1="0" x2="650.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="775.0" y1="0" x2="775.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="900.0" y1="0" x2="900.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1025.0" y1="0" x2="1025.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1150.0" y1="0" x2="1150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <text x="8" y="27" class="ln">CS#</text><text x="138" y="27" class="lc" text-anchor="end">D0</text>
+  <path d="M150.0,8.0 H250.0 V34.0 H1130.0 V8.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="73" class="ln">SCK</text><text x="138" y="73" class="lc" text-anchor="end">D1</text>
+  <path d="M150.0,80.0 H270.0 V54.0 H282.5 V80.0 H295.0 V54.0 H307.5 V80.0 H320.0 V54.0 H332.5 V80.0 H345.0 V54.0 H357.5 V80.0 H370.0 V54.0 H382.5 V80.0 H395.0 V54.0 H407.5 V80.0 H420.0 V54.0 H432.5 V80.0 H445.0 V54.0 H457.5 V80.0 H485.0 V54.0 H497.5 V80.0 H510.0 V54.0 H522.5 V80.0 H535.0 V54.0 H547.5 V80.0 H560.0 V54.0 H572.5 V80.0 H585.0 V54.0 H597.5 V80.0 H610.0 V54.0 H622.5 V80.0 H635.0 V54.0 H647.5 V80.0 H660.0 V54.0 H672.5 V80.0 H700.0 V54.0 H712.5 V80.0 H725.0 V54.0 H737.5 V80.0 H750.0 V54.0 H762.5 V80.0 H775.0 V54.0 H787.5 V80.0 H800.0 V54.0 H812.5 V80.0 H825.0 V54.0 H837.5 V80.0 H850.0 V54.0 H862.5 V80.0 H875.0 V54.0 H887.5 V80.0 H900.0 V54.0 H915.0 V80.0 H927.5 V54.0 H940.0 V54.0 H952.5 V80.0 H965.0 V54.0 H977.5 V80.0 H990.0 V54.0 H1002.5 V80.0 H1015.0 V54.0 H1027.5 V80.0 H1040.0 V54.0 H1052.5 V80.0 H1065.0 V54.0 H1077.5 V80.0 H1090.0 V54.0 H1102.5 V80.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="119" class="ln">MOSI</text><text x="138" y="119" class="lc" text-anchor="end">D2</text>
+  <path d="M150.0,100.0 H282.5 V126.0 H332.5 V100.0 H472.5 V126.0 H672.5 V100.0 H687.5 V126.0 H887.5 V100.0 H902.5 V126.0 H1102.5 V100.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="165" class="ln">MISO</text><text x="138" y="165" class="lc" text-anchor="end">D3</text>
+  <rect x="150.0" y="146" width="322.5" height="26" fill="url(#hatch-l)"/>
+  <rect x="672.5" y="146" width="15.0" height="26" fill="url(#hatch-l)"/>
+  <rect x="887.5" y="146" width="15.0" height="26" fill="url(#hatch-l)"/>
+  <rect x="1102.5" y="146" width="47.5" height="26" fill="url(#hatch-l)"/>
+  <path d="M150.0,159.0 H472.5 V146.0 H547.5 V172.0 H572.5 V146.0 H672.5 V159.0 H687.5 V172.0 H712.5 V146.0 H737.5 V172.0 H887.5 V159.0 H902.5 V172.0 H977.5 V146.0 H1027.5 V172.0 H1102.5 V159.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="211" class="ln">CLK1</text><text x="138" y="211" class="lc" text-anchor="end">ch32</text>
+  <path d="M150.0,218.0 H155.0 V192.0 H160.0 V218.0 H165.0 V192.0 H170.0 V218.0 H175.0 V192.0 H180.0 V218.0 H185.0 V192.0 H190.0 V218.0 H195.0 V192.0 H200.0 V218.0 H205.0 V192.0 H210.0 V218.0 H215.0 V192.0 H220.0 V218.0 H225.0 V192.0 H230.0 V218.0 H235.0 V192.0 H240.0 V218.0 H245.0 V192.0 H250.0 V218.0 H255.0 V192.0 H260.0 V218.0 H265.0 V192.0 H270.0 V218.0 H275.0 V192.0 H280.0 V218.0 H285.0 V192.0 H290.0 V218.0 H295.0 V192.0 H300.0 V218.0 H305.0 V192.0 H310.0 V218.0 H315.0 V192.0 H320.0 V218.0 H325.0 V192.0 H330.0 V218.0 H335.0 V192.0 H340.0 V218.0 H345.0 V192.0 H350.0 V218.0 H355.0 V192.0 H360.0 V218.0 H365.0 V192.0 H370.0 V218.0 H375.0 V192.0 H380.0 V218.0 H385.0 V192.0 H390.0 V218.0 H395.0 V192.0 H400.0 V218.0 H405.0 V192.0 H410.0 V218.0 H415.0 V192.0 H420.0 V218.0 H425.0 V192.0 H430.0 V218.0 H435.0 V192.0 H440.0 V218.0 H445.0 V192.0 H450.0 V218.0 H455.0 V192.0 H460.0 V218.0 H465.0 V192.0 H470.0 V218.0 H475.0 V192.0 H480.0 V218.0 H485.0 V192.0 H490.0 V218.0 H495.0 V192.0 H500.0 V218.0 H505.0 V192.0 H510.0 V218.0 H515.0 V192.0 H520.0 V218.0 H525.0 V192.0 H530.0 V218.0 H535.0 V192.0 H540.0 V218.0 H545.0 V192.0 H550.0 V218.0 H555.0 V192.0 H560.0 V218.0 H565.0 V192.0 H570.0 V218.0 H575.0 V192.0 H580.0 V218.0 H585.0 V192.0 H590.0 V218.0 H595.0 V192.0 H600.0 V218.0 H605.0 V192.0 H610.0 V218.0 H615.0 V192.0 H620.0 V218.0 H625.0 V192.0 H630.0 V218.0 H635.0 V192.0 H640.0 V218.0 H645.0 V192.0 H650.0 V218.0 H655.0 V192.0 H660.0 V218.0 H665.0 V192.0 H670.0 V218.0 H675.0 V192.0 H680.0 V218.0 H685.0 V192.0 H690.0 V218.0 H695.0 V192.0 H700.0 V218.0 H705.0 V192.0 H710.0 V218.0 H715.0 V192.0 H720.0 V218.0 H725.0 V192.0 H730.0 V218.0 H735.0 V192.0 H740.0 V218.0 H745.0 V192.0 H750.0 V218.0 H755.0 V192.0 H760.0 V218.0 H765.0 V192.0 H770.0 V218.0 H775.0 V192.0 H780.0 V218.0 H785.0 V192.0 H790.0 V218.0 H795.0 V192.0 H800.0 V218.0 H805.0 V192.0 H810.0 V218.0 H815.0 V192.0 H820.0 V218.0 H825.0 V192.0 H830.0 V218.0 H835.0 V192.0 H840.0 V218.0 H845.0 V192.0 H850.0 V218.0 H855.0 V192.0 H860.0 V218.0 H865.0 V192.0 H870.0 V218.0 H875.0 V192.0 H880.0 V218.0 H885.0 V192.0 H890.0 V218.0 H895.0 V192.0 H900.0 V218.0 H905.0 V192.0 H910.0 V218.0 H915.0 V192.0 H920.0 V218.0 H925.0 V192.0 H930.0 V218.0 H935.0 V192.0 H940.0 V218.0 H945.0 V192.0 H950.0 V218.0 H955.0 V192.0 H960.0 V218.0 H965.0 V192.0 H970.0 V218.0 H975.0 V192.0 H980.0 V218.0 H985.0 V192.0 H990.0 V218.0 H995.0 V192.0 H1000.0 V218.0 H1005.0 V192.0 H1010.0 V218.0 H1015.0 V192.0 H1020.0 V218.0 H1025.0 V192.0 H1030.0 V192.0 H1035.0 V192.0 H1040.0 V218.0 H1045.0 V192.0 H1050.0 V218.0 H1055.0 V192.0 H1060.0 V218.0 H1065.0 V192.0 H1070.0 V218.0 H1075.0 V192.0 H1080.0 V218.0 H1085.0 V192.0 H1090.0 V218.0 H1095.0 V192.0 H1100.0 V218.0 H1105.0 V192.0 H1110.0 V218.0 H1115.0 V192.0 H1120.0 V218.0 H1125.0 V192.0 H1130.0 V218.0 H1135.0 V192.0 H1140.0 V218.0 H1145.0 V192.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="257" class="ln">SPI</text><text x="138" y="257" class="lc" text-anchor="end">mode 0</text>
+  <path d="M267.5,238 H447.5 L455.5,251 L447.5,264 H267.5 L259.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="357.5" y="257" class="pl" text-anchor="middle">0x9F</text>
+  <path d="M482.5,238 H662.5 L670.5,251 L662.5,264 H482.5 L474.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="572.5" y="257" class="pl" text-anchor="middle">0x00 / 0xEF</text>
+  <path d="M697.5,238 H877.5 L885.5,251 L877.5,264 H697.5 L689.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="787.5" y="257" class="pl" text-anchor="middle">0x00 / 0x40</text>
+  <path d="M912.5,238 H1092.5 L1100.5,251 L1092.5,264 H912.5 L904.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="1002.5" y="257" class="pl" text-anchor="middle">0x00 / 0x18</text>
+  <text x="8" y="303" class="lm">D4–D31, CLK2 · 29 lanes hidden</text>
+  <line x1="250.0" y1="0" x2="250.0" y2="338" stroke="var(--bw-warning)" stroke-width="2"/>
+  <rect x="214.0" y="340" width="72" height="24" rx="4" fill="var(--bw-warning)"/><text x="250.0" y="357" class="tg" text-anchor="middle">trigger</text>
+  <line x1="472.5" y1="0" x2="472.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="478.5" y="357" class="cu">A</text>
+  <line x1="1102.5" y1="0" x2="1102.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="1108.5" y="357" class="cu">B</text>
+  </svg>
+  <div class="mock-axis"><span><b>2048</b> samples acquired → <b>400</b> drawn · 100 MHz · capture time</span><span>Δt A→B <b>2.52 µs</b></span></div>
+  </section>
+  <section class="bw-panel" data-surface="raised"><header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Staged configuration</span><span class="bw-panel__title">Trigger sequencer</span></div></header>
+  <table><tr><th>Level</th><th>Condition</th><th>Then</th></tr>
+  <tr><td>1</td><td class="m">D0 ↓ (CS#)</td><td>trigger</td></tr>
+  <tr><td>2</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>3</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>4</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr></table>
+  <div class="mock-btns"><button type="button" class="bw-button" data-variant="primary" aria-busy="false">Arm capture</button><button type="button" class="bw-button" data-variant="secondary" aria-busy="false">Stop</button><button type="button" class="bw-button" data-variant="secondary" aria-busy="false" disabled>Apply</button></div>
+  <p class="mock-reason">Apply unavailable: sequencer register packing not yet recovered (open item)</p>
+  <div style="height:14px"></div>
+  <header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Gateway observations</span><span class="bw-panel__title">Messages</span></div></header>
+  <p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--bw-text-muted)"><span style="color:var(--bw-advisory);font-weight:600">Advisory</span> · Status 0xE0: armed, pre-trigger buffer filling. Drain starts when bit 0 sets.</p>
+  </section>
+  </div>
+</section>
+<section class="mock-theme" data-theme="dark" aria-label="Dark theme mock-up">
+  <div class="mock-head"><div><span class="mock-eyebrow">Device overview</span><h2>Veridian LA-32 <code>· veridian.la32</code></h2></div>
+  <div class="mock-badges"><span class="mock-badge b-adv">Armed · waiting for trigger</span><span class="mock-badge b-ok">Connected</span></div></div>
+  <div class="mock-strip"><span>Controller lease</span><strong>bench-01</strong><span>Renews in 42 s</span><span style="margin-left:auto">FPGA image</span><strong class="mono">la32-fpga.bin · slot 0 · 9298a5ea…</strong></div>
+  <div class="mock-tiles"><section class="bw-reading" data-severity="advisory"><header class="bw-reading__header">Status</header>
+  <span class="bw-reading__severity"><i></i>advisory</span><p class="bw-reading__value">0xE0 <small></small></p>
+  <p class="bw-reading__quality">armed · pre-fill 11 · 1 s</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Sample rate</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">100 <small>MHz</small></p><span class="bw-reading__set" data-bw-reading-role="set">Set 100 MHz</span>
+  <p class="bw-reading__quality">timing mode · internal clock</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Threshold</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">1.50 <small>V</small></p><span class="bw-reading__set" data-bw-reading-role="set">Set 1.50 V</span>
+  <p class="bw-reading__quality">DAC code 578 · all channels</p></section><section class="bw-reading" data-severity="neutral"><header class="bw-reading__header">Trigger position</header>
+  <span class="bw-reading__severity"><i></i>neutral</span><p class="bw-reading__value">1024 <small>samples</small></p>
+  <p class="bw-reading__quality">50% pre-trigger · 1 s</p></section><section class="bw-reading" data-severity="success"><header class="bw-reading__header">CLK1 frequency</header>
+  <span class="bw-reading__severity"><i></i>success</span><p class="bw-reading__value">25.000 <small>MHz</small></p>
+  <p class="bw-reading__quality">counter ch 0 · ×10 Hz res</p></section></div>
+  <div class="mock-grid">
+  <section class="bw-panel" data-surface="recessed"><header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Digital lanes</span><span class="bw-panel__title">Logic capture · 34 channels</span></div><span class="bw-panel__meta">Last capture · SPI JEDEC ID read</span></header>
+  <svg viewBox="0 0 1160 372" style="width:100%;height:auto;display:block" role="img" aria-label="Logic capture mock">
+  <defs><pattern id="hatch-d" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--bw-text-muted)" stroke-width="1.5" opacity=".5"/></pattern></defs>
+  <line x1="150.0" y1="0" x2="150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="275.0" y1="0" x2="275.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="400.0" y1="0" x2="400.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="525.0" y1="0" x2="525.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="650.0" y1="0" x2="650.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="775.0" y1="0" x2="775.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="900.0" y1="0" x2="900.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1025.0" y1="0" x2="1025.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1150.0" y1="0" x2="1150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <text x="8" y="27" class="ln">CS#</text><text x="138" y="27" class="lc" text-anchor="end">D0</text>
+  <path d="M150.0,8.0 H250.0 V34.0 H1130.0 V8.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="73" class="ln">SCK</text><text x="138" y="73" class="lc" text-anchor="end">D1</text>
+  <path d="M150.0,80.0 H270.0 V54.0 H282.5 V80.0 H295.0 V54.0 H307.5 V80.0 H320.0 V54.0 H332.5 V80.0 H345.0 V54.0 H357.5 V80.0 H370.0 V54.0 H382.5 V80.0 H395.0 V54.0 H407.5 V80.0 H420.0 V54.0 H432.5 V80.0 H445.0 V54.0 H457.5 V80.0 H485.0 V54.0 H497.5 V80.0 H510.0 V54.0 H522.5 V80.0 H535.0 V54.0 H547.5 V80.0 H560.0 V54.0 H572.5 V80.0 H585.0 V54.0 H597.5 V80.0 H610.0 V54.0 H622.5 V80.0 H635.0 V54.0 H647.5 V80.0 H660.0 V54.0 H672.5 V80.0 H700.0 V54.0 H712.5 V80.0 H725.0 V54.0 H737.5 V80.0 H750.0 V54.0 H762.5 V80.0 H775.0 V54.0 H787.5 V80.0 H800.0 V54.0 H812.5 V80.0 H825.0 V54.0 H837.5 V80.0 H850.0 V54.0 H862.5 V80.0 H875.0 V54.0 H887.5 V80.0 H900.0 V54.0 H915.0 V80.0 H927.5 V54.0 H940.0 V54.0 H952.5 V80.0 H965.0 V54.0 H977.5 V80.0 H990.0 V54.0 H1002.5 V80.0 H1015.0 V54.0 H1027.5 V80.0 H1040.0 V54.0 H1052.5 V80.0 H1065.0 V54.0 H1077.5 V80.0 H1090.0 V54.0 H1102.5 V80.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="119" class="ln">MOSI</text><text x="138" y="119" class="lc" text-anchor="end">D2</text>
+  <path d="M150.0,100.0 H282.5 V126.0 H332.5 V100.0 H472.5 V126.0 H672.5 V100.0 H687.5 V126.0 H887.5 V100.0 H902.5 V126.0 H1102.5 V100.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="165" class="ln">MISO</text><text x="138" y="165" class="lc" text-anchor="end">D3</text>
+  <rect x="150.0" y="146" width="322.5" height="26" fill="url(#hatch-d)"/>
+  <rect x="672.5" y="146" width="15.0" height="26" fill="url(#hatch-d)"/>
+  <rect x="887.5" y="146" width="15.0" height="26" fill="url(#hatch-d)"/>
+  <rect x="1102.5" y="146" width="47.5" height="26" fill="url(#hatch-d)"/>
+  <path d="M150.0,159.0 H472.5 V146.0 H547.5 V172.0 H572.5 V146.0 H672.5 V159.0 H687.5 V172.0 H712.5 V146.0 H737.5 V172.0 H887.5 V159.0 H902.5 V172.0 H977.5 V146.0 H1027.5 V172.0 H1102.5 V159.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="211" class="ln">CLK1</text><text x="138" y="211" class="lc" text-anchor="end">ch32</text>
+  <path d="M150.0,218.0 H155.0 V192.0 H160.0 V218.0 H165.0 V192.0 H170.0 V218.0 H175.0 V192.0 H180.0 V218.0 H185.0 V192.0 H190.0 V218.0 H195.0 V192.0 H200.0 V218.0 H205.0 V192.0 H210.0 V218.0 H215.0 V192.0 H220.0 V218.0 H225.0 V192.0 H230.0 V218.0 H235.0 V192.0 H240.0 V218.0 H245.0 V192.0 H250.0 V218.0 H255.0 V192.0 H260.0 V218.0 H265.0 V192.0 H270.0 V218.0 H275.0 V192.0 H280.0 V218.0 H285.0 V192.0 H290.0 V218.0 H295.0 V192.0 H300.0 V218.0 H305.0 V192.0 H310.0 V218.0 H315.0 V192.0 H320.0 V218.0 H325.0 V192.0 H330.0 V218.0 H335.0 V192.0 H340.0 V218.0 H345.0 V192.0 H350.0 V218.0 H355.0 V192.0 H360.0 V218.0 H365.0 V192.0 H370.0 V218.0 H375.0 V192.0 H380.0 V218.0 H385.0 V192.0 H390.0 V218.0 H395.0 V192.0 H400.0 V218.0 H405.0 V192.0 H410.0 V218.0 H415.0 V192.0 H420.0 V218.0 H425.0 V192.0 H430.0 V218.0 H435.0 V192.0 H440.0 V218.0 H445.0 V192.0 H450.0 V218.0 H455.0 V192.0 H460.0 V218.0 H465.0 V192.0 H470.0 V218.0 H475.0 V192.0 H480.0 V218.0 H485.0 V192.0 H490.0 V218.0 H495.0 V192.0 H500.0 V218.0 H505.0 V192.0 H510.0 V218.0 H515.0 V192.0 H520.0 V218.0 H525.0 V192.0 H530.0 V218.0 H535.0 V192.0 H540.0 V218.0 H545.0 V192.0 H550.0 V218.0 H555.0 V192.0 H560.0 V218.0 H565.0 V192.0 H570.0 V218.0 H575.0 V192.0 H580.0 V218.0 H585.0 V192.0 H590.0 V218.0 H595.0 V192.0 H600.0 V218.0 H605.0 V192.0 H610.0 V218.0 H615.0 V192.0 H620.0 V218.0 H625.0 V192.0 H630.0 V218.0 H635.0 V192.0 H640.0 V218.0 H645.0 V192.0 H650.0 V218.0 H655.0 V192.0 H660.0 V218.0 H665.0 V192.0 H670.0 V218.0 H675.0 V192.0 H680.0 V218.0 H685.0 V192.0 H690.0 V218.0 H695.0 V192.0 H700.0 V218.0 H705.0 V192.0 H710.0 V218.0 H715.0 V192.0 H720.0 V218.0 H725.0 V192.0 H730.0 V218.0 H735.0 V192.0 H740.0 V218.0 H745.0 V192.0 H750.0 V218.0 H755.0 V192.0 H760.0 V218.0 H765.0 V192.0 H770.0 V218.0 H775.0 V192.0 H780.0 V218.0 H785.0 V192.0 H790.0 V218.0 H795.0 V192.0 H800.0 V218.0 H805.0 V192.0 H810.0 V218.0 H815.0 V192.0 H820.0 V218.0 H825.0 V192.0 H830.0 V218.0 H835.0 V192.0 H840.0 V218.0 H845.0 V192.0 H850.0 V218.0 H855.0 V192.0 H860.0 V218.0 H865.0 V192.0 H870.0 V218.0 H875.0 V192.0 H880.0 V218.0 H885.0 V192.0 H890.0 V218.0 H895.0 V192.0 H900.0 V218.0 H905.0 V192.0 H910.0 V218.0 H915.0 V192.0 H920.0 V218.0 H925.0 V192.0 H930.0 V218.0 H935.0 V192.0 H940.0 V218.0 H945.0 V192.0 H950.0 V218.0 H955.0 V192.0 H960.0 V218.0 H965.0 V192.0 H970.0 V218.0 H975.0 V192.0 H980.0 V218.0 H985.0 V192.0 H990.0 V218.0 H995.0 V192.0 H1000.0 V218.0 H1005.0 V192.0 H1010.0 V218.0 H1015.0 V192.0 H1020.0 V218.0 H1025.0 V192.0 H1030.0 V192.0 H1035.0 V192.0 H1040.0 V218.0 H1045.0 V192.0 H1050.0 V218.0 H1055.0 V192.0 H1060.0 V218.0 H1065.0 V192.0 H1070.0 V218.0 H1075.0 V192.0 H1080.0 V218.0 H1085.0 V192.0 H1090.0 V218.0 H1095.0 V192.0 H1100.0 V218.0 H1105.0 V192.0 H1110.0 V218.0 H1115.0 V192.0 H1120.0 V218.0 H1125.0 V192.0 H1130.0 V218.0 H1135.0 V192.0 H1140.0 V218.0 H1145.0 V192.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="257" class="ln">SPI</text><text x="138" y="257" class="lc" text-anchor="end">mode 0</text>
+  <path d="M267.5,238 H447.5 L455.5,251 L447.5,264 H267.5 L259.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="357.5" y="257" class="pl" text-anchor="middle">0x9F</text>
+  <path d="M482.5,238 H662.5 L670.5,251 L662.5,264 H482.5 L474.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="572.5" y="257" class="pl" text-anchor="middle">0x00 / 0xEF</text>
+  <path d="M697.5,238 H877.5 L885.5,251 L877.5,264 H697.5 L689.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="787.5" y="257" class="pl" text-anchor="middle">0x00 / 0x40</text>
+  <path d="M912.5,238 H1092.5 L1100.5,251 L1092.5,264 H912.5 L904.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="1002.5" y="257" class="pl" text-anchor="middle">0x00 / 0x18</text>
+  <text x="8" y="303" class="lm">D4–D31, CLK2 · 29 lanes hidden</text>
+  <line x1="250.0" y1="0" x2="250.0" y2="338" stroke="var(--bw-warning)" stroke-width="2"/>
+  <rect x="214.0" y="340" width="72" height="24" rx="4" fill="var(--bw-warning)"/><text x="250.0" y="357" class="tg" text-anchor="middle">trigger</text>
+  <line x1="472.5" y1="0" x2="472.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="478.5" y="357" class="cu">A</text>
+  <line x1="1102.5" y1="0" x2="1102.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="1108.5" y="357" class="cu">B</text>
+  </svg>
+  <div class="mock-axis"><span><b>2048</b> samples acquired → <b>400</b> drawn · 100 MHz · capture time</span><span>Δt A→B <b>2.52 µs</b></span></div>
+  </section>
+  <section class="bw-panel" data-surface="raised"><header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Staged configuration</span><span class="bw-panel__title">Trigger sequencer</span></div></header>
+  <table><tr><th>Level</th><th>Condition</th><th>Then</th></tr>
+  <tr><td>1</td><td class="m">D0 ↓ (CS#)</td><td>trigger</td></tr>
+  <tr><td>2</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>3</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>4</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr></table>
+  <div class="mock-btns"><button type="button" class="bw-button" data-variant="primary" aria-busy="false">Arm capture</button><button type="button" class="bw-button" data-variant="secondary" aria-busy="false">Stop</button><button type="button" class="bw-button" data-variant="secondary" aria-busy="false" disabled>Apply</button></div>
+  <p class="mock-reason">Apply unavailable: sequencer register packing not yet recovered (open item)</p>
+  <div style="height:14px"></div>
+  <header class="bw-panel__header"><div><span class="bw-panel__eyebrow">Gateway observations</span><span class="bw-panel__title">Messages</span></div></header>
+  <p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--bw-text-muted)"><span style="color:var(--bw-advisory);font-weight:600">Advisory</span> · Status 0xE0: armed, pre-trigger buffer filling. Drain starts when bit 0 sets.</p>
+  </section>
+  </div>
+</section>
+</body>
+</html>
