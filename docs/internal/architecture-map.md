@@ -10,4 +10,5 @@ The repo component map â€” what each subsystem owns (moved here from CLAUDE.md Â
 | Registry | `src/benchweave/registry/` | Local registry admission, package locks, resolver, authenticity |
 | Host / plugins | `src/benchweave/host/` | The device-plugin ABI, host services, the OTDP bridge |
 | Interfaces | `src/benchweave/interfaces/` | MCP (17 vendored-exact `stg_v1` tools), REST, identity, the app/worker |
+| Presentation | `src/benchweave/presentation/` | The device-page presentation surface: attachment validation (`admission.py`), the class-reference derivation and its typed refusals (`classref.py`), the gateway-owned panel registry (`panels.py`) |
 | Content & vendoring | `src/benchweave/content/`, `vendoring.py` | Exact-byte JSON documents, packaged-first vendored-asset resolution |

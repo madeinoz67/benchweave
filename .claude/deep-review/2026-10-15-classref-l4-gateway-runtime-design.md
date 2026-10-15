@@ -252,3 +252,28 @@ parity fixtures committed under `tests/presentation/classref_fixtures/`.
 
 All fixture devices invented (the parent record's "Veridian LA-32" d-series and the F1
 class descriptor); no bench, client, serial or corpus identifiers.
+
+## 12. Addendum (2026-10-15, the B4 fold — the CON-5 amendment, recorded not edited)
+
+The design record's §4 walked CON-5 with the disclosure that the adapter's composition
+inventory amendment "lands in review" — it did not land with the build (adversary lane B
+B4). Recorded here as the promised dated addendum; §1–§11 stay frozen. The `/ui`
+adapter's G2 read-only device surface gains three composition capabilities behind its
+existing adapter boundary:
+
+- **Layout-block composition** — the manifest's
+  `plugin-ui-class-reference:layout` block composes the page's §E.1 sections
+  (`ui_presentation.compose_layout_sections`, the block validated against the
+  digest-verified corpus layout schema).
+- **The derived fallback** — a class-shaped descriptor with no admitted envelope derives
+  its default presentation read-time (`presentation/classref.py`): composition over
+  admitted bytes plus digest-verified corpus bytes, the derived documents never entering
+  the admitted store, the page carrying `data-bw-presentation-derived` and the visible
+  disclosure.
+- **The panel registry** — `presentation/panels.py`: panel ids map to gateway functions
+  over composed page DATA; no plugin code executes (A05/NFR-S9 unchanged).
+
+All three are read-only projections on the G2 surface: no control authority, no dispatch,
+no admission act, no cursor. The invariants doc's CON-5 row carries the matching
+inventory amendment (§ "Amendment (2026-10, L4 …)" and the B4-fold row); the
+architecture map's new Presentation row names the modules.
