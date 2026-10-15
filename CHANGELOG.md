@@ -69,6 +69,7 @@ All notable changes to this project will be documented in this file.
 - CON-12 render at the v0.13.0 pairing
 - The class-reference reconciliation (Landing 3)
 - STE register pass on the class-reference sections
+- CON-12 render at the v0.14.0 pairing
 
 ### Features
 
@@ -107,6 +108,7 @@ All notable changes to this project will be documented in this file.
 - Regenerate the devices report and README row after the census retirement
 - Remove the class-reference authoring staging
 - Advance the pointer to v0.13.0 — the class-reference pairing
+- Advance the pointer to v0.14.0 — the expander pairing
 
 ### Refactoring
 
@@ -138,6 +140,7 @@ All notable changes to this project will be documented in this file.
 - Carry the admission's denominator and id-set pins
 - RED arms for the admission fold (adversary lanes 1+2)
 - Fold the L3 refute rows - bounds arm, staging pair, value-level hex arm
+- The sdk class-set census pin rides the v0.14.0 pairing
 
 ### Build
 
