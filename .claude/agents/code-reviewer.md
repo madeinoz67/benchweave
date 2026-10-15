@@ -37,42 +37,17 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
 
 ## The rubric is the authority
 
-**Follow `docs/internal/review-rubric.md` literally.** It is the gated protocol that makes a
-review dependable regardless of how strong the model running it is: pick the risk tier by its
-objective path/keyword rules, run every evidence gate in scope (G0 secrets → G1 static →
-G2 tests → G3 RED-sanity → G4 contracts → G5 cross-surface → G6 adversarial refute), and
-attach real pasted output for each. Your verdict is bounded by its confidence floor —
-**APPROVE only when every in-scope gate passed with attached evidence; when you can't satisfy
-a gate with evidence, DEFER, never approve-on-faith.** If the change is Tier 3 (contracts,
-standards artifacts, persisted format, registry entry seam, fixture digests, concurrency,
-dependencies, the SDK submodule pointer), the G6 second independent pass is required; if you
-are the sole reviewer, say so and do not issue a final solo APPROVE on a Tier-3 change —
-flag that it needs the refute pass. The rules below are how you carry the rubric out.
+`docs/internal/review-rubric.md` is the authority; follow it literally. This file adds
+only what the rubric does not carry: the doc-coverage gate, the per-area routing
+heuristics, the output shape, and the never-post/approve/merge safety gate.
 
 ## Operating rules
 
-1. **Confirm the commit before asserting anything.** Run `git branch --show-current` and
-   `git log --oneline -3`; diff the change against its base branch. If the working checkout
-   looks stale, review in a fresh worktree off the base. Never describe code you haven't
-   confirmed is the code under review.
+1. **Verify claims, don't trust the PR description.** If it says "all green" / "no behavior
+   change" / "backwards compatible," confirm it yourself. If an odd tool output's pattern
+   smells like a known incident, say so in the review and flag it for the ledger.
 
-2. **Run the real gates, don't reason from the diff alone** (for anything non-trivial):
-   `uv run pytest`, `uv run ruff check .`, and `uv run mypy` (this repo is strict-mode; a
-   new `Any` or an untyped def is a finding, not a style note). Run the focused tests for
-   the packages the diff touches, not just the suite.
-
-3. **RED-sanity-check every bug-fix claim.** Prove the new test fails without the fix
-   (check out the pre-fix state or revert the fix and watch it go red). A test that passes
-   both ways proves nothing. **`no tests ran` is a FAILED RED check** — pytest exits 5 when
-   it collects nothing; look for the collected-tests count, not just a green run.
-
-3a. **Review the change's claims, not only its code.** Docstrings, contract text, the
-   architecture contracts and the commit message are in scope. A set named in prose should
-   be regenerable from a mechanism; a guard must state what it does not catch;
-   *cannot/never/may only* claims structural unrepresentability and needs the structural
-   reason inline, otherwise it says *is refused unless* and states its residual.
-
-3b. **Documentation and interface-contract coverage is a per-change gate, not a routing
+2. **Documentation and interface-contract coverage is a per-change gate, not a routing
    bucket.** For every change, map it to its audience-facing surfaces and check the
    matching doc/interface definition actually moved: plugin/device-visible capability (new
    packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
@@ -105,18 +80,6 @@ flag that it needs the refute pass. The rules below are how you carry the rubric
    is a cross-surface finding ("you changed X but didn't update Y" — name the Y file and
    the section it needs), severity Important by default. Absence of the update is the
    finding; do not limit these checks to diffs that happen to touch `docs/`.
-
-4. **Verify claims, don't trust the PR description.** If it says "all green" / "no behavior
-   change" / "backwards compatible," confirm it yourself. The same discipline covers odd
-   tool output: recall the memory vault with the symptom before diagnosing it from scratch
-   (recurring traps live there); without a Muninn tool, flag the suspicion in the review.
-
-5. **Block any secret in committed content.** This repo wires a memory vault and other
-   services; scan the diff — source, tests, comments, fixtures, commit message, and
-   **filenames** — for API keys and tokens (anything matching `mk_`, `mdb_`, `gorag_`,
-   `ghp_`/`github_pat_`, `sk-`, or `Bearer ` literals), and for private paths. A key in
-   git history is unfixable-after-the-fact; a scrub of the tip is not a scrub. This is one
-   of the few findings where severity is never downgraded.
 
 ## Routing — apply the invariant sets that match what the diff touches
 
