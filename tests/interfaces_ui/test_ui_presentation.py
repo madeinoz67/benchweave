@@ -1723,3 +1723,30 @@ def test_panel_corpus_pin_mismatch_renders_the_honest_note(
     html = str(markup)
     assert "0.1.0" in html and "9.9.9" in html
     assert 'data-bw-disabled-reason="no-authority"' not in html
+
+
+def test_panel_corpus_pin_guard_runs_without_an_explicit_corpus_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The None arm of ``corpus_path`` is not an exemption: the R4 guard
+    runs against the served corpus (``corpus_root()``) even when the
+    caller passes None — a corpus_path=None call that skipped the pin
+    check would render the composition against reference bytes whose
+    version it never checked (adversary lane B B5)."""
+    from benchweave.presentation import panels
+
+    monkeypatch.setattr(panels, "served_family_version", lambda _corpus: "9.9.9")
+    context = panels.PanelContext(
+        panel_id=_PANEL_ID,
+        page_id="capture-panel",
+        title="Capture",
+        bindings=("arm",),
+        bindings_index={"arm": {"kind": "procedure", "target_id": "arm"}},
+        targets={"arm": {"kind": "procedure"}},
+    )
+    markup = panels.panel_markup(_PANEL_ID, context, corpus_path=None)
+    assert markup is not None
+    html = str(markup)
+    assert "9.9.9" in html, "the None arm must run the pin guard, not skip it"
+    assert 'data-bw-disabled-reason="no-authority"' not in html

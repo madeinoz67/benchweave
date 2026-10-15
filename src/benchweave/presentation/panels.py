@@ -30,6 +30,7 @@ from typing import Any
 from markupsafe import Markup, escape
 
 from benchweave.presentation.classref import family_version
+from benchweave.vendoring import corpus_root
 
 _NO_AUTHORITY = "no-authority"
 _NO_AUTHORITY_LABEL = "No lease or policy authority"
@@ -163,8 +164,14 @@ def panel_markup(
     panel = PANELS.get(panel_id)
     if panel is None:
         return None
-    served = served_family_version(corpus_path) if corpus_path is not None else None
-    if served is not None and served != panel.corpus_pin:
+    # The pin guard has no exemption arm: a None corpus_path reads the
+    # SERVED corpus (corpus_root()) — a call that skipped the check would
+    # render the composition against reference bytes whose version it
+    # never verified (R4's skew, via the None arm).
+    served = served_family_version(
+        corpus_path if corpus_path is not None else corpus_root()
+    )
+    if served != panel.corpus_pin:
         return Markup(  # noqa: S704 - fixed literals + derived strings
             f'<div class="bw-panel-host" data-bw-panel-version-skew>'
             f"<p>Panel {escape(panel.panel_id)} renders class-reference "
