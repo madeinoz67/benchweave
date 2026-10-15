@@ -259,11 +259,17 @@ Each applicable component must include:
 
 The coverage census is mechanical: the canonical fixtures (`packages/ui-html/src/benchweave_ui_html/fixtures.py`) drive one harness render per §E.1 component row, the pattern library exports the `PATTERNS` census pages (both themes each), and the browser lane screenshots every page — a component state with no fixture, row or page is the gap this section forbids. The old Storybook groups map to the pattern-library index sections (Foundations → tokens pages; the rest → the component and composition pages).
 
+## Class-reference capture pages
+
+The class-reference standards family (plugin-ui-class-reference 0.1.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the single source for the pattern-library class page, the SDK expander that turns a class-conformant descriptor into a normal plugin-ui manifest set, and the rendered-output gate. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
+
+The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials the renderer already ships — host composition, no renderer change, no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.3/examples/class-logic_analyser.json`); the drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files, so a corpus edit reddens the page until it is regenerated. Lane identity is declared position; group labels are DECIMAL positional (`D1-D2`) while the radix (hex default) governs rendered values; decoder lanes resolve only where the descriptor's pinned vectors resolve them.
+
 ## Plugin presentation
 
 Plugins declare pages, bindings, plots and exact registered panel identifiers. The host renders them. A plugin manifest cannot supply JavaScript, arbitrary CSS, permission, polling or a raw device command.
 
-Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI 0.1.0 extension fields.
+Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI extension fields. The one governed exception is the class-reference family's namespaced `plugin-ui-class-reference:layout` block (plugin-ui-class-reference 0.1.0): a class-conformant descriptor's expansion — or a hand-authored block riding the same family schema, one vocabulary two writers — may place layout structure in a manifest's namespaced `extensions` map. The canonical validator is extension-blind, so the family schema is the block's only validation authority; a host that does not know the namespace ignores the block and serves the manifest's plain pages (degrade by ignoring, never an error).
 
 ## Exceptions
 
