@@ -951,6 +951,27 @@ def test_schema_invalid_reference_renders_the_typed_finding(
     )
 
 
+def test_unserved_corpus_fails_open_to_the_absence_note(
+    gateway: SimpleNamespace,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A corpus whose family state cannot even be read (no standards
+    manifest — the vendor-install arm) renders the honest absence note,
+    the same posture the fallback held pre-L4: the corpus-level state
+    raise fails OPEN like the per-file selection it wraps, never an
+    escape to the page's 500 handler (adversary lane B B2)."""
+    import benchweave.interfaces.ui_presentation as ui_presentation
+
+    monkeypatch.setattr(ui_presentation, "corpus_root", lambda: tmp_path)
+    state = compose_device_presentation(gateway.content, _f1_descriptor_raw("f1"))
+    assert state.absence == "no-attachment"
+    assert state.derived is False
+    assert state.valid is False
+    assert state.pages == ()
+    assert state.findings == ()
+
+
 def test_schema_invalid_reference_route_renders_findings_never_500(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

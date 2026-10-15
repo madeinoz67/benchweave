@@ -727,6 +727,21 @@ def _classref_fallback(
             pages=(),
             absence=None,
         )
+    except StandardsError:
+        # The corpus-level state read fails OPEN (B2): a family whose
+        # manifest is absent or corrupt (the vendor-install arm) is not a
+        # reference this descriptor can select — the honest absence note,
+        # byte-identical to the pre-L4 posture, never an escape. The
+        # per-file pin gate inside the walk stays LOUD (the F1 fold): a
+        # served family's corrupted reference refuses typed; an unserved
+        # corpus serves nothing to refuse about.
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=(),
+            pages=(),
+            absence="no-attachment",
+        )
     if references is None:
         # The fail-open boundary: no profile names a class with a
         # reference — today's honest absence, byte-identical (B3).
