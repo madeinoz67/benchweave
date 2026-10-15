@@ -482,7 +482,7 @@
     },
     "tests/interfaces_ui/test_ui_presentation.py": {
       "core": 0,
-      "total": 14
+      "total": 38
     },
     "tests/interfaces_ui/test_ui_read_views.py": {
       "core": 0,
@@ -490,7 +490,7 @@
     },
     "tests/interfaces_ui/test_ui_readings.py": {
       "core": 0,
-      "total": 18
+      "total": 19
     },
     "tests/interfaces_ui/test_ui_refusals.py": {
       "core": 0,
@@ -515,6 +515,10 @@
     "tests/interfaces_ui/test_ui_stream_gaps.py": {
       "core": 0,
       "total": 12
+    },
+    "tests/presentation/test_classref_derive.py": {
+      "core": 0,
+      "total": 18
     },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,
