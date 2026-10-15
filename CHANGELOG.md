@@ -27,6 +27,11 @@ All notable changes to this project will be documented in this file.
 - The target-pattern cases and the structural-numbers set
 - Restore the governance files' original byte forms
 - Fold adversary lanes 1+2 - D2 closures, D7 ledger rule, bounds, grammar
+- The reference-integrity walk refuses loud, typed (F1)
+- A dual-invalid manifest renders canonical + layout findings (F4)
+- Nested layout sections keep the reading-tile join alive (B1)
+- An unserved corpus fails open to the absence note (B2)
+- The panel pin guard has no None-corpus exemption (B5)
 
 ### Documentation
 
@@ -67,11 +72,14 @@ All notable changes to this project will be documented in this file.
 - Render the plugin-ui-class-reference rows (CON-12, in-arc)
 - Governor fold - the governed-set count and the RC-5 supersession
 - CON-12 render at the v0.13.0 pairing
+- L4 gateway-runtime landing — class-reference consumption, fallback, panels
+- Fold owner row-call dispositions into the L4 record (§6)
 - The class-reference reconciliation (Landing 3)
 - STE register pass on the class-reference sections
 - CON-12 render at the v0.14.0 pairing
 - BPE trim of the agent instruction set
 - Fold the verify lenses — provenance carve-out, tool-contract home, recipe single-home (#468)
+- The CON-5 composition-inventory amendment + the presentation row (B4)
 
 ### Features
 
@@ -99,6 +107,11 @@ All notable changes to this project will be documented in this file.
 - The mockup analyzer composition in the real-analyser idiom
 - Reference-fidelity capture view + the one-language doctrine
 - Adopt the owner-authored spec composition (spec-drop)
+- Class-reference derivation module (L4 capability a)
+- The no-manifest class-reference fallback (L4 capability a)
+- Layout-block consumption on the production host (L4 capability b)
+- The gateway-owned panel registry (L4 capability c)
+- The derivation mirrors the SDK decoder behaviors (F2)
 
 ### Miscellaneous
 
@@ -111,6 +124,7 @@ All notable changes to this project will be documented in this file.
 - Remove the class-reference authoring staging
 - Advance the pointer to v0.13.0 — the class-reference pairing
 - Advance the pointer to v0.14.0 — the expander pairing
+- Register the L4 corpus-pin provenance literals (obligation 20)
 
 ### Refactoring
 
@@ -143,6 +157,7 @@ All notable changes to this project will be documented in this file.
 - RED arms for the admission fold (adversary lanes 1+2)
 - Fold the L3 refute rows - bounds arm, staging pair, value-level hex arm
 - The sdk class-set census pin rides the v0.14.0 pairing
+- The panel-id pattern conflict pin + the real panel set (B3)
 
 ### Build
 
