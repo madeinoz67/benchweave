@@ -48,37 +48,88 @@
     td:nth-child(2) { font-family:ui-monospace,monospace; }
     @media (max-width:980px) { body{padding:18px}.themes{grid-template-columns:1fr}.lower{grid-template-columns:1fr}.theme{max-width:720px;margin:auto} }
     @media (max-width:520px) { .readings{grid-template-columns:1fr}.title-row{align-items:start}.topbar{align-items:start;gap:10px}.status{text-align:right} }
-      .analyzer { margin-top:16px; border-top:1px solid var(--edge); padding-top:16px; }
-    .run-row { display:flex; gap:8px; margin-top:16px; align-items:center; }
-    .staging-pair { display:flex; gap:6px; align-items:center; font:.62rem ui-monospace,monospace; color:var(--muted); }
-    .staging-pair input { width:5.5em; padding:3px 6px; border:1px solid var(--edge); border-radius:6px; background:var(--surface); color:var(--text); font:inherit; }
-    .lanes { margin-top:14px; padding:12px; border:1px solid var(--edge); border-radius:12px; background:var(--recess); box-shadow:inset 5px 5px 12px #0004, inset -3px -3px 9px #fff1; }
-    .lane-head { display:flex; justify-content:space-between; color:var(--muted); font:.63rem ui-monospace,monospace; }
-    .lane-status { margin-top:6px; }
-    .lanes-plot { display:block; width:100%; height:auto; margin-top:8px; }
-    .lanes-plot text { font:9.5px ui-monospace,monospace; fill:var(--muted); }
-    .lanes-plot .lane-name { fill:var(--text); font-weight:600; }
-    .lanes-plot .badge { fill:color-mix(in srgb,var(--muted) 18%,var(--surface)); stroke:var(--edge); }
-    .lanes-plot .badge-text { fill:var(--muted); font-size:8px; }
-    .lanes-plot .gridline { stroke:var(--edge); stroke-width:.5; opacity:.35; }
-    .lanes-plot .lane-trace path { stroke:var(--cyan); fill:none; stroke-width:1.2; }
-    .lanes-plot .hatch { opacity:.55; }
-    .lanes-plot .bracket { stroke:var(--muted); fill:none; stroke-width:1; opacity:.7; }
-    .lanes-plot .bus-readout polygon { fill:var(--surface); stroke:var(--edge); }
-    .lanes-plot .bus-readout text { fill:var(--text); }
-    .lanes-plot .chip.unk polygon { stroke-dasharray:3 2; }
-    .lanes-plot .chip.unk text { fill:var(--muted); }
-    .lanes-plot [data-lane-kind="decoder"] polygon { fill:color-mix(in srgb,var(--cyan) 12%,var(--surface)); stroke:color-mix(in srgb,var(--cyan) 40%,var(--edge)); }
-    .lanes-plot [data-lane-kind="decoder"] text { fill:var(--text); }
-    .lanes-plot .trigger-line { stroke:var(--amber); stroke-width:1.6; }
-    .lanes-plot .cursor-line { stroke:var(--muted); stroke-width:1; stroke-dasharray:5 4; opacity:.8; }
-    .lanes-plot .axis-line { stroke:var(--edge); stroke-width:1; }
-    .lanes-plot .time-axis .trigger-chip polygon { fill:color-mix(in srgb,var(--amber) 20%,var(--surface)); stroke:var(--amber); }
-    .lanes-plot .time-axis .trigger-chip text { fill:var(--amber); font-weight:700; }
-    .lanes-plot .time-axis .cursor-chip polygon { fill:var(--surface); stroke:var(--muted); }
-    .lanes-plot .time-axis .cursor-chip text { fill:var(--text); }
-    .context-strip { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font:.63rem ui-monospace,monospace; margin-top:6px; flex-wrap:wrap; }
-    .analyzer .alert { margin-top:16px; }
+
+    /* The owner-authored capture composition (spec 2026-10-15): values
+       verbatim; selectors scoped to the section. */
+    .spec-root {
+      --bw-space-1: 0.25rem; --bw-space-2: 0.5rem; --bw-space-3: 0.75rem;
+      --bw-space-4: 1rem; --bw-space-5: 1.5rem; --bw-space-6: 2rem;
+      --bw-radius-control: 0.5rem; --bw-radius-panel: 0.875rem;
+      --bw-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bw-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --bw-shadow-raised: 0.5rem 0.625rem 1.5rem var(--bw-shadow-dark), -0.35rem -0.35rem 1rem var(--bw-shadow-light);
+      --bw-shadow-recessed: inset 0.25rem 0.25rem 0.625rem var(--bw-shadow-dark), inset -0.2rem -0.2rem 0.5rem var(--bw-shadow-light);
+      --bw-focus-ring: 0 0 0 0.2rem color-mix(in srgb, var(--bw-focus), transparent 55%);
+      --bw-transition-fast: 120ms ease;
+      --bw-canvas: #e4ebef; --bw-surface: #f5f8f9; --bw-surface-recessed: #dce5ea;
+      --bw-text: #17242c; --bw-text-muted: #5b6a73; --bw-border: #c3cfd5;
+      --bw-accent: #0b7181; --bw-accent-contrast: #ffffff; --bw-focus: #087f8c;
+      --bw-shadow-dark: #b9c5cc; --bw-shadow-light: #ffffff;
+      --bw-advisory: #2476b8; --bw-warning: #a96608; --bw-critical: #b63830;
+      --bw-trip: #a92858; --bw-success: #177158; --bw-limiting: #274076;
+      --bw-series-1: #253421; --bw-series-2: #8e7588; --bw-series-3: #2f3300;
+      --bw-series-4: #00379d; --bw-series-5: #7e002d; --bw-series-6: #746084;
+      --bw-series-7: #5a1538; --bw-series-8: #183058;
+    }
+    .theme.dark .spec-root {
+      --bw-canvas: #19252c; --bw-surface: #26363f; --bw-surface-recessed: #101a20;
+      --bw-text: #eef5f7; --bw-text-muted: #aebbc2; --bw-border: #40515b;
+      --bw-accent: #42cee2; --bw-accent-contrast: #07161a; --bw-focus: #59d9eb;
+      --bw-shadow-dark: #0c1317; --bw-shadow-light: #354852;
+      --bw-advisory: #62aee8; --bw-warning: #ffb342; --bw-critical: #ff6d63;
+      --bw-trip: #ff5d91; --bw-success: #67d8b2; --bw-limiting: #5f9500;
+      --bw-series-1: #00744a; --bw-series-2: #e3d7ff; --bw-series-3: #567200;
+      --bw-series-4: #805e71; --bw-series-5: #007df3; --bw-series-6: #ae686e;
+      --bw-series-7: #755d9a; --bw-series-8: #7d8f00;
+    }
+    .spec-root .banner { display:flex; gap:10px; margin-bottom:16px; }
+    .spec-root .banner p { margin:0; padding:6px 14px; border-radius:999px; font-size:13px; font-weight:600; letter-spacing:.04em; background:var(--bw-surface-recessed); color:var(--bw-warning); border:1px solid color-mix(in srgb,var(--bw-warning),transparent 50%); }
+    .spec-root .banner p.muted { color:var(--bw-text-muted); border-color:var(--bw-border); }
+    .spec-root .head { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; }
+    .spec-root .eyebrow { display:block; font-size:13px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bw-accent); margin-bottom:4px; }
+    .spec-root h2 { margin:0; font-size:28px; font-weight:650; }
+    .spec-root h2 code { font-family:"DejaVu Sans Mono",monospace; font-size:22px; color:var(--bw-text-muted); font-weight:400; }
+    .spec-root .badges { display:flex; gap:8px; }
+    .spec-root .badge { padding:6px 14px; border-radius:var(--bw-radius-control); font-size:14px; font-weight:600; border:1px solid; }
+    .spec-root .b-ok { color:var(--bw-success); border-color:color-mix(in srgb,var(--bw-success),transparent 50%); }
+    .spec-root .b-adv { color:var(--bw-advisory); border-color:color-mix(in srgb,var(--bw-advisory),transparent 50%); }
+    .spec-root .strip { display:flex; gap:18px; align-items:center; font-size:14px; color:var(--bw-text-muted); background:var(--bw-surface-recessed); border-radius:var(--bw-radius-control); padding:10px 16px; margin-bottom:18px; box-shadow:var(--bw-shadow-recessed); }
+    .spec-root .strip strong { color:var(--bw-text); }
+    .spec-root .tiles { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; margin-bottom:20px; }
+    .spec-root .bw-reading { background:var(--bw-surface); border-radius:var(--bw-radius-panel); padding:14px 16px; box-shadow:var(--bw-shadow-raised); display:flex; flex-direction:column; gap:4px; position:relative; }
+    .spec-root .bw-reading header { font-size:13px; font-weight:600; color:var(--bw-text-muted); text-transform:uppercase; letter-spacing:.06em; }
+    .spec-root .sev { position:absolute; right:14px; top:13px; font-size:12px; font-weight:600; display:flex; gap:6px; align-items:center; }
+    .spec-root .sev i { width:9px; height:9px; border-radius:50%; background:currentColor; display:inline-block; }
+    .spec-root .sev-advisory { color:var(--bw-advisory); } .spec-root .sev-neutral { color:var(--bw-text-muted); } .spec-root .sev-success { color:var(--bw-success); }
+    .spec-root .val { margin:4px 0 0; font-family:"DejaVu Sans Mono",monospace; font-size:30px; font-weight:600; }
+    .spec-root .val small { font-family:var(--bw-font-ui); font-size:15px; color:var(--bw-text-muted); font-weight:500; }
+    .spec-root .set { font-size:12px; color:var(--bw-accent); }
+    .spec-root .q { margin:0; font-size:12.5px; color:var(--bw-text-muted); }
+    .spec-root .grid { display:grid; grid-template-columns:1fr 390px; gap:20px; }
+    .spec-root .panel { border-radius:var(--bw-radius-panel); padding:16px 18px; }
+    .spec-root .raised { background:var(--bw-surface); box-shadow:var(--bw-shadow-raised); }
+    .spec-root .recessed { background:var(--bw-surface-recessed); box-shadow:var(--bw-shadow-recessed); }
+    .spec-root .ph { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+    .spec-root .pe { font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--bw-text-muted); }
+    .spec-root .pt { font-size:18px; font-weight:650; margin-left:10px; }
+    .spec-root svg .ln { fill:var(--bw-text); font:600 14px Inter,sans-serif; }
+    .spec-root svg .lc { fill:var(--bw-text-muted); font:12px "DejaVu Sans Mono",monospace; }
+    .spec-root svg .lm { fill:var(--bw-text-muted); font:italic 13px Inter,sans-serif; }
+    .spec-root svg .pl { fill:var(--bw-text); font:12px "DejaVu Sans Mono",monospace; }
+    .spec-root svg .tg { fill:var(--bw-accent-contrast); font:600 12px Inter,sans-serif; }
+    .spec-root svg .cu { fill:var(--bw-text); font:600 13px Inter,sans-serif; }
+    .spec-root .axis { display:flex; justify-content:space-between; font-size:13px; color:var(--bw-text-muted); margin-top:6px; }
+    .spec-root .axis b { color:var(--bw-text); font-weight:600; }
+    .spec-root table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:0; border-radius:0; }
+    .spec-root th { text-align:left; color:var(--bw-text-muted); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--bw-border); }
+    .spec-root td { padding:7px 4px; border-bottom:1px solid var(--bw-border); }
+    .spec-root td.m { font-family:"DejaVu Sans Mono",monospace; }
+    .spec-root .btns { display:flex; gap:10px; margin-top:14px; }
+    .spec-root button { font:inherit; font-size:14px; font-weight:600; padding:9px 16px; border-radius:var(--bw-radius-control); border:1px solid var(--bw-border); background:var(--bw-surface); color:var(--bw-text); box-shadow:var(--bw-shadow-raised); }
+    .spec-root button.primary { background:var(--bw-accent); color:var(--bw-accent-contrast); border-color:var(--bw-accent); }
+    .spec-root button[disabled] { opacity:.45; box-shadow:none; }
+    .spec-root .reason { margin-top:8px; font-size:12.5px; color:var(--bw-warning); }
+
   </style>
 </head>
 <body>
@@ -102,35 +153,81 @@
             <svg viewBox="0 0 460 145" role="img" aria-label="Voltage and current waveform"><defs><pattern id="lg" width="46" height="29" patternUnits="userSpaceOnUse"><path d="M46 0H0V29" fill="none" stroke="#bdcbd2"/></pattern></defs><rect width="460" height="145" fill="url(#lg)"/><path d="M0 98L45 95L90 100L135 73L180 82L225 58L270 65L315 38L365 49L415 24L460 31" fill="none" stroke="#147e90" stroke-width="3"/><path d="M0 120L45 116L90 112L135 104L180 107L225 87L270 91L315 73L365 66L415 58L460 48" fill="none" stroke="#a96e10" stroke-width="2" stroke-dasharray="8 5"/><path d="M0 42H460" stroke="#a96e10" stroke-dasharray="4 4"/></svg>
           </section></div>
         <table><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
-          <div class="content analyzer">
-      <div class="title-row"><div><span class="eyebrow">Capture view</span><h2>Logic analyser · LA-32</h2></div><span class="quality">✓ NORMAL · 84 ms</span></div>
-      <section class="lanes" data-lane-kind="capture" aria-label="Digital analyser capture view">
-        <div class="lane-head"><span>CAPTURE · 16 LANES · TRIGGERED</span><span>GROUP LABELS DECIMAL · BUS VALUES HEX</span></div>
-        <svg class="lanes-plot" viewBox="0 0 790 448" role="img" aria-label="Logic analyser capture view: 16 lanes in two groups, hex bus readouts at transaction boundaries, decoder annotations, cursors X1 and X2 bracketing the framed transaction, trigger marker">
-          <defs><pattern id="hatch-l" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="var(--muted)" stroke-width="1"/></pattern></defs>
-<line class="gridline" x1="167.8" y1="6" x2="167.8" y2="412"/><line class="gridline" x1="223.7" y1="6" x2="223.7" y2="412"/><line class="gridline" x1="279.5" y1="6" x2="279.5" y2="412"/><line class="gridline" x1="335.3" y1="6" x2="335.3" y2="412"/><line class="gridline" x1="391.2" y1="6" x2="391.2" y2="412"/><line class="gridline" x1="447.0" y1="6" x2="447.0" y2="412"/><line class="gridline" x1="502.8" y1="6" x2="502.8" y2="412"/><line class="gridline" x1="558.7" y1="6" x2="558.7" y2="412"/><line class="gridline" x1="614.5" y1="6" x2="614.5" y2="412"/><line class="gridline" x1="670.3" y1="6" x2="670.3" y2="412"/><line class="gridline" x1="726.2" y1="6" x2="726.2" y2="412"/>
-<g class="lane-group" data-lane-kind="group" aria-label="Lane group D1-D8"><g class="bus-readout" aria-label="D1-D8 hex values"><g class="chip chip unk"><polygon points="125.4,16.0 130.4,8.0 140.4,8.0 145.4,16.0 140.4,24.0 130.4,24.0"/><text x="135.4" y="19.0" text-anchor="middle">—</text></g><g class="chip chip"><polygon points="158.3,16.0 163.3,8.0 191.3,8.0 196.3,16.0 191.3,24.0 163.3,24.0"/><text x="177.3" y="19.0" text-anchor="middle">0x9F</text></g><g class="chip chip"><polygon points="196.3,16.0 201.3,8.0 229.3,8.0 234.3,16.0 229.3,24.0 201.3,24.0"/><text x="215.3" y="19.0" text-anchor="middle">0x00</text></g><g class="chip chip"><polygon points="235.4,16.0 240.4,8.0 268.4,8.0 273.4,16.0 268.4,24.0 240.4,24.0"/><text x="254.4" y="19.0" text-anchor="middle">0xEF</text></g><g class="chip chip"><polygon points="274.5,16.0 279.5,8.0 307.5,8.0 312.5,16.0 307.5,24.0 279.5,24.0"/><text x="293.5" y="19.0" text-anchor="middle">0x40</text></g><g class="chip chip"><polygon points="310.8,16.0 315.8,8.0 343.8,8.0 348.8,16.0 343.8,24.0 315.8,24.0"/><text x="329.8" y="19.0" text-anchor="middle">0x18</text></g><g class="chip chip unk"><polygon points="554.2,16.0 559.2,8.0 569.2,8.0 574.2,16.0 569.2,24.0 559.2,24.0"/><text x="564.2" y="19.0" text-anchor="middle">—</text></g></g><g class="lane-trace" data-lane-index="1"><text class="lane-name" x="4" y="40.0">Data line 1</text><rect class="badge" x="78" y="32.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="40.5" text-anchor="middle">D1</text><path d="M112.0 33.0 L158.9 33.0 L158.9 43.0 L346.5 43.0 L346.5 33.0 L782.0 33.0"/></g><g class="lane-trace" data-lane-index="2"><text class="lane-name" x="4" y="56.0">Data line 2</text><rect class="badge" x="78" y="48.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="56.5" text-anchor="middle">D2</text><path d="M112.0 59.0 L164.8 59.0 L164.8 49.0 L170.6 49.0 L170.6 59.0 L176.5 59.0 L176.5 49.0 L182.3 49.0 L182.3 59.0 L188.2 59.0 L188.2 49.0 L194.1 49.0 L194.1 59.0 L199.9 59.0 L199.9 49.0 L205.8 49.0 L205.8 59.0 L211.7 59.0 L211.7 49.0 L217.5 49.0 L217.5 59.0 L223.4 59.0 L223.4 49.0 L229.2 49.0 L229.2 59.0 L235.1 59.0 L235.1 49.0 L241.0 49.0 L241.0 59.0 L246.8 59.0 L246.8 49.0 L252.7 49.0 L252.7 59.0 L258.6 59.0 L258.6 49.0 L264.4 49.0 L264.4 59.0 L270.3 59.0 L270.3 49.0 L276.1 49.0 L276.1 59.0 L282.0 59.0 L282.0 49.0 L287.9 49.0 L287.9 59.0 L293.7 59.0 L293.7 49.0 L299.6 49.0 L299.6 59.0 L305.5 59.0 L305.5 49.0 L311.3 49.0 L311.3 59.0 L317.2 59.0 L317.2 49.0 L323.1 49.0 L323.1 59.0 L328.9 59.0 L328.9 49.0 L334.8 49.0 L334.8 59.0 L340.6 59.0 L340.6 49.0 L346.5 49.0 L346.5 59.0 L782.0 59.0"/></g><g class="lane-trace" data-lane-index="3"><text class="lane-name" x="4" y="72.0">Data line 3</text><rect class="badge" x="78" y="64.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="72.5" text-anchor="middle">D3</text><path d="M112.0 65.0 L158.9 65.0 L158.9 75.0 L170.6 75.0 L170.6 65.0 L194.1 65.0 L194.1 75.0 L229.2 75.0 L229.2 65.0 L264.4 65.0 L264.4 75.0 L276.1 75.0 L276.1 65.0 L287.9 65.0 L287.9 75.0 L311.3 75.0 L311.3 65.0 L782.0 65.0"/></g><g class="lane-trace" data-lane-index="4"><text class="lane-name" x="4" y="88.0">Data line 4</text><rect class="badge" x="78" y="80.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="88.5" text-anchor="middle">D4</text><path d="M112.0 91.0 L218.1 91.0 L218.1 81.0 L285.1 81.0 L285.1 91.0 L458.2 91.0 L458.2 81.0 L514.0 81.0 L514.0 91.0 L782.0 91.0"/><rect class="hatch" x="112.0" y="81.0" width="35.7" height="10" fill="url(#l)"/><rect class="hatch" x="726.2" y="81.0" width="55.8" height="10" fill="url(#l)"/></g><g class="lane-trace" data-lane-index="5"><text class="lane-name" x="4" y="104.0">Data line 5</text><rect class="badge" x="78" y="96.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="104.5" text-anchor="middle">D5</text><path d="M112.0 97.0 L158.9 97.0 L158.9 107.0 L182.3 107.0 L182.3 97.0 L205.8 97.0 L205.8 107.0 L217.5 107.0 L217.5 97.0 L241.0 97.0 L241.0 107.0 L252.7 107.0 L252.7 97.0 L264.4 97.0 L264.4 107.0 L287.9 107.0 L287.9 97.0 L323.1 97.0 L323.1 107.0 L782.0 107.0"/></g><g class="lane-trace" data-lane-index="6"><text class="lane-name" x="4" y="120.0">Data line 6</text><rect class="badge" x="78" y="112.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="120.5" text-anchor="middle">D6</text><path d="M112.0 123.0 L396.8 123.0 L396.8 113.0 L486.1 113.0 L486.1 123.0 L636.8 123.0 L636.8 113.0 L692.7 113.0 L692.7 123.0 L782.0 123.0"/></g><g class="lane-trace" data-lane-index="7"><text class="lane-name" x="4" y="136.0">Data line 7</text><rect class="badge" x="78" y="128.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="136.5" text-anchor="middle">D7</text><path d="M112.0 129.0 L782.0 129.0"/></g><g class="lane-trace" data-lane-index="8"><text class="lane-name" x="4" y="152.0">Data line 8</text><rect class="badge" x="78" y="144.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="152.5" text-anchor="middle">D8</text><path d="M112.0 155.0 L212.5 155.0 L212.5 145.0 L290.7 145.0 L290.7 155.0 L782.0 155.0"/></g><path class="bracket" d="M110.0 10.0 L106 10.0 L106 157.0 L110.0 157.0"/></g>
-<g class="lane-group" data-lane-kind="group" aria-label="Lane group D9-D16"><g class="bus-readout" aria-label="D9-D16 hex values"><g class="chip chip unk"><polygon points="261.1,198.0 266.1,190.0 276.1,190.0 281.1,198.0 276.1,206.0 266.1,206.0"/><text x="271.1" y="201.0" text-anchor="middle">—</text></g><g class="chip chip"><polygon points="453.1,198.0 458.1,190.0 486.1,190.0 491.1,198.0 486.1,206.0 458.1,206.0"/><text x="472.1" y="201.0" text-anchor="middle">0x50</text></g><g class="chip chip"><polygon points="553.6,198.0 558.6,190.0 586.6,190.0 591.6,198.0 586.6,206.0 558.6,206.0"/><text x="572.6" y="201.0" text-anchor="middle">0x12</text></g><g class="chip chip unk"><polygon points="696.6,198.0 701.6,190.0 711.6,190.0 716.6,198.0 711.6,206.0 701.6,206.0"/><text x="706.6" y="201.0" text-anchor="middle">—</text></g></g><g class="lane-trace" data-lane-index="9"><text class="lane-name" x="4" y="222.0">Data line 9</text><rect class="badge" x="78" y="214.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="222.5" text-anchor="middle">D9</text><path d="M112.0 225.0 L430.2 225.0 L430.2 215.0 L631.2 215.0 L631.2 225.0 L782.0 225.0"/></g><g class="lane-trace" data-lane-index="10"><text class="lane-name" x="4" y="238.0">Data line 10</text><rect class="badge" x="78" y="230.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="238.5" text-anchor="middle">D10</text><path d="M112.0 231.0 L438.6 231.0 L438.6 241.0 L447.0 241.0 L447.0 231.0 L455.4 231.0 L455.4 241.0 L463.8 241.0 L463.8 231.0 L472.1 231.0 L472.1 241.0 L480.5 241.0 L480.5 231.0 L488.9 231.0 L488.9 241.0 L497.3 241.0 L497.3 231.0 L505.6 231.0 L505.6 241.0 L514.0 241.0 L514.0 231.0 L522.4 231.0 L522.4 241.0 L530.8 241.0 L530.8 231.0 L539.1 231.0 L539.1 241.0 L547.5 241.0 L547.5 231.0 L555.9 231.0 L555.9 241.0 L564.3 241.0 L564.3 231.0 L572.6 231.0 L572.6 241.0 L581.0 241.0 L581.0 231.0 L589.4 231.0 L589.4 241.0 L597.8 241.0 L597.8 231.0 L606.1 231.0 L606.1 241.0 L614.5 241.0 L614.5 231.0 L622.9 231.0 L622.9 241.0 L631.2 241.0 L631.2 231.0 L782.0 231.0"/></g><g class="lane-trace" data-lane-index="11"><text class="lane-name" x="4" y="254.0">Data line 11</text><rect class="badge" x="78" y="246.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="254.5" text-anchor="middle">D11</text><path d="M112.0 247.0 L447.0 247.0 L447.0 257.0 L480.5 257.0 L480.5 247.0 L514.0 247.0 L514.0 257.0 L547.5 257.0 L547.5 247.0 L564.3 247.0 L564.3 257.0 L581.0 257.0 L581.0 247.0 L614.5 247.0 L614.5 257.0 L782.0 257.0"/></g><g class="lane-trace" data-lane-index="12"><text class="lane-name" x="4" y="270.0">Data line 12</text><rect class="badge" x="78" y="262.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="270.5" text-anchor="middle">D12</text><path d="M112.0 263.0 L240.4 263.0 L240.4 273.0 L324.2 273.0 L324.2 263.0 L675.9 263.0 L675.9 273.0 L726.2 273.0 L726.2 263.0 L782.0 263.0"/></g><g class="lane-trace" data-lane-index="13"><text class="lane-name" x="4" y="286.0">Data line 13</text><rect class="badge" x="78" y="278.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="286.5" text-anchor="middle">D13</text><path d="M112.0 279.0 L469.3 279.0 L469.3 289.0 L782.0 289.0"/></g><g class="lane-trace" data-lane-index="14"><text class="lane-name" x="4" y="302.0">Data line 14</text><rect class="badge" x="78" y="294.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="302.5" text-anchor="middle">D14</text><path d="M112.0 305.0 L782.0 305.0"/></g><g class="lane-trace" data-lane-index="15"><text class="lane-name" x="4" y="318.0">Data line 15</text><rect class="badge" x="78" y="310.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="318.5" text-anchor="middle">D15</text><path d="M112.0 311.0 L659.2 311.0 L659.2 321.0 L782.0 321.0"/></g><g class="lane-trace" data-lane-index="16"><text class="lane-name" x="4" y="334.0">Data line 16</text><rect class="badge" x="78" y="326.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="334.5" text-anchor="middle">D16</text><path d="M112.0 337.0 L675.9 337.0 L675.9 327.0 L726.2 327.0 L726.2 337.0 L782.0 337.0"/></g><path class="bracket" d="M110.0 192.0 L106 192.0 L106 339.0 L110.0 339.0"/></g>
-<g data-lane-kind="decoder" aria-label="SPI decode annotations"><text class="lane-name" x="4" y="363.0">SPI</text><g class="chip chip"><polygon points="160.0,360.0 165.0,352.0 193.0,352.0 198.0,360.0 193.0,368.0 165.0,368.0"/><text x="179.0" y="363.0" text-anchor="middle">0x9F</text></g><g class="chip chip"><polygon points="196.5,360.0 201.5,352.0 271.5,352.0 276.5,360.0 271.5,368.0 201.5,368.0"/><text x="236.5" y="363.0" text-anchor="middle">0x00 / 0xEF</text></g><g class="chip chip"><polygon points="270.2,360.0 275.2,352.0 345.2,352.0 350.2,360.0 345.2,368.0 275.2,368.0"/><text x="310.2" y="363.0" text-anchor="middle">0x00 / 0x40</text></g></g>
-<g data-lane-kind="decoder" aria-label="I2C decode annotations"><text class="lane-name" x="4" y="383.0">I2C</text><g class="chip chip"><polygon points="422.2,380.0 427.2,372.0 461.2,372.0 466.2,380.0 461.2,388.0 427.2,388.0"/><text x="444.2" y="383.0" text-anchor="middle">Start</text></g><g class="chip chip"><polygon points="464.3,380.0 469.3,372.0 497.3,372.0 502.3,380.0 497.3,388.0 469.3,388.0"/><text x="483.3" y="383.0" text-anchor="middle">0x50</text></g><g class="chip chip"><polygon points="506.4,380.0 511.4,372.0 533.4,372.0 538.4,380.0 533.4,388.0 511.4,388.0"/><text x="522.4" y="383.0" text-anchor="middle">ACK</text></g><g class="chip chip"><polygon points="545.2,380.0 550.2,372.0 578.2,372.0 583.2,380.0 578.2,388.0 550.2,388.0"/><text x="564.2" y="383.0" text-anchor="middle">0x12</text></g><g class="chip chip"><polygon points="592.7,380.0 597.7,372.0 625.7,372.0 630.7,380.0 625.7,388.0 597.7,388.0"/><text x="611.7" y="383.0" text-anchor="middle">Stop</text></g></g>
-<g data-lane-kind="decoder" aria-label="UART decode annotations"><text class="lane-name" x="4" y="403.0">UART</text><g class="chip chip"><polygon points="679.2,400.0 684.2,392.0 712.2,392.0 717.2,400.0 712.2,408.0 684.2,408.0"/><text x="698.2" y="403.0" text-anchor="middle">0x55</text></g><g class="chip chip"><polygon points="726.7,400.0 731.7,392.0 759.7,392.0 764.7,400.0 759.7,408.0 731.7,408.0"/><text x="745.7" y="403.0" text-anchor="middle">0xAA</text></g></g>
-<line class="trigger-line" x1="147.7" y1="6" x2="147.7" y2="412"/>
-<line class="cursor-line" x1="158.9" y1="6" x2="158.9" y2="412"/>
-<line class="cursor-line" x1="346.5" y1="6" x2="346.5" y2="412"/>
-<g class="time-axis"><line class="axis-line" x1="112.0" y1="414" x2="782.0" y2="414"/><g class="chip trigger-chip"><polygon points="137.7,424.0 142.7,416.0 152.7,416.0 157.7,424.0 152.7,432.0 142.7,432.0"/><text x="147.7" y="427.0" text-anchor="middle">T</text></g><g class="chip cursor-chip"><polygon points="145.9,424.0 150.9,416.0 166.9,416.0 171.9,424.0 166.9,432.0 150.9,432.0"/><text x="158.9" y="427.0" text-anchor="middle">X1</text></g><g class="chip cursor-chip"><polygon points="333.5,424.0 338.5,416.0 354.5,416.0 359.5,424.0 354.5,432.0 338.5,432.0"/><text x="346.5" y="427.0" text-anchor="middle">X2</text></g></g>
-        </svg>
-        <div class="lane-status"><span class="quality">✓ NORMAL · 84 ms</span></div>
-        <div class="context-strip"><span>6144 samples acquired → 408 drawn · 1 MHz · capture time</span><span>Δt X1→X2 1.68 µs · ≈ 595 kHz</span></div>
-      </section>
-      <aside class="alert"><strong>△ Decode warning</strong><p>SPI CS# deasserted during a data word · LA-32</p></aside>
-      <div class="run-row" aria-label="Run controls">
-        <div class="staging-pair"><label for="la-max-dur-l">Max duration</label>
-        <input id="la-max-dur-l" type="number" value="10000" min="1" step="1">
-        <span>ms</span></div>
-        <button>Arm</button>
-        <button>Abort</button>
-        <button>Trigger</button>
-      </div>
+                  <div class="content analyzer spec-root">
+  <div class="banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.2.1</p></div>
+  <div class="head"><div><span class="eyebrow">Device overview</span><h2>Veridian LA-32 <code>· veridian.la32</code></h2></div>
+  <div class="badges"><span class="badge b-adv">Armed · waiting for trigger</span><span class="badge b-ok">Connected</span></div></div>
+  <div class="strip"><span>Controller lease</span><strong>bench-01</strong><span>Renews in 42 s</span><span style="margin-left:auto">FPGA image</span><strong class="mono">la32-fpga.bin · slot 0 · 9298a5ea…</strong></div>
+  <div class="tiles"><section class="bw-reading" data-severity="advisory"><header>Status</header>
+  <span class="sev sev-advisory"><i></i>advisory</span><p class="val">0xE0 <small></small></p>
+  <p class="q">armed · pre-fill 11 · 1 s</p></section><section class="bw-reading" data-severity="neutral"><header>Sample rate</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">100 <small>MHz</small></p><span class="set">Set 100 MHz</span>
+  <p class="q">timing mode · internal clock</p></section><section class="bw-reading" data-severity="neutral"><header>Threshold</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">1.50 <small>V</small></p><span class="set">Set 1.50 V</span>
+  <p class="q">DAC code 578 · all channels</p></section><section class="bw-reading" data-severity="neutral"><header>Trigger position</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">1024 <small>samples</small></p>
+  <p class="q">50% pre-trigger · 1 s</p></section><section class="bw-reading" data-severity="success"><header>CLK1 frequency</header>
+  <span class="sev sev-success"><i></i>success</span><p class="val">25.000 <small>MHz</small></p>
+  <p class="q">counter ch 0 · ×10 Hz res</p></section></div>
+  <div class="grid">
+  <section class="panel recessed"><div class="ph"><div><span class="pe">Digital lanes</span><span class="pt">Logic capture · 34 channels</span></div><span class="pe">Last capture · SPI JEDEC ID read</span></div>
+  <svg viewBox="0 0 1160 372" style="width:100%;height:auto;display:block" role="img" aria-label="Logic capture mock">
+  <defs><pattern id="hatch-l" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--bw-text-muted)" stroke-width="1.5" opacity=".5"/></pattern></defs>
+  <line x1="150.0" y1="0" x2="150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="275.0" y1="0" x2="275.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="400.0" y1="0" x2="400.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="525.0" y1="0" x2="525.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="650.0" y1="0" x2="650.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="775.0" y1="0" x2="775.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="900.0" y1="0" x2="900.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1025.0" y1="0" x2="1025.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1150.0" y1="0" x2="1150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <text x="8" y="27" class="ln">CS#</text><text x="138" y="27" class="lc" text-anchor="end">D0</text>
+  <path d="M150.0,8.0 H250.0 V34.0 H1130.0 V8.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="73" class="ln">SCK</text><text x="138" y="73" class="lc" text-anchor="end">D1</text>
+  <path d="M150.0,80.0 H270.0 V54.0 H282.5 V80.0 H295.0 V54.0 H307.5 V80.0 H320.0 V54.0 H332.5 V80.0 H345.0 V54.0 H357.5 V80.0 H370.0 V54.0 H382.5 V80.0 H395.0 V54.0 H407.5 V80.0 H420.0 V54.0 H432.5 V80.0 H445.0 V54.0 H457.5 V80.0 H485.0 V54.0 H497.5 V80.0 H510.0 V54.0 H522.5 V80.0 H535.0 V54.0 H547.5 V80.0 H560.0 V54.0 H572.5 V80.0 H585.0 V54.0 H597.5 V80.0 H610.0 V54.0 H622.5 V80.0 H635.0 V54.0 H647.5 V80.0 H660.0 V54.0 H672.5 V80.0 H700.0 V54.0 H712.5 V80.0 H725.0 V54.0 H737.5 V80.0 H750.0 V54.0 H762.5 V80.0 H775.0 V54.0 H787.5 V80.0 H800.0 V54.0 H812.5 V80.0 H825.0 V54.0 H837.5 V80.0 H850.0 V54.0 H862.5 V80.0 H875.0 V54.0 H887.5 V80.0 H900.0 V54.0 H915.0 V80.0 H927.5 V54.0 H940.0 V54.0 H952.5 V80.0 H965.0 V54.0 H977.5 V80.0 H990.0 V54.0 H1002.5 V80.0 H1015.0 V54.0 H1027.5 V80.0 H1040.0 V54.0 H1052.5 V80.0 H1065.0 V54.0 H1077.5 V80.0 H1090.0 V54.0 H1102.5 V80.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="119" class="ln">MOSI</text><text x="138" y="119" class="lc" text-anchor="end">D2</text>
+  <path d="M150.0,100.0 H282.5 V126.0 H332.5 V100.0 H472.5 V126.0 H672.5 V100.0 H687.5 V126.0 H887.5 V100.0 H902.5 V126.0 H1102.5 V100.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="165" class="ln">MISO</text><text x="138" y="165" class="lc" text-anchor="end">D3</text>
+  <rect x="150.0" y="146" width="322.5" height="26" fill="url(#hatch-l)"/>
+  <rect x="672.5" y="146" width="15.0" height="26" fill="url(#hatch-l)"/>
+  <rect x="887.5" y="146" width="15.0" height="26" fill="url(#hatch-l)"/>
+  <rect x="1102.5" y="146" width="47.5" height="26" fill="url(#hatch-l)"/>
+  <path d="M150.0,159.0 H472.5 V146.0 H547.5 V172.0 H572.5 V146.0 H672.5 V159.0 H687.5 V172.0 H712.5 V146.0 H737.5 V172.0 H887.5 V159.0 H902.5 V172.0 H977.5 V146.0 H1027.5 V172.0 H1102.5 V159.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="211" class="ln">CLK1</text><text x="138" y="211" class="lc" text-anchor="end">ch32</text>
+  <path d="M150.0,218.0 H155.0 V192.0 H160.0 V218.0 H165.0 V192.0 H170.0 V218.0 H175.0 V192.0 H180.0 V218.0 H185.0 V192.0 H190.0 V218.0 H195.0 V192.0 H200.0 V218.0 H205.0 V192.0 H210.0 V218.0 H215.0 V192.0 H220.0 V218.0 H225.0 V192.0 H230.0 V218.0 H235.0 V192.0 H240.0 V218.0 H245.0 V192.0 H250.0 V218.0 H255.0 V192.0 H260.0 V218.0 H265.0 V192.0 H270.0 V218.0 H275.0 V192.0 H280.0 V218.0 H285.0 V192.0 H290.0 V218.0 H295.0 V192.0 H300.0 V218.0 H305.0 V192.0 H310.0 V218.0 H315.0 V192.0 H320.0 V218.0 H325.0 V192.0 H330.0 V218.0 H335.0 V192.0 H340.0 V218.0 H345.0 V192.0 H350.0 V218.0 H355.0 V192.0 H360.0 V218.0 H365.0 V192.0 H370.0 V218.0 H375.0 V192.0 H380.0 V218.0 H385.0 V192.0 H390.0 V218.0 H395.0 V192.0 H400.0 V218.0 H405.0 V192.0 H410.0 V218.0 H415.0 V192.0 H420.0 V218.0 H425.0 V192.0 H430.0 V218.0 H435.0 V192.0 H440.0 V218.0 H445.0 V192.0 H450.0 V218.0 H455.0 V192.0 H460.0 V218.0 H465.0 V192.0 H470.0 V218.0 H475.0 V192.0 H480.0 V218.0 H485.0 V192.0 H490.0 V218.0 H495.0 V192.0 H500.0 V218.0 H505.0 V192.0 H510.0 V218.0 H515.0 V192.0 H520.0 V218.0 H525.0 V192.0 H530.0 V218.0 H535.0 V192.0 H540.0 V218.0 H545.0 V192.0 H550.0 V218.0 H555.0 V192.0 H560.0 V218.0 H565.0 V192.0 H570.0 V218.0 H575.0 V192.0 H580.0 V218.0 H585.0 V192.0 H590.0 V218.0 H595.0 V192.0 H600.0 V218.0 H605.0 V192.0 H610.0 V218.0 H615.0 V192.0 H620.0 V218.0 H625.0 V192.0 H630.0 V218.0 H635.0 V192.0 H640.0 V218.0 H645.0 V192.0 H650.0 V218.0 H655.0 V192.0 H660.0 V218.0 H665.0 V192.0 H670.0 V218.0 H675.0 V192.0 H680.0 V218.0 H685.0 V192.0 H690.0 V218.0 H695.0 V192.0 H700.0 V218.0 H705.0 V192.0 H710.0 V218.0 H715.0 V192.0 H720.0 V218.0 H725.0 V192.0 H730.0 V218.0 H735.0 V192.0 H740.0 V218.0 H745.0 V192.0 H750.0 V218.0 H755.0 V192.0 H760.0 V218.0 H765.0 V192.0 H770.0 V218.0 H775.0 V192.0 H780.0 V218.0 H785.0 V192.0 H790.0 V218.0 H795.0 V192.0 H800.0 V218.0 H805.0 V192.0 H810.0 V218.0 H815.0 V192.0 H820.0 V218.0 H825.0 V192.0 H830.0 V218.0 H835.0 V192.0 H840.0 V218.0 H845.0 V192.0 H850.0 V218.0 H855.0 V192.0 H860.0 V218.0 H865.0 V192.0 H870.0 V218.0 H875.0 V192.0 H880.0 V218.0 H885.0 V192.0 H890.0 V218.0 H895.0 V192.0 H900.0 V218.0 H905.0 V192.0 H910.0 V218.0 H915.0 V192.0 H920.0 V218.0 H925.0 V192.0 H930.0 V218.0 H935.0 V192.0 H940.0 V218.0 H945.0 V192.0 H950.0 V218.0 H955.0 V192.0 H960.0 V218.0 H965.0 V192.0 H970.0 V218.0 H975.0 V192.0 H980.0 V218.0 H985.0 V192.0 H990.0 V218.0 H995.0 V192.0 H1000.0 V218.0 H1005.0 V192.0 H1010.0 V218.0 H1015.0 V192.0 H1020.0 V218.0 H1025.0 V192.0 H1030.0 V192.0 H1035.0 V192.0 H1040.0 V218.0 H1045.0 V192.0 H1050.0 V218.0 H1055.0 V192.0 H1060.0 V218.0 H1065.0 V192.0 H1070.0 V218.0 H1075.0 V192.0 H1080.0 V218.0 H1085.0 V192.0 H1090.0 V218.0 H1095.0 V192.0 H1100.0 V218.0 H1105.0 V192.0 H1110.0 V218.0 H1115.0 V192.0 H1120.0 V218.0 H1125.0 V192.0 H1130.0 V218.0 H1135.0 V192.0 H1140.0 V218.0 H1145.0 V192.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="257" class="ln">SPI</text><text x="138" y="257" class="lc" text-anchor="end">mode 0</text>
+  <path d="M267.5,238 H447.5 L455.5,251 L447.5,264 H267.5 L259.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="357.5" y="257" class="pl" text-anchor="middle">0x9F</text>
+  <path d="M482.5,238 H662.5 L670.5,251 L662.5,264 H482.5 L474.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="572.5" y="257" class="pl" text-anchor="middle">0x00 / 0xEF</text>
+  <path d="M697.5,238 H877.5 L885.5,251 L877.5,264 H697.5 L689.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="787.5" y="257" class="pl" text-anchor="middle">0x00 / 0x40</text>
+  <path d="M912.5,238 H1092.5 L1100.5,251 L1092.5,264 H912.5 L904.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="1002.5" y="257" class="pl" text-anchor="middle">0x00 / 0x18</text>
+  <text x="8" y="303" class="lm">D4–D31, CLK2 · 29 lanes hidden</text>
+  <line x1="250.0" y1="0" x2="250.0" y2="338" stroke="var(--bw-warning)" stroke-width="2"/>
+  <rect x="214.0" y="340" width="72" height="24" rx="4" fill="var(--bw-warning)"/><text x="250.0" y="357" class="tg" text-anchor="middle">trigger</text>
+  <line x1="472.5" y1="0" x2="472.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="478.5" y="357" class="cu">A</text>
+  <line x1="1102.5" y1="0" x2="1102.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="1108.5" y="357" class="cu">B</text>
+  </svg>
+  <div class="axis"><span><b>2048</b> samples acquired → <b>400</b> drawn · 100 MHz · capture time</span><span>Δt A→B <b>2.52 µs</b></span></div>
+  </section>
+  <section class="panel raised"><div class="ph"><div><span class="pe">Staged configuration</span><span class="pt">Trigger sequencer</span></div></div>
+  <table><tr><th>Level</th><th>Condition</th><th>Then</th></tr>
+  <tr><td>1</td><td class="m">D0 ↓ (CS#)</td><td>trigger</td></tr>
+  <tr><td>2</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>3</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>4</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr></table>
+  <div class="btns"><button class="primary">Arm capture</button><button>Stop</button><button disabled>Apply</button></div>
+  <p class="reason">Apply unavailable: sequencer register packing not yet recovered (open item)</p>
+  <div style="height:14px"></div>
+  <div class="ph"><div><span class="pe">Gateway observations</span><span class="pt">Messages</span></div></div>
+  <p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--bw-text-muted)"><span style="color:var(--bw-advisory);font-weight:600">Advisory</span> · Status 0xE0: armed, pre-trigger buffer filling. Drain starts when bit 0 sets.</p>
+  </section>
+  </div>
     </div>
       </div><div class="footer"><span>LIGHT THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
     </section>
@@ -150,35 +247,81 @@
             <svg viewBox="0 0 460 145" role="img" aria-label="Voltage and current waveform"><defs><pattern id="dg" width="46" height="29" patternUnits="userSpaceOnUse"><path d="M46 0H0V29" fill="none" stroke="#293a44"/></pattern></defs><rect width="460" height="145" fill="url(#dg)"/><path d="M0 98L45 95L90 100L135 73L180 82L225 58L270 65L315 38L365 49L415 24L460 31" fill="none" stroke="#42cee2" stroke-width="3"/><path d="M0 120L45 116L90 112L135 104L180 107L225 87L270 91L315 73L365 66L415 58L460 48" fill="none" stroke="#ffc15a" stroke-width="2" stroke-dasharray="8 5"/><path d="M0 42H460" stroke="#ffc15a" stroke-dasharray="4 4"/></svg>
           </section></div>
         <table><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
-          <div class="content analyzer">
-      <div class="title-row"><div><span class="eyebrow">Capture view</span><h2>Logic analyser · LA-32</h2></div><span class="quality">✓ NORMAL · 84 ms</span></div>
-      <section class="lanes" data-lane-kind="capture" aria-label="Digital analyser capture view">
-        <div class="lane-head"><span>CAPTURE · 16 LANES · TRIGGERED</span><span>GROUP LABELS DECIMAL · BUS VALUES HEX</span></div>
-        <svg class="lanes-plot" viewBox="0 0 790 448" role="img" aria-label="Logic analyser capture view: 16 lanes in two groups, hex bus readouts at transaction boundaries, decoder annotations, cursors X1 and X2 bracketing the framed transaction, trigger marker">
-          <defs><pattern id="hatch-d" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6L6 0" stroke="var(--muted)" stroke-width="1"/></pattern></defs>
-<line class="gridline" x1="167.8" y1="6" x2="167.8" y2="412"/><line class="gridline" x1="223.7" y1="6" x2="223.7" y2="412"/><line class="gridline" x1="279.5" y1="6" x2="279.5" y2="412"/><line class="gridline" x1="335.3" y1="6" x2="335.3" y2="412"/><line class="gridline" x1="391.2" y1="6" x2="391.2" y2="412"/><line class="gridline" x1="447.0" y1="6" x2="447.0" y2="412"/><line class="gridline" x1="502.8" y1="6" x2="502.8" y2="412"/><line class="gridline" x1="558.7" y1="6" x2="558.7" y2="412"/><line class="gridline" x1="614.5" y1="6" x2="614.5" y2="412"/><line class="gridline" x1="670.3" y1="6" x2="670.3" y2="412"/><line class="gridline" x1="726.2" y1="6" x2="726.2" y2="412"/>
-<g class="lane-group" data-lane-kind="group" aria-label="Lane group D1-D8"><g class="bus-readout" aria-label="D1-D8 hex values"><g class="chip chip unk"><polygon points="125.4,16.0 130.4,8.0 140.4,8.0 145.4,16.0 140.4,24.0 130.4,24.0"/><text x="135.4" y="19.0" text-anchor="middle">—</text></g><g class="chip chip"><polygon points="158.3,16.0 163.3,8.0 191.3,8.0 196.3,16.0 191.3,24.0 163.3,24.0"/><text x="177.3" y="19.0" text-anchor="middle">0x9F</text></g><g class="chip chip"><polygon points="196.3,16.0 201.3,8.0 229.3,8.0 234.3,16.0 229.3,24.0 201.3,24.0"/><text x="215.3" y="19.0" text-anchor="middle">0x00</text></g><g class="chip chip"><polygon points="235.4,16.0 240.4,8.0 268.4,8.0 273.4,16.0 268.4,24.0 240.4,24.0"/><text x="254.4" y="19.0" text-anchor="middle">0xEF</text></g><g class="chip chip"><polygon points="274.5,16.0 279.5,8.0 307.5,8.0 312.5,16.0 307.5,24.0 279.5,24.0"/><text x="293.5" y="19.0" text-anchor="middle">0x40</text></g><g class="chip chip"><polygon points="310.8,16.0 315.8,8.0 343.8,8.0 348.8,16.0 343.8,24.0 315.8,24.0"/><text x="329.8" y="19.0" text-anchor="middle">0x18</text></g><g class="chip chip unk"><polygon points="554.2,16.0 559.2,8.0 569.2,8.0 574.2,16.0 569.2,24.0 559.2,24.0"/><text x="564.2" y="19.0" text-anchor="middle">—</text></g></g><g class="lane-trace" data-lane-index="1"><text class="lane-name" x="4" y="40.0">Data line 1</text><rect class="badge" x="78" y="32.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="40.5" text-anchor="middle">D1</text><path d="M112.0 33.0 L158.9 33.0 L158.9 43.0 L346.5 43.0 L346.5 33.0 L782.0 33.0"/></g><g class="lane-trace" data-lane-index="2"><text class="lane-name" x="4" y="56.0">Data line 2</text><rect class="badge" x="78" y="48.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="56.5" text-anchor="middle">D2</text><path d="M112.0 59.0 L164.8 59.0 L164.8 49.0 L170.6 49.0 L170.6 59.0 L176.5 59.0 L176.5 49.0 L182.3 49.0 L182.3 59.0 L188.2 59.0 L188.2 49.0 L194.1 49.0 L194.1 59.0 L199.9 59.0 L199.9 49.0 L205.8 49.0 L205.8 59.0 L211.7 59.0 L211.7 49.0 L217.5 49.0 L217.5 59.0 L223.4 59.0 L223.4 49.0 L229.2 49.0 L229.2 59.0 L235.1 59.0 L235.1 49.0 L241.0 49.0 L241.0 59.0 L246.8 59.0 L246.8 49.0 L252.7 49.0 L252.7 59.0 L258.6 59.0 L258.6 49.0 L264.4 49.0 L264.4 59.0 L270.3 59.0 L270.3 49.0 L276.1 49.0 L276.1 59.0 L282.0 59.0 L282.0 49.0 L287.9 49.0 L287.9 59.0 L293.7 59.0 L293.7 49.0 L299.6 49.0 L299.6 59.0 L305.5 59.0 L305.5 49.0 L311.3 49.0 L311.3 59.0 L317.2 59.0 L317.2 49.0 L323.1 49.0 L323.1 59.0 L328.9 59.0 L328.9 49.0 L334.8 49.0 L334.8 59.0 L340.6 59.0 L340.6 49.0 L346.5 49.0 L346.5 59.0 L782.0 59.0"/></g><g class="lane-trace" data-lane-index="3"><text class="lane-name" x="4" y="72.0">Data line 3</text><rect class="badge" x="78" y="64.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="72.5" text-anchor="middle">D3</text><path d="M112.0 65.0 L158.9 65.0 L158.9 75.0 L170.6 75.0 L170.6 65.0 L194.1 65.0 L194.1 75.0 L229.2 75.0 L229.2 65.0 L264.4 65.0 L264.4 75.0 L276.1 75.0 L276.1 65.0 L287.9 65.0 L287.9 75.0 L311.3 75.0 L311.3 65.0 L782.0 65.0"/></g><g class="lane-trace" data-lane-index="4"><text class="lane-name" x="4" y="88.0">Data line 4</text><rect class="badge" x="78" y="80.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="88.5" text-anchor="middle">D4</text><path d="M112.0 91.0 L218.1 91.0 L218.1 81.0 L285.1 81.0 L285.1 91.0 L458.2 91.0 L458.2 81.0 L514.0 81.0 L514.0 91.0 L782.0 91.0"/><rect class="hatch" x="112.0" y="81.0" width="35.7" height="10" fill="url(#l)"/><rect class="hatch" x="726.2" y="81.0" width="55.8" height="10" fill="url(#l)"/></g><g class="lane-trace" data-lane-index="5"><text class="lane-name" x="4" y="104.0">Data line 5</text><rect class="badge" x="78" y="96.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="104.5" text-anchor="middle">D5</text><path d="M112.0 97.0 L158.9 97.0 L158.9 107.0 L182.3 107.0 L182.3 97.0 L205.8 97.0 L205.8 107.0 L217.5 107.0 L217.5 97.0 L241.0 97.0 L241.0 107.0 L252.7 107.0 L252.7 97.0 L264.4 97.0 L264.4 107.0 L287.9 107.0 L287.9 97.0 L323.1 97.0 L323.1 107.0 L782.0 107.0"/></g><g class="lane-trace" data-lane-index="6"><text class="lane-name" x="4" y="120.0">Data line 6</text><rect class="badge" x="78" y="112.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="120.5" text-anchor="middle">D6</text><path d="M112.0 123.0 L396.8 123.0 L396.8 113.0 L486.1 113.0 L486.1 123.0 L636.8 123.0 L636.8 113.0 L692.7 113.0 L692.7 123.0 L782.0 123.0"/></g><g class="lane-trace" data-lane-index="7"><text class="lane-name" x="4" y="136.0">Data line 7</text><rect class="badge" x="78" y="128.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="136.5" text-anchor="middle">D7</text><path d="M112.0 129.0 L782.0 129.0"/></g><g class="lane-trace" data-lane-index="8"><text class="lane-name" x="4" y="152.0">Data line 8</text><rect class="badge" x="78" y="144.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="152.5" text-anchor="middle">D8</text><path d="M112.0 155.0 L212.5 155.0 L212.5 145.0 L290.7 145.0 L290.7 155.0 L782.0 155.0"/></g><path class="bracket" d="M110.0 10.0 L106 10.0 L106 157.0 L110.0 157.0"/></g>
-<g class="lane-group" data-lane-kind="group" aria-label="Lane group D9-D16"><g class="bus-readout" aria-label="D9-D16 hex values"><g class="chip chip unk"><polygon points="261.1,198.0 266.1,190.0 276.1,190.0 281.1,198.0 276.1,206.0 266.1,206.0"/><text x="271.1" y="201.0" text-anchor="middle">—</text></g><g class="chip chip"><polygon points="453.1,198.0 458.1,190.0 486.1,190.0 491.1,198.0 486.1,206.0 458.1,206.0"/><text x="472.1" y="201.0" text-anchor="middle">0x50</text></g><g class="chip chip"><polygon points="553.6,198.0 558.6,190.0 586.6,190.0 591.6,198.0 586.6,206.0 558.6,206.0"/><text x="572.6" y="201.0" text-anchor="middle">0x12</text></g><g class="chip chip unk"><polygon points="696.6,198.0 701.6,190.0 711.6,190.0 716.6,198.0 711.6,206.0 701.6,206.0"/><text x="706.6" y="201.0" text-anchor="middle">—</text></g></g><g class="lane-trace" data-lane-index="9"><text class="lane-name" x="4" y="222.0">Data line 9</text><rect class="badge" x="78" y="214.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="222.5" text-anchor="middle">D9</text><path d="M112.0 225.0 L430.2 225.0 L430.2 215.0 L631.2 215.0 L631.2 225.0 L782.0 225.0"/></g><g class="lane-trace" data-lane-index="10"><text class="lane-name" x="4" y="238.0">Data line 10</text><rect class="badge" x="78" y="230.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="238.5" text-anchor="middle">D10</text><path d="M112.0 231.0 L438.6 231.0 L438.6 241.0 L447.0 241.0 L447.0 231.0 L455.4 231.0 L455.4 241.0 L463.8 241.0 L463.8 231.0 L472.1 231.0 L472.1 241.0 L480.5 241.0 L480.5 231.0 L488.9 231.0 L488.9 241.0 L497.3 241.0 L497.3 231.0 L505.6 231.0 L505.6 241.0 L514.0 241.0 L514.0 231.0 L522.4 231.0 L522.4 241.0 L530.8 241.0 L530.8 231.0 L539.1 231.0 L539.1 241.0 L547.5 241.0 L547.5 231.0 L555.9 231.0 L555.9 241.0 L564.3 241.0 L564.3 231.0 L572.6 231.0 L572.6 241.0 L581.0 241.0 L581.0 231.0 L589.4 231.0 L589.4 241.0 L597.8 241.0 L597.8 231.0 L606.1 231.0 L606.1 241.0 L614.5 241.0 L614.5 231.0 L622.9 231.0 L622.9 241.0 L631.2 241.0 L631.2 231.0 L782.0 231.0"/></g><g class="lane-trace" data-lane-index="11"><text class="lane-name" x="4" y="254.0">Data line 11</text><rect class="badge" x="78" y="246.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="254.5" text-anchor="middle">D11</text><path d="M112.0 247.0 L447.0 247.0 L447.0 257.0 L480.5 257.0 L480.5 247.0 L514.0 247.0 L514.0 257.0 L547.5 257.0 L547.5 247.0 L564.3 247.0 L564.3 257.0 L581.0 257.0 L581.0 247.0 L614.5 247.0 L614.5 257.0 L782.0 257.0"/></g><g class="lane-trace" data-lane-index="12"><text class="lane-name" x="4" y="270.0">Data line 12</text><rect class="badge" x="78" y="262.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="270.5" text-anchor="middle">D12</text><path d="M112.0 263.0 L240.4 263.0 L240.4 273.0 L324.2 273.0 L324.2 263.0 L675.9 263.0 L675.9 273.0 L726.2 273.0 L726.2 263.0 L782.0 263.0"/></g><g class="lane-trace" data-lane-index="13"><text class="lane-name" x="4" y="286.0">Data line 13</text><rect class="badge" x="78" y="278.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="286.5" text-anchor="middle">D13</text><path d="M112.0 279.0 L469.3 279.0 L469.3 289.0 L782.0 289.0"/></g><g class="lane-trace" data-lane-index="14"><text class="lane-name" x="4" y="302.0">Data line 14</text><rect class="badge" x="78" y="294.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="302.5" text-anchor="middle">D14</text><path d="M112.0 305.0 L782.0 305.0"/></g><g class="lane-trace" data-lane-index="15"><text class="lane-name" x="4" y="318.0">Data line 15</text><rect class="badge" x="78" y="310.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="318.5" text-anchor="middle">D15</text><path d="M112.0 311.0 L659.2 311.0 L659.2 321.0 L782.0 321.0"/></g><g class="lane-trace" data-lane-index="16"><text class="lane-name" x="4" y="334.0">Data line 16</text><rect class="badge" x="78" y="326.5" width="26" height="11" rx="3"/><text class="badge-text" x="91" y="334.5" text-anchor="middle">D16</text><path d="M112.0 337.0 L675.9 337.0 L675.9 327.0 L726.2 327.0 L726.2 337.0 L782.0 337.0"/></g><path class="bracket" d="M110.0 192.0 L106 192.0 L106 339.0 L110.0 339.0"/></g>
-<g data-lane-kind="decoder" aria-label="SPI decode annotations"><text class="lane-name" x="4" y="363.0">SPI</text><g class="chip chip"><polygon points="160.0,360.0 165.0,352.0 193.0,352.0 198.0,360.0 193.0,368.0 165.0,368.0"/><text x="179.0" y="363.0" text-anchor="middle">0x9F</text></g><g class="chip chip"><polygon points="196.5,360.0 201.5,352.0 271.5,352.0 276.5,360.0 271.5,368.0 201.5,368.0"/><text x="236.5" y="363.0" text-anchor="middle">0x00 / 0xEF</text></g><g class="chip chip"><polygon points="270.2,360.0 275.2,352.0 345.2,352.0 350.2,360.0 345.2,368.0 275.2,368.0"/><text x="310.2" y="363.0" text-anchor="middle">0x00 / 0x40</text></g></g>
-<g data-lane-kind="decoder" aria-label="I2C decode annotations"><text class="lane-name" x="4" y="383.0">I2C</text><g class="chip chip"><polygon points="422.2,380.0 427.2,372.0 461.2,372.0 466.2,380.0 461.2,388.0 427.2,388.0"/><text x="444.2" y="383.0" text-anchor="middle">Start</text></g><g class="chip chip"><polygon points="464.3,380.0 469.3,372.0 497.3,372.0 502.3,380.0 497.3,388.0 469.3,388.0"/><text x="483.3" y="383.0" text-anchor="middle">0x50</text></g><g class="chip chip"><polygon points="506.4,380.0 511.4,372.0 533.4,372.0 538.4,380.0 533.4,388.0 511.4,388.0"/><text x="522.4" y="383.0" text-anchor="middle">ACK</text></g><g class="chip chip"><polygon points="545.2,380.0 550.2,372.0 578.2,372.0 583.2,380.0 578.2,388.0 550.2,388.0"/><text x="564.2" y="383.0" text-anchor="middle">0x12</text></g><g class="chip chip"><polygon points="592.7,380.0 597.7,372.0 625.7,372.0 630.7,380.0 625.7,388.0 597.7,388.0"/><text x="611.7" y="383.0" text-anchor="middle">Stop</text></g></g>
-<g data-lane-kind="decoder" aria-label="UART decode annotations"><text class="lane-name" x="4" y="403.0">UART</text><g class="chip chip"><polygon points="679.2,400.0 684.2,392.0 712.2,392.0 717.2,400.0 712.2,408.0 684.2,408.0"/><text x="698.2" y="403.0" text-anchor="middle">0x55</text></g><g class="chip chip"><polygon points="726.7,400.0 731.7,392.0 759.7,392.0 764.7,400.0 759.7,408.0 731.7,408.0"/><text x="745.7" y="403.0" text-anchor="middle">0xAA</text></g></g>
-<line class="trigger-line" x1="147.7" y1="6" x2="147.7" y2="412"/>
-<line class="cursor-line" x1="158.9" y1="6" x2="158.9" y2="412"/>
-<line class="cursor-line" x1="346.5" y1="6" x2="346.5" y2="412"/>
-<g class="time-axis"><line class="axis-line" x1="112.0" y1="414" x2="782.0" y2="414"/><g class="chip trigger-chip"><polygon points="137.7,424.0 142.7,416.0 152.7,416.0 157.7,424.0 152.7,432.0 142.7,432.0"/><text x="147.7" y="427.0" text-anchor="middle">T</text></g><g class="chip cursor-chip"><polygon points="145.9,424.0 150.9,416.0 166.9,416.0 171.9,424.0 166.9,432.0 150.9,432.0"/><text x="158.9" y="427.0" text-anchor="middle">X1</text></g><g class="chip cursor-chip"><polygon points="333.5,424.0 338.5,416.0 354.5,416.0 359.5,424.0 354.5,432.0 338.5,432.0"/><text x="346.5" y="427.0" text-anchor="middle">X2</text></g></g>
-        </svg>
-        <div class="lane-status"><span class="quality">✓ NORMAL · 84 ms</span></div>
-        <div class="context-strip"><span>6144 samples acquired → 408 drawn · 1 MHz · capture time</span><span>Δt X1→X2 1.68 µs · ≈ 595 kHz</span></div>
-      </section>
-      <aside class="alert"><strong>△ Decode warning</strong><p>SPI CS# deasserted during a data word · LA-32</p></aside>
-      <div class="run-row" aria-label="Run controls">
-        <div class="staging-pair"><label for="la-max-dur-d">Max duration</label>
-        <input id="la-max-dur-d" type="number" value="10000" min="1" step="1">
-        <span>ms</span></div>
-        <button>Arm</button>
-        <button>Abort</button>
-        <button>Trigger</button>
-      </div>
+                  <div class="content analyzer spec-root">
+  <div class="banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.2.1</p></div>
+  <div class="head"><div><span class="eyebrow">Device overview</span><h2>Veridian LA-32 <code>· veridian.la32</code></h2></div>
+  <div class="badges"><span class="badge b-adv">Armed · waiting for trigger</span><span class="badge b-ok">Connected</span></div></div>
+  <div class="strip"><span>Controller lease</span><strong>bench-01</strong><span>Renews in 42 s</span><span style="margin-left:auto">FPGA image</span><strong class="mono">la32-fpga.bin · slot 0 · 9298a5ea…</strong></div>
+  <div class="tiles"><section class="bw-reading" data-severity="advisory"><header>Status</header>
+  <span class="sev sev-advisory"><i></i>advisory</span><p class="val">0xE0 <small></small></p>
+  <p class="q">armed · pre-fill 11 · 1 s</p></section><section class="bw-reading" data-severity="neutral"><header>Sample rate</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">100 <small>MHz</small></p><span class="set">Set 100 MHz</span>
+  <p class="q">timing mode · internal clock</p></section><section class="bw-reading" data-severity="neutral"><header>Threshold</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">1.50 <small>V</small></p><span class="set">Set 1.50 V</span>
+  <p class="q">DAC code 578 · all channels</p></section><section class="bw-reading" data-severity="neutral"><header>Trigger position</header>
+  <span class="sev sev-neutral"><i></i>neutral</span><p class="val">1024 <small>samples</small></p>
+  <p class="q">50% pre-trigger · 1 s</p></section><section class="bw-reading" data-severity="success"><header>CLK1 frequency</header>
+  <span class="sev sev-success"><i></i>success</span><p class="val">25.000 <small>MHz</small></p>
+  <p class="q">counter ch 0 · ×10 Hz res</p></section></div>
+  <div class="grid">
+  <section class="panel recessed"><div class="ph"><div><span class="pe">Digital lanes</span><span class="pt">Logic capture · 34 channels</span></div><span class="pe">Last capture · SPI JEDEC ID read</span></div>
+  <svg viewBox="0 0 1160 372" style="width:100%;height:auto;display:block" role="img" aria-label="Logic capture mock">
+  <defs><pattern id="hatch-d" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="var(--bw-text-muted)" stroke-width="1.5" opacity=".5"/></pattern></defs>
+  <line x1="150.0" y1="0" x2="150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="275.0" y1="0" x2="275.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="400.0" y1="0" x2="400.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="525.0" y1="0" x2="525.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="650.0" y1="0" x2="650.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="775.0" y1="0" x2="775.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="900.0" y1="0" x2="900.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1025.0" y1="0" x2="1025.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <line x1="1150.0" y1="0" x2="1150.0" y2="338" stroke="var(--bw-border)" stroke-width="1" opacity=".55"/>
+  <text x="8" y="27" class="ln">CS#</text><text x="138" y="27" class="lc" text-anchor="end">D0</text>
+  <path d="M150.0,8.0 H250.0 V34.0 H1130.0 V8.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="73" class="ln">SCK</text><text x="138" y="73" class="lc" text-anchor="end">D1</text>
+  <path d="M150.0,80.0 H270.0 V54.0 H282.5 V80.0 H295.0 V54.0 H307.5 V80.0 H320.0 V54.0 H332.5 V80.0 H345.0 V54.0 H357.5 V80.0 H370.0 V54.0 H382.5 V80.0 H395.0 V54.0 H407.5 V80.0 H420.0 V54.0 H432.5 V80.0 H445.0 V54.0 H457.5 V80.0 H485.0 V54.0 H497.5 V80.0 H510.0 V54.0 H522.5 V80.0 H535.0 V54.0 H547.5 V80.0 H560.0 V54.0 H572.5 V80.0 H585.0 V54.0 H597.5 V80.0 H610.0 V54.0 H622.5 V80.0 H635.0 V54.0 H647.5 V80.0 H660.0 V54.0 H672.5 V80.0 H700.0 V54.0 H712.5 V80.0 H725.0 V54.0 H737.5 V80.0 H750.0 V54.0 H762.5 V80.0 H775.0 V54.0 H787.5 V80.0 H800.0 V54.0 H812.5 V80.0 H825.0 V54.0 H837.5 V80.0 H850.0 V54.0 H862.5 V80.0 H875.0 V54.0 H887.5 V80.0 H900.0 V54.0 H915.0 V80.0 H927.5 V54.0 H940.0 V54.0 H952.5 V80.0 H965.0 V54.0 H977.5 V80.0 H990.0 V54.0 H1002.5 V80.0 H1015.0 V54.0 H1027.5 V80.0 H1040.0 V54.0 H1052.5 V80.0 H1065.0 V54.0 H1077.5 V80.0 H1090.0 V54.0 H1102.5 V80.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="119" class="ln">MOSI</text><text x="138" y="119" class="lc" text-anchor="end">D2</text>
+  <path d="M150.0,100.0 H282.5 V126.0 H332.5 V100.0 H472.5 V126.0 H672.5 V100.0 H687.5 V126.0 H887.5 V100.0 H902.5 V126.0 H1102.5 V100.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="165" class="ln">MISO</text><text x="138" y="165" class="lc" text-anchor="end">D3</text>
+  <rect x="150.0" y="146" width="322.5" height="26" fill="url(#hatch-d)"/>
+  <rect x="672.5" y="146" width="15.0" height="26" fill="url(#hatch-d)"/>
+  <rect x="887.5" y="146" width="15.0" height="26" fill="url(#hatch-d)"/>
+  <rect x="1102.5" y="146" width="47.5" height="26" fill="url(#hatch-d)"/>
+  <path d="M150.0,159.0 H472.5 V146.0 H547.5 V172.0 H572.5 V146.0 H672.5 V159.0 H687.5 V172.0 H712.5 V146.0 H737.5 V172.0 H887.5 V159.0 H902.5 V172.0 H977.5 V146.0 H1027.5 V172.0 H1102.5 V159.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="211" class="ln">CLK1</text><text x="138" y="211" class="lc" text-anchor="end">ch32</text>
+  <path d="M150.0,218.0 H155.0 V192.0 H160.0 V218.0 H165.0 V192.0 H170.0 V218.0 H175.0 V192.0 H180.0 V218.0 H185.0 V192.0 H190.0 V218.0 H195.0 V192.0 H200.0 V218.0 H205.0 V192.0 H210.0 V218.0 H215.0 V192.0 H220.0 V218.0 H225.0 V192.0 H230.0 V218.0 H235.0 V192.0 H240.0 V218.0 H245.0 V192.0 H250.0 V218.0 H255.0 V192.0 H260.0 V218.0 H265.0 V192.0 H270.0 V218.0 H275.0 V192.0 H280.0 V218.0 H285.0 V192.0 H290.0 V218.0 H295.0 V192.0 H300.0 V218.0 H305.0 V192.0 H310.0 V218.0 H315.0 V192.0 H320.0 V218.0 H325.0 V192.0 H330.0 V218.0 H335.0 V192.0 H340.0 V218.0 H345.0 V192.0 H350.0 V218.0 H355.0 V192.0 H360.0 V218.0 H365.0 V192.0 H370.0 V218.0 H375.0 V192.0 H380.0 V218.0 H385.0 V192.0 H390.0 V218.0 H395.0 V192.0 H400.0 V218.0 H405.0 V192.0 H410.0 V218.0 H415.0 V192.0 H420.0 V218.0 H425.0 V192.0 H430.0 V218.0 H435.0 V192.0 H440.0 V218.0 H445.0 V192.0 H450.0 V218.0 H455.0 V192.0 H460.0 V218.0 H465.0 V192.0 H470.0 V218.0 H475.0 V192.0 H480.0 V218.0 H485.0 V192.0 H490.0 V218.0 H495.0 V192.0 H500.0 V218.0 H505.0 V192.0 H510.0 V218.0 H515.0 V192.0 H520.0 V218.0 H525.0 V192.0 H530.0 V218.0 H535.0 V192.0 H540.0 V218.0 H545.0 V192.0 H550.0 V218.0 H555.0 V192.0 H560.0 V218.0 H565.0 V192.0 H570.0 V218.0 H575.0 V192.0 H580.0 V218.0 H585.0 V192.0 H590.0 V218.0 H595.0 V192.0 H600.0 V218.0 H605.0 V192.0 H610.0 V218.0 H615.0 V192.0 H620.0 V218.0 H625.0 V192.0 H630.0 V218.0 H635.0 V192.0 H640.0 V218.0 H645.0 V192.0 H650.0 V218.0 H655.0 V192.0 H660.0 V218.0 H665.0 V192.0 H670.0 V218.0 H675.0 V192.0 H680.0 V218.0 H685.0 V192.0 H690.0 V218.0 H695.0 V192.0 H700.0 V218.0 H705.0 V192.0 H710.0 V218.0 H715.0 V192.0 H720.0 V218.0 H725.0 V192.0 H730.0 V218.0 H735.0 V192.0 H740.0 V218.0 H745.0 V192.0 H750.0 V218.0 H755.0 V192.0 H760.0 V218.0 H765.0 V192.0 H770.0 V218.0 H775.0 V192.0 H780.0 V218.0 H785.0 V192.0 H790.0 V218.0 H795.0 V192.0 H800.0 V218.0 H805.0 V192.0 H810.0 V218.0 H815.0 V192.0 H820.0 V218.0 H825.0 V192.0 H830.0 V218.0 H835.0 V192.0 H840.0 V218.0 H845.0 V192.0 H850.0 V218.0 H855.0 V192.0 H860.0 V218.0 H865.0 V192.0 H870.0 V218.0 H875.0 V192.0 H880.0 V218.0 H885.0 V192.0 H890.0 V218.0 H895.0 V192.0 H900.0 V218.0 H905.0 V192.0 H910.0 V218.0 H915.0 V192.0 H920.0 V218.0 H925.0 V192.0 H930.0 V218.0 H935.0 V192.0 H940.0 V218.0 H945.0 V192.0 H950.0 V218.0 H955.0 V192.0 H960.0 V218.0 H965.0 V192.0 H970.0 V218.0 H975.0 V192.0 H980.0 V218.0 H985.0 V192.0 H990.0 V218.0 H995.0 V192.0 H1000.0 V218.0 H1005.0 V192.0 H1010.0 V218.0 H1015.0 V192.0 H1020.0 V218.0 H1025.0 V192.0 H1030.0 V192.0 H1035.0 V192.0 H1040.0 V218.0 H1045.0 V192.0 H1050.0 V218.0 H1055.0 V192.0 H1060.0 V218.0 H1065.0 V192.0 H1070.0 V218.0 H1075.0 V192.0 H1080.0 V218.0 H1085.0 V192.0 H1090.0 V218.0 H1095.0 V192.0 H1100.0 V218.0 H1105.0 V192.0 H1110.0 V218.0 H1115.0 V192.0 H1120.0 V218.0 H1125.0 V192.0 H1130.0 V218.0 H1135.0 V192.0 H1140.0 V218.0 H1145.0 V192.0 H1150.0" fill="none" stroke="var(--bw-accent)" stroke-width="2.2"/>
+  <text x="8" y="257" class="ln">SPI</text><text x="138" y="257" class="lc" text-anchor="end">mode 0</text>
+  <path d="M267.5,238 H447.5 L455.5,251 L447.5,264 H267.5 L259.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="357.5" y="257" class="pl" text-anchor="middle">0x9F</text>
+  <path d="M482.5,238 H662.5 L670.5,251 L662.5,264 H482.5 L474.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="572.5" y="257" class="pl" text-anchor="middle">0x00 / 0xEF</text>
+  <path d="M697.5,238 H877.5 L885.5,251 L877.5,264 H697.5 L689.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="787.5" y="257" class="pl" text-anchor="middle">0x00 / 0x40</text>
+  <path d="M912.5,238 H1092.5 L1100.5,251 L1092.5,264 H912.5 L904.5,251 Z" fill="var(--bw-surface)" stroke="var(--bw-text-muted)" stroke-width="1.2"/>
+  <text x="1002.5" y="257" class="pl" text-anchor="middle">0x00 / 0x18</text>
+  <text x="8" y="303" class="lm">D4–D31, CLK2 · 29 lanes hidden</text>
+  <line x1="250.0" y1="0" x2="250.0" y2="338" stroke="var(--bw-warning)" stroke-width="2"/>
+  <rect x="214.0" y="340" width="72" height="24" rx="4" fill="var(--bw-warning)"/><text x="250.0" y="357" class="tg" text-anchor="middle">trigger</text>
+  <line x1="472.5" y1="0" x2="472.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="478.5" y="357" class="cu">A</text>
+  <line x1="1102.5" y1="0" x2="1102.5" y2="338" stroke="var(--bw-text)" stroke-width="1.4" stroke-dasharray="5 4"/>
+  <text x="1108.5" y="357" class="cu">B</text>
+  </svg>
+  <div class="axis"><span><b>2048</b> samples acquired → <b>400</b> drawn · 100 MHz · capture time</span><span>Δt A→B <b>2.52 µs</b></span></div>
+  </section>
+  <section class="panel raised"><div class="ph"><div><span class="pe">Staged configuration</span><span class="pt">Trigger sequencer</span></div></div>
+  <table><tr><th>Level</th><th>Condition</th><th>Then</th></tr>
+  <tr><td>1</td><td class="m">D0 ↓ (CS#)</td><td>trigger</td></tr>
+  <tr><td>2</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>3</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr>
+  <tr><td>4</td><td style="color:var(--bw-text-muted)">unused</td><td>—</td></tr></table>
+  <div class="btns"><button class="primary">Arm capture</button><button>Stop</button><button disabled>Apply</button></div>
+  <p class="reason">Apply unavailable: sequencer register packing not yet recovered (open item)</p>
+  <div style="height:14px"></div>
+  <div class="ph"><div><span class="pe">Gateway observations</span><span class="pt">Messages</span></div></div>
+  <p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--bw-text-muted)"><span style="color:var(--bw-advisory);font-weight:600">Advisory</span> · Status 0xE0: armed, pre-trigger buffer filling. Drain starts when bit 0 sets.</p>
+  </section>
+  </div>
     </div>
       </div><div class="footer"><span>DARK THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
     </section>
