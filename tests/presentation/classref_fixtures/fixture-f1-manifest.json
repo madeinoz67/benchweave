@@ -1,5 +1,5 @@
 {
-  "contract_version": "0.3.1",
+  "contract_version": "0.4.0",
   "plugin_id": "dev.veridian.f1-la",
   "descriptor_sha256": "c0e82cb7502bfcfa9bddb11e4ee6d575b5945ca9b02d7caec435bbd72fe251c9",
   "bindings": [
@@ -98,7 +98,7 @@
   ],
   "extensions": {
     "plugin-ui-class-reference:layout": {
-      "contract_version": "0.1.0",
+      "contract_version": "0.2.0",
       "pages": [
         {
           "page_id": "capture",

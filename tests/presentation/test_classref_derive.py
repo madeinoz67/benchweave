@@ -116,7 +116,9 @@ class TestParityB8:
 
 class TestDecoderDerivation:
     """The decoder behaviors the derivation mirrors from the SDK expander
-    (v0.14.0, read-not-imported — REG-4): pinned-decoder lane rows, the
+    (v0.15.0 after the L5 pointer leg; the fixtures on this branch were
+    regenerated from v0.14.0's derivation against the 0.2.0 corpus —
+    REG-4): pinned-decoder lane rows, the
     annotation form's capture rebinding, and the decode binding's page
     append on the plot page."""
 
@@ -283,7 +285,7 @@ class TestRefusals:
         §3.3's ``classref_unknown_slot``): a page binding a slot key absent
         from the reference's slots refuses."""
         reference = json.loads(
-            (corpus_root() / "plugin-ui-class-reference/0.1.0/class-logic_analyser.json")
+            (corpus_root() / "plugin-ui-class-reference/0.2.0/class-logic_analyser.json")
             .read_bytes()
         )
         reference["pages"][0]["binding_slots"].append("ghost-slot")
@@ -321,7 +323,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
         tampered = (corpus / relpath).read_bytes() + b"\n"
         (corpus / relpath).write_bytes(tampered)
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -332,7 +334,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
         (corpus / relpath).write_bytes(b"{not json")
         self._re_pin(corpus, relpath, b"{not json")
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())

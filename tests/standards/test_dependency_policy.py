@@ -105,8 +105,9 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
     yanked-in-interval), registry {0.1.0, 0.1.1, 0.1.2} (0.1.2 = the
     publishing lane's review-block bump, issue #223 slice 1), execution
     {0.1.0, 0.2.0},
-    interface {0.1.0}, plugin-ui {0.3.1} (F1 narrow range),
-    plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
+    interface {0.1.0}, plugin-ui {0.4.0} (F1 narrow range),
+    plugin-ui-class-reference {0.1.0, 0.2.0} (multi-serving from the L5
+    widening), plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
     versions" but its own enumeration sums to 10 — the per-id sets are the
     load-bearing rules (each traced to retained directories and declared
     ranges); the total is their consequence. Recorded as a design arithmetic
@@ -122,11 +123,11 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         "registry": ("0.1.0", "0.1.1", "0.1.2", "0.1.3"),
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0",),
-        "plugin-ui": ("0.3.1",),
-        "plugin-ui-class-reference": ("0.1.0",),
+        "plugin-ui": ("0.4.0",),
+        "plugin-ui-class-reference": ("0.1.0", "0.2.0"),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 14
+    assert sum(len(versions) for versions in served.values()) == 15
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:

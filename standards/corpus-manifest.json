@@ -1263,6 +1263,26 @@
       "sha256": "8e738d94be4dd24308851196e64574a92b24b2295b4dfc4b82e7c7b710fbcc52"
     },
     {
+      "path": "plugin-ui/0.4.0/ui-manifest.schema.json",
+      "source": "standards/plugin-ui/0.3.1/ui-manifest.schema.json",
+      "sha256": "d169fccb520086d1bb2335eeb7e7d56afa2f19a60c49d8493d0db56e6285d23d"
+    },
+    {
+      "path": "plugin-ui/0.4.0/binding-catalogue.schema.json",
+      "source": "standards/plugin-ui/0.3.1/binding-catalogue.schema.json",
+      "sha256": "fc1324242c3c07e9d56d5ef3f2563ab1683e45282981ad5044bb8af73e56248b"
+    },
+    {
+      "path": "plugin-ui/0.4.0/configuration-preset.schema.json",
+      "source": "standards/plugin-ui/0.3.1/configuration-preset.schema.json",
+      "sha256": "f9914cab8faab349b0eeaf185650391354a1f2e549df4966a2ca1c64557babee"
+    },
+    {
+      "path": "plugin-ui/0.4.0/presentation-envelope.schema.json",
+      "source": "standards/plugin-ui/0.3.1/presentation-envelope.schema.json",
+      "sha256": "a06c73e3db7084417a5c53f57792391ce62f1854a4c79eb57cb67ebcf540ad00"
+    },
+    {
       "path": "registry/0.1.0/examples/package-lock.json",
       "source": "docs/registry-v1.0.0/examples/package-lock.json",
       "sha256": "52f57da1f016ed0eb61cc5b7a3c0d213ecffb443df1613f91e55e691a7d275c6"
@@ -1396,6 +1416,21 @@
       "path": "plugin-ui-class-reference/0.1.0/class-logic_analyser.json",
       "source": "docs/plugin-ui-class-reference-v1/class-logic_analyser.json",
       "sha256": "1d631a0e20d36cc5e50ec59bd5de5def1f289c5144f016ff256d8e554b2677f8"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.2.0/class-reference.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.1.0/class-reference.schema.json",
+      "sha256": "afafbf2e424faa4d5b70de79b943768c0b5e28424a0a977ecdf33077f2bdaeec"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.2.0/layout.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.1.0/layout.schema.json",
+      "sha256": "871d7becfab3995d5eb8a064a62f8cbddf48637f584aec814e6ca45a1d54ef04"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
+      "source": "standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json",
+      "sha256": "36dfc2440aa60fcb27db5fca919d0ee9b83c3c84a665c087190fa287190ada27"
     }
   ]
 }

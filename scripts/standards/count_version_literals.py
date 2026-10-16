@@ -507,34 +507,38 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
         "src/benchweave/presentation/classref.py": (
             "FOUNDING_FAMILY_VERSION — the authored documentation constant "
             "naming the family version the corpus-pin provenance cites "
-            "(design record 2026-10-15 section 3: the registry's corpus "
+            "(design record 2026-10-16 section 3: the registry's corpus "
             "pin moves with the family bump in one reviewable unit, R4); "
             "the SERVED version is derived (family_version(corpus)) and "
-            "no render path reads the constant; motion: moves with the "
-            "family bump's corpus-pin re-pin, in the same arc",
+            "no render path reads the constant; motion: moved 0.1.0->0.2.0 "
+            "with the L5 family bump's corpus-pin re-pin (gateway issue "
+            "#463; the ZERO gate is the motion's RED) in the same arc",
             1,
-            ("0.1.0",),
+            ("0.2.0",),
         ),
         "src/benchweave/presentation/panels.py": (
             "the classref-logic-analyser panel's authored corpus_pin — the "
             "registry's own citation of the family version it renders "
-            "(design record 2026-10-15 section 3, R4's mitigation): the "
+            "(design record 2026-10-16 section 3, R4's mitigation): the "
             "render path DERIVES the served version "
             "(served_family_version) and refuses the composition on "
             "mismatch, so the literal is provenance data, not a served "
-            "reference; motion: moves with the family bump's corpus-pin "
-            "re-pin, in the same arc as the classref.py row",
+            "reference; motion: moved 0.1.0->0.2.0 with the L5 family "
+            "bump's corpus-pin re-pin (gateway issue #463; the ZERO gate "
+            "is the motion's RED) in the same arc as the classref.py row",
             1,
-            ("0.1.0",),
+            ("0.2.0",),
         ),
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
             "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "
             "the identity — digest-pinned, so no value pin here); motion: all "
             "THREE version-literal sites (the path-shaped SCHEMA_ROOT literal "
-            "and the two bare contract_version consts) moved 0.3.0→0.3.1 with "
-            "the commissioned-firmware gate bump (issue #444; three sites move, "
-            "count unchanged) under the sanctioned narrow-range crossing — the "
+            "and the two bare contract_version consts) moved 0.3.1→0.4.0 with "
+            "the L5 input-trio MINOR (gateway issue #463; three sites move, "
+            "count unchanged — the previous motion was 0.3.0→0.3.1 with the "
+            "commissioned-firmware gate bump, issue #444) under the sanctioned "
+            "narrow-range crossing — the "
             "bundle lists this live code row in every carried version's row, "
             "so single-serving is the only honest posture. D2's original reopen "
             "trigger FIRED with the #244 motion; D2 remains open "

@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "sdk_compatibility": {
     "main_project": ">=0.1.0",
-    "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance — checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync — same-version content drift is refused (standards_version_required), never re-vendored silently.",
+    "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance \u2014 checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync \u2014 same-version content drift is refused (standards_version_required), never re-vendored silently.",
     "sdk": "0.14.0"
   },
   "dependency_policy": {
@@ -43,16 +43,19 @@
         ]
       },
       "plugin-ui": {
-        "range": ">=0.3.1,<0.4.0",
+        "range": ">=0.4.0,<0.5.0",
         "yanked": {},
         "retired": [],
-        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying 0.3.0 beside 0.3.1 would serve 0.3.1 code bytes under a 0.3.0 pin — single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.3.1 commissioned-firmware gate (issue #444). 0.3.0 pins re-stamp to 0.3.1. The owner may overrule to serve 0.3.0's schemas.",
+        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying two schema versions would serve stale code bytes under the older pin \u2014 single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.4.0 MINOR (the L5 input trio, gateway issue #463; the design record is the owner-worded sanction). 0.3.1 pins re-stamp to 0.4.0. The owner may overrule to serve 0.3.1's schemas.",
         "versions": {
           "0.3.0": {
             "migration_note": "standards/plugin-ui/0.3.0/MIGRATION.md"
           },
           "0.3.1": {
             "migration_note": "standards/plugin-ui/0.3.1/MIGRATION.md"
+          },
+          "0.4.0": {
+            "migration_note": "standards/plugin-ui/0.4.0/MIGRATION.md"
           }
         }
       },
@@ -62,7 +65,7 @@
         "retired": [
           "1.0.0"
         ],
-        "note": "Floor-compliant range (PRD Q3 support-window floor: a declared range covers at least the two most recent released versions — 0.1.1 and 0.2.0): multi-serving is this wire's established shape and it has no live code row to protect. 0.1.0 drops out of the window; 0.1.1 pins stay served.",
+        "note": "Floor-compliant range (PRD Q3 support-window floor: a declared range covers at least the two most recent released versions \u2014 0.1.1 and 0.2.0): multi-serving is this wire's established shape and it has no live code row to protect. 0.1.0 drops out of the window; 0.1.1 pins stay served.",
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-preview/0.2.0/MIGRATION.md"
@@ -70,9 +73,14 @@
         }
       },
       "plugin-ui-class-reference": {
-        "range": ">=0.1.0,<0.2.0",
+        "range": ">=0.1.0,<0.3.0",
         "yanked": {},
-        "retired": []
+        "retired": [],
+        "versions": {
+          "0.2.0": {
+            "migration_note": "standards/plugin-ui-class-reference/0.2.0/README.md"
+          }
+        }
       }
     }
   },
@@ -175,15 +183,15 @@
     },
     {
       "id": "plugin-ui",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "status": "stable",
-      "released": "2026-10-12",
-      "supersedes": "0.3.0",
+      "released": "2026-10-16",
+      "supersedes": "0.3.1",
       "normative": [
-        "standards/plugin-ui/0.3.1/binding-catalogue.schema.json",
-        "standards/plugin-ui/0.3.1/configuration-preset.schema.json",
-        "standards/plugin-ui/0.3.1/presentation-envelope.schema.json",
-        "standards/plugin-ui/0.3.1/ui-manifest.schema.json",
+        "standards/plugin-ui/0.4.0/binding-catalogue.schema.json",
+        "standards/plugin-ui/0.4.0/configuration-preset.schema.json",
+        "standards/plugin-ui/0.4.0/presentation-envelope.schema.json",
+        "standards/plugin-ui/0.4.0/ui-manifest.schema.json",
         "src/benchweave/presentation/contracts.py"
       ]
     },
@@ -200,14 +208,14 @@
     },
     {
       "id": "plugin-ui-class-reference",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "status": "stable",
-      "released": "2026-10-14",
-      "supersedes": null,
+      "released": "2026-10-16",
+      "supersedes": "0.1.0",
       "normative": [
-        "standards/plugin-ui-class-reference/0.1.0/class-reference.schema.json",
-        "standards/plugin-ui-class-reference/0.1.0/layout.schema.json",
-        "standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        "standards/plugin-ui-class-reference/0.2.0/class-reference.schema.json",
+        "standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
+        "standards/plugin-ui-class-reference/0.2.0/layout.schema.json"
       ]
     }
   ]

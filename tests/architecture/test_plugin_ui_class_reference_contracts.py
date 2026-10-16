@@ -1,14 +1,19 @@
 """The class-reference family schemas are closed, local and versioned.
 
 Landing 1 of the class-reference program (design record
-``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``): the
-family ``plugin-ui-class-reference/0.1.0`` ships two machine schemas and the
-founding ``class-logic_analyser.json`` reference. Every schema rule carries a
+``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``); the
+L5 widening rides design record
+``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
+The family's ACTIVE version ``plugin-ui-class-reference/0.2.0`` ships two
+machine schemas and the founding ``class-logic_analyser.json`` reference
+(the 0.1.0 predecessor stays digest-frozen — the retained-freeze arms below
+assert it). Every schema rule carries a
 valid and an invalid case; the reference-content tests pin the D2
 structure-not-data discipline and the D12a extension-seam namespace at the
 corpus level (the expansion-side A-rules are Landing 2).
 """
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -19,20 +24,20 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.1.0"
+DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.2.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.1.0/class-reference.schema.json"
+    "/0.2.0/class-reference.schema.json"
 )
 LAYOUT_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.1.0/layout.schema.json"
+    "/0.2.0/layout.schema.json"
 )
 LAYOUT_REF = f"{LAYOUT_ID}#/$defs/layout_page"
 # The plugin-ui manifest schema whose extensions seam carries the layout
 # block (D12a): the namespace key must match its patternProperties grammar.
-UI_MANIFEST = ROOT / "standards/plugin-ui/0.3.1/ui-manifest.schema.json"
+UI_MANIFEST = ROOT / "standards/plugin-ui/0.4.0/ui-manifest.schema.json"
 
 # The class's actions per the OTDP 0.2.3 catalogue (the profile row the
 # reference binds); the reference's action URNs must all exist there.
@@ -78,7 +83,7 @@ def minimal_layout_page() -> dict[str, Any]:
 
 def minimal_reference(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "profile_id": "otdp.logic_analyser/1.0.0",
         "title": "Class reference",
         "targets": {"plugin_ui": ">=0.3.1"},
@@ -112,7 +117,7 @@ def test_all_family_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = (
             "https://benchweave.dev/contracts/plugin-ui-class-reference"
-            f"/0.1.0/{name}.schema.json"
+            f"/0.2.0/{name}.schema.json"
         )
         assert schema["$id"] == expected
 
@@ -146,7 +151,7 @@ def test_reference_rejects_missing_required_field(field: str) -> None:
 
 def test_contract_version_is_pinned() -> None:
     assert not reference_validator().is_valid(
-        minimal_reference(contract_version="0.2.0")
+        minimal_reference(contract_version="0.1.0")
     )
 
 
@@ -531,7 +536,7 @@ def test_reference_layouts_carry_no_text_nodes() -> None:
 
 
 def test_layout_extension_namespace_matches_the_plugin_ui_seam() -> None:
-    """D12a: the layout block rides the plugin-ui 0.3.1 extensions seam; the
+    """D12a: the layout block rides the plugin-ui 0.4.0 extensions seam; the
     namespace key must match the manifest schema's patternProperties."""
     schema = json.loads(UI_MANIFEST.read_bytes())
     patterns = [
@@ -562,7 +567,7 @@ def test_controls_levels_match_the_class_ladder() -> None:
 
 def test_minimal_layout_document_validates() -> None:
     layout = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [minimal_layout_page()],
     }
     assert layout_validator().is_valid(layout)
@@ -571,7 +576,7 @@ def test_minimal_layout_document_validates() -> None:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda doc: doc.update(contract_version="0.2.0"),
+        lambda doc: doc.update(contract_version="0.3.0"),
         lambda doc: doc.update(pages=[]),
         lambda doc: doc["pages"][0].pop("page_id"),
         lambda doc: doc["pages"][0].update(sections=[]),
@@ -580,7 +585,7 @@ def test_minimal_layout_document_validates() -> None:
 )
 def test_layout_document_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout)
@@ -598,7 +603,7 @@ def test_layout_document_rules_refuse(mutate: Any) -> None:
 )
 def test_section_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout["pages"][0]["sections"][0])
@@ -607,7 +612,7 @@ def test_section_rules_refuse(mutate: Any) -> None:
 
 def test_control_kinds_are_closed() -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -629,7 +634,7 @@ def test_control_kinds_are_closed() -> None:
 def test_text_body_is_bounded() -> None:
     body = "x" * 512
     layout: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -647,16 +652,16 @@ def test_text_body_is_bounded() -> None:
 @pytest.mark.parametrize(
     "node",
     [
-        {"binding_id": "capture", "kind": "select"},
+        {"binding_id": "capture", "kind": "gauge"},
         {"plot_index": "0"},
         {"binding_id": "!bad", "kind": "button"},
         {"binding_id": "arm", "kind": "button", "style": "color:red"},
     ],
-    ids=["reading-kind", "plot-index-string", "binding-id-grammar", "closed-world"],
+    ids=["unknown-kind", "plot-index-string", "binding-id-grammar", "closed-world"],
 )
 def test_layout_nodes_are_closed_world(node: dict[str, Any]) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -675,7 +680,7 @@ def test_depth_is_bounded_at_three() -> None:
 
     leaf = node("inner", [{"binding_id": "arm", "kind": "button"}])
     three_deep: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [leaf])])]}
         ],
@@ -683,7 +688,7 @@ def test_depth_is_bounded_at_three() -> None:
     assert layout_validator().is_valid(three_deep)
     beyond = node("inner", [node("beyond", [{"body": "x"}])])
     four_deep: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [beyond])])]}
         ],
@@ -762,7 +767,7 @@ def test_seventeen_layout_pages_refuse_both_ways() -> None:
     as a standalone block AND as reference layouts."""
     pages = [minimal_layout_page() for _ in range(17)]
     assert not layout_validator().is_valid(
-        {"contract_version": "0.1.0", "pages": pages}
+        {"contract_version": "0.2.0", "pages": pages}
     )
     assert not reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -772,7 +777,7 @@ def test_sixteen_layout_pages_admit_both_ways() -> None:
     sixteen pages admit on both writers."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
-        {"contract_version": "0.1.0", "pages": pages}
+        {"contract_version": "0.2.0", "pages": pages}
     )
     assert reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -783,3 +788,113 @@ def test_the_reference_declares_the_intermediation_forbid() -> None:
     reference declares the check."""
     document = json.loads(REFERENCE.read_bytes())
     assert "intermediated-energy-removing-action" in document["expect"]["forbid"]
+
+
+# --- the L5 widening and the retained-freeze arms (issue #463 L5) ---------------
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["text", "select", "boolean"],
+)
+def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
+    """L5: the layout vocabulary's control.kind enum widens to the six
+    kinds; the trio admit as control nodes (RED against the 0.1.0 schema,
+    which refuses them — the widening is what admits)."""
+    layout: dict[str, Any] = {
+        "contract_version": "0.2.0",
+        "pages": [
+            {
+                "page_id": "capture",
+                "sections": [
+                    {
+                        "id": "s",
+                        "surface": "raised",
+                        "children": [{"binding_id": "configure", "kind": kind}],
+                    }
+                ],
+            }
+        ],
+    }
+    assert layout_validator().is_valid(layout)
+
+
+def test_control_kinds_still_admit_the_founding_kinds() -> None:
+    """The widening is additive: the founding kinds keep admitting."""
+    layout: dict[str, Any] = {
+        "contract_version": "0.2.0",
+        "pages": [
+            {
+                "page_id": "capture",
+                "sections": [
+                    {
+                        "id": "s",
+                        "surface": "raised",
+                        "children": [
+                            {"binding_id": "a", "kind": "button"},
+                            {"binding_id": "b", "kind": "numeric"},
+                            {"binding_id": "c", "kind": "rotary"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    assert layout_validator().is_valid(layout)
+
+
+def test_retained_freeze_predecessor_dirs_still_exist() -> None:
+    """Copy-never-move: the 0.1.0 family dir and the 0.3.1 plugin-ui dir
+    stay in the tree, digest-frozen by their corpus rows."""
+    for relpath in (
+        "standards/plugin-ui-class-reference/0.1.0",
+        "standards/plugin-ui/0.3.1",
+    ):
+        assert (ROOT / relpath).is_dir(), f"predecessor dir removed: {relpath}"
+
+
+def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
+    """The predecessor rows' digests still match the files' bytes — a
+    retained version's rows are verified, never rewritten (CON-7)."""
+    manifest = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    pins = {str(row["path"]): str(row["sha256"]) for row in manifest["files"]}
+    checked = 0
+    for directory, names in (
+        ("plugin-ui-class-reference/0.1.0",
+         ("class-reference.schema.json", "layout.schema.json",
+          "class-logic_analyser.json")),
+        ("plugin-ui/0.3.1",
+         ("ui-manifest.schema.json", "binding-catalogue.schema.json",
+          "configuration-preset.schema.json", "presentation-envelope.schema.json")),
+    ):
+        for name in names:
+            relpath = f"{directory}/{name}"
+            assert relpath in pins, f"predecessor row missing: {relpath}"
+            raw = (ROOT / "standards" / relpath).read_bytes()
+            assert hashlib.sha256(raw).hexdigest() == pins[relpath], (
+                f"retained row diverges from its frozen bytes: {relpath}"
+            )
+            checked += 1
+    assert checked == 7, f"expected 7 predecessor rows, checked {checked}"
+
+
+def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
+    """The frozen schemas still pin their own versions — a retained
+    version's const is frozen history, never re-stamped."""
+    family = json.loads(
+        (ROOT / "standards/plugin-ui-class-reference/0.1.0/class-reference.schema.json")
+        .read_bytes()
+    )
+    assert family["properties"]["contract_version"]["const"] == "0.1.0"
+    layout = json.loads(
+        (ROOT / "standards/plugin-ui-class-reference/0.1.0/layout.schema.json")
+        .read_bytes()
+    )
+    assert layout["properties"]["contract_version"]["const"] == "0.1.0"
+    assert layout["$defs"]["control"]["properties"]["kind"]["enum"] == [
+        "button", "numeric", "rotary",
+    ]
+    manifest_schema = json.loads(
+        (ROOT / "standards/plugin-ui/0.3.1/ui-manifest.schema.json").read_bytes()
+    )
+    assert manifest_schema["properties"]["contract_version"]["const"] == "0.3.1"

@@ -1,1 +1,1 @@
-{"contract_version":"0.3.1","descriptor_sha256":"54a2cdc7b4dd4630274a64d1a6e2b696b25bbe9a6cfbbdbf41732b69b2d8a9dd","resource_root":"ui","manifest":{"path":"manifest.json","sha256":"ce1f3df4da2ad9f8dc2d048dfaef142da8858706bda975dd887b0cbc966fe1d0"}}
+{"contract_version": "0.4.0", "descriptor_sha256": "54a2cdc7b4dd4630274a64d1a6e2b696b25bbe9a6cfbbdbf41732b69b2d8a9dd", "resource_root": "ui", "manifest": {"path": "manifest.json", "sha256": "0340c71b398e36f2367017090c9952da85217aa2ef9d871b259fb6d45e33e4fd"}}
