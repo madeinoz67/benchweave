@@ -9,6 +9,8 @@
 |---|-------|----------|------------|--------------|------|
 | 1 | Normative machine corpus | schemas, catalogues, vectors, examples | digest-frozen; versioned errata only | devices, registry, execution and interface suites | `standards/<id>/<version>/` |
 | 2 | Standards prose companions | `otdp-specification.md`, `execution-contract.md`, `validation-report.md` | versioned with its standard | same suites + link checker | `standards/<id>/<version>/` (whole standard together) |
+
+> Register note (L5, 2026-10-16): class 2 companions keep the engineering register. The ASD-STE100 letter reaches developer-facing published documentation; these companions are versioned technical records, not operator prose. No STE conversion is owed to them.
 | 3 | Governance locks | `standards/standards-manifest.json`, `standards/corpus-manifest.json` | row-per-change, CI-gated | manifest gates | `standards/` root |
 | 4 | Architecture baseline | `smart-test-gateway-architecture-v1.5.md`, decisions, closure, compatibility | admitted record, near-immutable | closure suite | `docs/` |
 | 5 | Acceptance evidence | `acceptance/`, composition reviews | append-only | closure suite | `docs/acceptance/` |
