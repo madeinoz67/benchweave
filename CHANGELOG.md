@@ -147,6 +147,7 @@ All notable changes to this project will be documented in this file.
 - Register the L4 corpus-pin provenance literals (obligation 20)
 - Manifest refresh on the L4 merge — 230 rows, core 214, L4's tests land complement per the written rule (AR-4's first inter-train catch) (#471)
 - Advance the pointer to v0.15.0 — gitlink + .gitmodules pin + sdk_compatibility mirror in one commit (the three-motion pairing, #463 L5)
+- Fold the cross-constraints key-order NIT — the policy note resolves to accept at the L5 rebase
 
 ### Refactoring
 
