@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
 - Select renders the honest empty display, never a crash (F3, gateway #463)
 - The select const arm keeps its own labelling; contract row + coverage (F1, gateway #463)
 - Refresh the docs literal baseline for the trio's 0.3.0 sentence (battery catch)
+- Re-point the ui_readings fixture's hand-authored layout block to 0.2.0 (gateway #463)
+- The classref derivation mirrors the SDK's L5 input trio (gateway #463)
 
 ### Documentation
 
@@ -93,6 +95,8 @@ All notable changes to this project will be documented in this file.
 - The input trio for device developers — STE register (#463)
 - L5 record addenda — the refute rulings and corrections (F4, F5, F2; gateway #463)
 - Refresh the ui-html provenance stamps to 0.3.0 — the readiness audit's M2 (banner version rides PR-1's ui-html bump) (#463)
+- L5 derived surfaces — matrix re-render, docs sweeps, cross-constraint pin, train-window pin, byte-form fix
+- Matrix re-render at the v0.15.0 pairing + the class-2 register note (the governance row, #463 L5)
 
 ### Features
 
@@ -127,6 +131,7 @@ All notable changes to this project will be documented in this file.
 - The gateway-owned panel registry (L4 capability c)
 - The derivation mirrors the SDK decoder behaviors (F2)
 - The L5 input trio — renderer partials, contract rows, gateway read-only arms (PR-1)
+- Plugin-ui 0.4.0 + class-reference 0.2.0 — the L5 corpus-and-version arc (gateway #463)
 
 ### Miscellaneous
 
@@ -141,6 +146,7 @@ All notable changes to this project will be documented in this file.
 - Advance the pointer to v0.14.0 — the expander pairing
 - Register the L4 corpus-pin provenance literals (obligation 20)
 - Manifest refresh on the L4 merge — 230 rows, core 214, L4's tests land complement per the written rule (AR-4's first inter-train catch) (#471)
+- Advance the pointer to v0.15.0 — gitlink + .gitmodules pin + sdk_compatibility mirror in one commit (the three-motion pairing, #463 L5)
 
 ### Refactoring
 
@@ -179,6 +185,10 @@ All notable changes to this project will be documented in this file.
 
 - Bump fastmcp from 4.0.10 to 4.0.11
 - Regenerate uv.lock for fastmcp 4.0.11 (dependabot lock-companion)
+
+### Fold
+
+- The #463 final review wave — four rows (gateway #463)
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
