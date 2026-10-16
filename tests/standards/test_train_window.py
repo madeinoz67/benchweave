@@ -515,11 +515,17 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # registry 0.1.3's bump (9135626, ts 1791873156) is the tree's first
     # judged post-anchor bump and is compliant — the standards-lock.json
     # pinned at that commit's gitlink (b17f0214) carries registry 0.1.2.
+    # The L5 bump (2026-10-16, gateway issue #463) adds two more judged
+    # post-anchor entries, both compliant (each carries its from-
+    # predecessor note: plugin-ui 0.3.1->0.4.0 via MIGRATION.md, the
+    # classref family 0.1.0->0.2.0 via the 0.2.0 README).
     # The scratch family above carries the non-vacuity burden; this row
     # pins the deployment state — the judged set's shape, and a
     # non-compliant future bump still refuses by name below.
     entries = collect_bump_entries(ROOT)
     assert [(entry.standard, entry.version, entry.predecessor) for entry in entries] == [
-        ("registry", "0.1.3", "0.1.2")
+        ("plugin-ui", "0.4.0", "0.3.1"),
+        ("registry", "0.1.3", "0.1.2"),
+        ("plugin-ui-class-reference", "0.2.0", "0.1.0"),
     ]
     assert check_train_windows(ROOT) == ()

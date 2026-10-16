@@ -6,7 +6,7 @@
     },
     "tests/architecture/test_plugin_ui_class_reference_contracts.py": {
       "core": 0,
-      "total": 74
+      "total": 81
     },
     "tests/architecture/test_plugin_ui_contracts.py": {
       "core": 0,
