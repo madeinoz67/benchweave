@@ -43,21 +43,22 @@ def _rewrite(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any]]) -> 
 
 def test_the_retrofit_row_is_exactly_the_evidenced_set() -> None:
     """Two rows: execution 0.2.0 requiring OTDP 0.2.x and adapter API 1.1
-    (PR #201's prose), and the plugin-ui-class-reference 0.1.0 admission row
-    naming the family's plugin-ui floor (the 2026-10-14 class-reference
-    design record). Every other standard's absence is the recorded honest
-    negative carried in the file's note."""
+    (PR #201's prose), and the plugin-ui-class-reference 0.2.0 admission row
+    naming the family's plugin-ui floor (the 2026-10-16 L5 design record;
+    the row amends in place per the RC-5 amendment the record §3 names).
+    Every other standard's absence is the recorded honest negative carried
+    in the file's note."""
     rows = load_cross_constraints(ROOT)
     assert [(row.standard, row.version) for row in rows] == [
         ("execution", "0.2.0"),
-        ("plugin-ui-class-reference", "0.1.0"),
+        ("plugin-ui-class-reference", "0.2.0"),
     ]
     row = rows[0]
     assert row.requires == {"otdp": ">=0.2.0,<0.3.0", "adapter_api": "1.1"}
     assert "PR #201" in row.evidence
     admission = rows[1]
-    assert admission.requires == {"plugin-ui": ">=0.3.1,<0.4.0"}
-    assert "2026-10-14-classref-logic-analyser-design.md" in admission.evidence
+    assert admission.requires == {"plugin-ui": ">=0.4.0,<0.5.0"}
+    assert "2026-10-16-classref-l5-plugin-ui-0-4-0-design.md" in admission.evidence
     note = json.loads(CROSS.read_bytes())["note"]
     assert "plugin-ui" in note and "deliberate" in note
 

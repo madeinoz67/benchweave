@@ -10,7 +10,7 @@ harness are untouched by this slice.
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. This module's data was produced by a throwaway
 render-time expansion of the committed corpus pair —
-standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json
+standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json
 expanded against standards/otdp/0.2.3/examples/class-logic_analyser.json —
 and the module is the committed artifact. The drift guard
 (tests/ui_html/test_classref_page.py) re-derives the page's structure from

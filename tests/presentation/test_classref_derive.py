@@ -32,8 +32,13 @@ FIXTURES = Path(__file__).parent / "classref_fixtures"
 
 
 def _vendor_catalogs() -> dict[str, bytes]:
-    raw = (FIXTURES / "vendor-catalog.json").read_bytes()
-    return {hashlib.sha256(raw).hexdigest(): raw}
+    """Every invented vendor catalog the fixtures pin, keyed by digest —
+    the admission store's resolution shape (L5 adds the trio catalog)."""
+    catalogs: dict[str, bytes] = {}
+    for name in ("vendor-catalog.json", "vendor-catalog-trio.json"):
+        raw = (FIXTURES / name).read_bytes()
+        catalogs[hashlib.sha256(raw).hexdigest()] = raw
+    return catalogs
 
 
 def _derive(tag: str) -> DerivedAttachment:
@@ -53,11 +58,15 @@ def _serialize(document: dict[str, Any]) -> bytes:
 
 class TestParityB8:
     def test_f1_f2_triples_byte_equal_committed_sdk_fixtures(self) -> None:
-        """B8 (3/3 after the decoder fold): the gateway derivation's
+        """B8 (4/4 after the L5 widening): the gateway derivation's
         canonical-JSON triples equal the committed SDK-expansion fixtures
         byte for byte — the two derivations agree over the same corpus
-        reference bytes, decoder-carrying descriptors included."""
-        for tag in ("f1", "f2", "f1-da"):
+        reference bytes, decoder-carrying descriptors AND the F5 trio
+        descriptor included. The F5 arm is the widening's parity proof:
+        the SDK derives the device-features section at L2 with the
+        [text, select, boolean] staging triad and the button; the mirrored
+        gateway derivation emits the same bytes."""
+        for tag in ("f1", "f2", "f1-da", "f5-trio"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -72,11 +81,110 @@ class TestParityB8:
                 assert json.loads(produced) == json.loads(committed)
             assert derived.profile_ids == ("otdp.logic_analyser/1.0.0",)
 
+    def test_f5_trio_derives_the_staging_section_at_l2(self) -> None:
+        """The L5 widening's proof surface (B1 extends to F5): the invented
+        vendor action ``com.veridian-labs.auto-band/1.0.0`` requires a free
+        string, an enum and a boolean — all three expressible — so the
+        device-features page derives a section whose children are the
+        [text, select, boolean] staging nodes followed by the button. The
+        pre-widening derivation rates the action non-numeric -> L0, emits
+        NO section, and this arm reddens."""
+        derived = _derive("f5-trio")
+        block = derived.manifest["extensions"]["plugin-ui-class-reference:layout"]
+        page = next(
+            page for page in block["pages"] if page["page_id"] == "device-features"
+        )
+        children = page["sections"][0]["children"]
+        assert [(node.get("kind"), node.get("field")) for node in children] == [
+            ("text", "label"),
+            ("select", "band_class"),
+            ("boolean", "holdoff_enable"),
+            ("button", None),
+        ]
+
+    def test_field_rows_emit_the_trio_modes_and_text_bounds(self) -> None:
+        """The widened ``_field_rows`` (mirrored from the SDK expander):
+        the F2 ruling's per-mode rows, and a free string's declared bounds
+        ride the row's ``minLength``/``maxLength``. The F5 fixture's free
+        string declares no bound, so this arm — not the parity fixture —
+        pins the bounded-text branch (mirrors the SDK's trio modes test)."""
+        from benchweave.presentation.classref import _field_rows
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string"},
+                "bounded": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8,
+                },
+                "band_class": {"enum": ["wide", "narrow"]},
+                "holdoff_enable": {"type": "boolean"},
+                "count": {"type": "integer", "minimum": 0},
+                "fixed": {"const": 1.5},
+                "patterned": {"type": "string", "pattern": "^[A-Z]{4}$"},
+            },
+        }
+        rows = {row["field"]: row for row in _field_rows("urn:t/1.0.0", "", schema)}
+        assert {name: row["mode"] for name, row in rows.items()} == {
+            "label": "text",
+            "bounded": "text",
+            "band_class": "enum",
+            "holdoff_enable": "boolean",
+            "count": "numeric",
+            "fixed": "const",
+        }  # `patterned` — a pattern-narrowed string — emits no row
+        assert rows["bounded"]["minLength"] == 1
+        assert rows["bounded"]["maxLength"] == 8
+        assert "minLength" not in rows["label"]
+        assert "maxLength" not in rows["label"]
+
+    def test_inexpressible_required_field_keeps_l0(self) -> None:
+        """The L2 test widens from all-numeric to all-expressible: a
+        required free string derives L2, a required pattern-narrowed
+        string stays L0 (no row -> inexpressible; mirrors the SDK's
+        ``test_pattern_narrowed_string_keeps_l0``)."""
+        from benchweave.presentation.classref import _ladder_level
+
+        free: dict[str, Any] = {
+            "required": ["label"],
+            "properties": {"label": {"type": "string"}},
+        }
+        assert _ladder_level(free, frozenset(), None) == "L2"
+        patterned: dict[str, Any] = {
+            "required": ["format"],
+            "properties": {"format": {"type": "string", "pattern": "^[A-Z]{4}$"}},
+        }
+        assert _ladder_level(patterned, frozenset(), None) == "L0"
+        mixed: dict[str, Any] = {
+            "required": ["label", "format"],
+            "properties": {
+                "label": {"type": "string"},
+                "format": {"type": "string", "pattern": "^[A-Z]{4}$"},
+            },
+        }
+        assert _ladder_level(mixed, frozenset(), None) == "L0"
+
+    def test_mode_kind_mapping_carries_the_f2_ruling(self) -> None:
+        """The F2 ruling: a literal const emits a select node — the landed
+        contract row and the renderer both say a const renders the
+        read-only fixed display (mirrors the SDK's mapping test)."""
+        from benchweave.presentation.classref import _MODE_KIND
+
+        assert _MODE_KIND == {
+            "numeric": "numeric",
+            "text": "text",
+            "const": "select",
+            "enum": "select",
+            "boolean": "boolean",
+        }
+
     def test_derived_resources_carry_every_asset_and_the_manifest(self) -> None:
         """The resources map the composition hands the validator carries
         the manifest bytes plus every declared asset's exact bytes —
         ``_resource``'s digest gate (validator side) must find each."""
-        for tag in ("f1", "f2"):
+        for tag in ("f1", "f2", "f5-trio"):
             derived = _derive(tag)
             assert "manifest.json" in derived.resources
             for asset in derived.manifest["assets"]:
@@ -93,12 +201,15 @@ class TestParityB8:
         derivation the validator rejects. The supported-panel set is the
         REGISTRY's derived value, never a fabricated id: the two-slash
         literal a test once fabricated is a string no legal manifest can
-        declare (the schema's panel_id pattern admits one slash)."""
+        declare (the schema's panel_id pattern admits one slash). The F5
+        trio arm proves the widened node kinds (text/select/boolean)
+        survive the unchanged validator — the layout block's only
+        authority."""
         from benchweave.interfaces.ui_presentation import _pin_scoped_documents
         from benchweave.presentation.admission import validate_attachment
         from benchweave.presentation.panels import SUPPORTED_PANELS
 
-        for tag in ("f1", "f2", "f1-da"):
+        for tag in ("f1", "f2", "f1-da", "f5-trio"):
             derived = _derive(tag)
             descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
             report = validate_attachment(
@@ -116,7 +227,9 @@ class TestParityB8:
 
 class TestDecoderDerivation:
     """The decoder behaviors the derivation mirrors from the SDK expander
-    (v0.14.0, read-not-imported — REG-4): pinned-decoder lane rows, the
+    (v0.15.0 after the L5 pointer leg; the fixtures on this branch were
+    regenerated from v0.14.0's derivation against the 0.2.0 corpus —
+    REG-4): pinned-decoder lane rows, the
     annotation form's capture rebinding, and the decode binding's page
     append on the plot page."""
 
@@ -283,7 +396,7 @@ class TestRefusals:
         §3.3's ``classref_unknown_slot``): a page binding a slot key absent
         from the reference's slots refuses."""
         reference = json.loads(
-            (corpus_root() / "plugin-ui-class-reference/0.1.0/class-logic_analyser.json")
+            (corpus_root() / "plugin-ui-class-reference/0.2.0/class-logic_analyser.json")
             .read_bytes()
         )
         reference["pages"][0]["binding_slots"].append("ghost-slot")
@@ -321,7 +434,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
         tampered = (corpus / relpath).read_bytes() + b"\n"
         (corpus / relpath).write_bytes(tampered)
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -332,7 +445,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.1.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
         (corpus / relpath).write_bytes(b"{not json")
         self._re_pin(corpus, relpath, b"{not json")
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())

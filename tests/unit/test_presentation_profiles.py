@@ -57,7 +57,7 @@ def documents() -> JsonObject:
     global DOCUMENTS, CATALOG
     if DOCUMENTS is None:
         set_: JsonObject = {}
-        for path in (ROOT / "standards/plugin-ui/0.3.1").glob("*.schema.json"):
+        for path in (ROOT / "standards/plugin-ui/0.4.0").glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             set_[document["$id"]] = document
         CATALOG = load("standards/otdp/0.2.2/device-profile-catalog.json")
@@ -93,7 +93,7 @@ def pinned_catalog(
 ) -> JsonObject:
     document: JsonObject = {
         "$id": id_,
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "catalog_version": "0.2.2",
         "otdp_version": "0.2.2",
         "profiles": profile_rows,
@@ -123,7 +123,7 @@ def validate_with(
         }
     descriptor_raw = encode(descriptor)
     manifest = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(descriptor_raw),
         "bindings": [
@@ -146,12 +146,12 @@ def validate_with(
     ]
     manifest_raw = encode(manifest)
     catalogue = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "descriptor_sha256": digest(descriptor_raw),
         "targets": [target],
     }
     envelope = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "descriptor_sha256": digest(descriptor_raw),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},

@@ -1110,10 +1110,21 @@ def _section_children(
             nodes.append(SectionNode(markup=_data_table_for_binding(node, bindings, targets)))
             continue
         if kind == "reading-tile":
-            nodes.extend(
-                SectionNode(tile=tile)
-                for tile in _tiles_for_binding(node.get("binding_id", ""), bindings, targets)
+            tiles = _tiles_for_binding(
+                node.get("binding_id", ""), bindings, targets
             )
+            if tiles:
+                nodes.extend(SectionNode(tile=tile) for tile in tiles)
+            else:
+                # The ghost-binding honesty arm (GW-22's posture, the
+                # data-table precedent): a reading-tile whose binding
+                # yields no tiles — undeclared, or a target with no
+                # value-axis variables — renders the same honest absence
+                # table naming the absence. Never silence, never
+                # fabricated data.
+                nodes.append(
+                    SectionNode(markup=_data_table_for_binding(node, bindings, targets))
+                )
             continue
     return nodes
 

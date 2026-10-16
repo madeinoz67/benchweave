@@ -28,7 +28,7 @@ type Specimen = tuple[JsonObject, dict[str, JsonObject], list[JsonObject], JsonO
 
 ROOT = Path(__file__).resolve().parents[2]
 PREDECESSOR = ROOT / "standards/plugin-ui/0.2.0"
-CURRENT = ROOT / "standards/plugin-ui/0.3.1"
+CURRENT = ROOT / "standards/plugin-ui/0.4.0"
 
 
 def _active_preview_wire() -> Path:
@@ -123,7 +123,7 @@ def specimen(
     }
     plot.update(plot_extra or {})
     manifest: JsonObject = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(encode(descriptor)),
         "bindings": [
@@ -151,12 +151,12 @@ def validate(specimen: Specimen) -> ValidationReport:
     manifest["plugin_id"] = descriptor["id"]
     manifest_raw = encode(manifest)
     catalogue = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "descriptor_sha256": digest(descriptor_raw),
         "targets": targets,
     }
     envelope = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "descriptor_sha256": digest(descriptor_raw),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -330,7 +330,7 @@ def _analog_specimen(lane_groups: bool = False) -> Specimen:
         # runs: the schema refuses first).
         plot["lane_groups"] = [{"id": "bus-a", "member_ids": ["time", "value"]}]
     manifest: JsonObject = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(encode(descriptor)),
         "bindings": [{"id": "logic", "kind": "dataset", "target_id": "readings"}],
@@ -521,8 +521,8 @@ def test_refusal_delta_predecessor_refuses_the_new_kind() -> None:
         ],
     }
     assert not _ui_validator(PREDECESSOR, "0.2.0").is_valid(manifest)
-    manifest["contract_version"] = "0.3.1"
-    assert _ui_validator(CURRENT, "0.3.1").is_valid(manifest)
+    manifest["contract_version"] = "0.4.0"
+    assert _ui_validator(CURRENT, "0.4.0").is_valid(manifest)
 
 
 def test_analog_vector_repairs_green() -> None:

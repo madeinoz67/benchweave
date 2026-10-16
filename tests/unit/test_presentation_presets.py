@@ -22,7 +22,7 @@ def encode(value: object) -> bytes:
 @pytest.fixture
 def bundle() -> Bundle:
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.3.1").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.4.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     descriptor = json.loads(
@@ -38,7 +38,7 @@ def bundle() -> Bundle:
     }
     schema_raw = encode(schema)
     preset = {
-        "contract_version": "0.3.1",
+        "contract_version": "0.4.0",
         "id": "synthetic-3v3",
         "title": "Synthetic 3.3 V settings",
         "revision": "1.0.0",
@@ -225,7 +225,7 @@ def test_listed_policy_corpus_admits_with_no_findings(name: str) -> None:
     document became refused (the design's KILL condition)."""
     package = ROOT / "plugins/benchweave/sim_scope/src/benchweave_sim_scope"
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.3.1").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.4.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     # The corpus action catalogue so the envelope resolves exactly as the

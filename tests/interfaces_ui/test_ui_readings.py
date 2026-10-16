@@ -423,7 +423,7 @@ def test_nested_layout_section_tiles_populate_at_their_positions(
         ],
         "extensions": {
             "plugin-ui-class-reference:layout": {
-                "contract_version": "0.1.0",
+                "contract_version": "0.2.0",
                 "pages": [
                     {
                         "page_id": "readings",
