@@ -1376,6 +1376,50 @@ def test_layout_plot_skeleton_at_ref_and_out_of_range_note(
     assert "plot 3 is not declared on this page" in html
 
 
+def test_layout_ghost_reading_tile_renders_the_honest_absence_node(
+    gateway: SimpleNamespace,
+) -> None:
+    """F2 fold row (gateway #463): a schema-valid reading-tile naming a
+    binding the layout's binding catalogue does not declare renders the
+    honest absence node — the same empty table naming the absence that
+    the identical ghost input renders as data-table (GW-22's posture:
+    absence named, never silence, never fabricated data). Fails today:
+    the ghost reading-tile contributes ZERO nodes (``_tiles_for_binding``
+    returns [], the extend adds nothing) while the ghost data-table next
+    to it renders the honest empty table."""
+    from benchweave.interfaces.ui_presentation import compose_layout_sections
+
+    sections = compose_layout_sections(
+        {"id": "p", "plots": []},
+        [
+            {
+                "id": "vitals",
+                "title": "Vitals",
+                "surface": "recessed",
+                "span": 12,
+                "children": [
+                    {"binding_id": "ghost", "kind": "reading-tile"},
+                    {"binding_id": "ghost", "kind": "data-table"},
+                ],
+            }
+        ],
+        {},
+        {},
+    )
+    assert len(sections) == 1
+    html = str(sections[0].html)
+    # The precedent face: the ghost data-table renders the honest empty
+    # table naming the absence.
+    assert 'class="bw-data-table"' in html
+    assert "ghost — no gateway-reported data" in html
+    # The fold: the ghost reading-tile must render its absence node next
+    # to the data-table's — one occurrence each, never silence.
+    assert html.count("ghost — no gateway-reported data") == 2, (
+        "the ghost reading-tile rendered no absence node (today it "
+        "contributes zero nodes and silently vanishes)"
+    )
+
+
 def test_derived_capture_renders_the_lane_group_skeleton(
     gateway: SimpleNamespace,
 ) -> None:

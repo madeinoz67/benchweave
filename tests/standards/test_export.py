@@ -472,8 +472,8 @@ def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     tmp_path: Path,
 ) -> None:
     """Fold row 24 (#215): the same-source dedupe branch under the narrow
-    plugin-ui range. A synthetic second in-range carried version (0.3.2,
-    bytes copied from 0.3.1) makes BOTH carried rows list the parity code
+    plugin-ui range. A synthetic second in-range carried version (0.4.1,
+    bytes copied from 0.4.0) makes BOTH carried rows list the parity code
     row (``src/benchweave/presentation/contracts.py`` → one bundle path) —
     a dedupe, not a collision: the export succeeds, each row's file set
     stays complete across the active transition, and the bundle carries

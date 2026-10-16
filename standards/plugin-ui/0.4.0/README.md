@@ -62,7 +62,7 @@ No defaults are inserted, and no inheritance or merge is performed. Settings mus
 ## The input trio (new in 0.4.0)
 
 Three components join the presentation inventory: `text-input`, `select` and
-`boolean-input` (census keys `bw-text`, `bw-select`, `bw-boolean). A control
+`boolean-input` (census keys `bw-text`, `bw-select`, `bw-boolean`). A control
 is schema-derived, not manifest-declared: a `type: string` field without a
 pattern renders text-input; an enum field renders select — its options are
 the enum's members, and a `const` (or single-option enum) renders the

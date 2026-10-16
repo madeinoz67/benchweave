@@ -317,6 +317,23 @@ SDK repo:
 > 13→14. The surviving discipline: any test-count motion is a visible
 > `win_core_manifest.py --refresh` diff, `--check`-green at push.
 
+> **Addendum (2026-10-16, review fold — F1, census honesty):** the f92b7dd0
+> commit message's "19 failures" names the check-tool face only and is
+> under-stated. The full tip census, both faces, one mechanical root (the
+> pointer window — the SDK submodule pointer not yet advanced, §5 step 5):
+> **30 default-suite pytest failures** (25 `sim_scope` + 4 `test_check` +
+> 1 `presentation_packaging`) and **21 `check-sdk-standards` items**
+> (re-measured at the fold tip: `python -m benchweave.standards check`
+> exits 1 with 21 finding lines). Denominators: 30 of the default suite's
+> reds are this window's reds — zero other causes; the 21 check items are
+> the tool's complete finding list. The two-component SDK served-contract
+> fact behind the parity face: what a lane serves is lock actives (the
+> vendored tree + lock rows) PLUS the vendored `contracts.py` code object —
+> both must move in the same arc or the parity lane sees one half stale;
+> that pair is the parity lane's proven root. All of it closes with the
+> pointer-advance commit (§5 step 5); until then the branch holds the
+> disclosed window and never merges in this state (red-main doctrine).
+
 **Owner-fixed landing order: SDK release → gateway pointer → #465.** The structural
 constraint set: `check-sdk-standards`'s served-set comparison is bidirectional and
 exact (`src/benchweave/standards/check.py:276-288` — `served_set_drift` fires both
