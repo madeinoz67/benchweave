@@ -164,6 +164,7 @@ All notable changes to this project will be documented in this file.
 - Bump markupsafe from 3.0.3 to 3.0.4
 - Bump types-jsonschema
 - Bump fastapi from 0.141.1 to 0.143.0
+- Pin reviewer to sonnet and doc writer to haiku (#496)
 
 ### Refactoring
 
