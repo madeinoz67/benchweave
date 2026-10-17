@@ -157,6 +157,11 @@ All notable changes to this project will be documented in this file.
 - Bump fastmcp from 4.0.11 to 4.1.0
 - Regenerate uv.lock for the fastmcp 4.1.0 bump
 - Move the Python updater from pip to uv so uv.lock moves with pyproject.toml
+- Bump copier from 9.18.2 to 9.19.1
+- Bump ruff from 0.16.6 to 0.17.0
+- Bump markupsafe from 3.0.3 to 3.0.4
+- Bump types-jsonschema
+- Bump fastapi from 0.141.1 to 0.143.0
 
 ### Refactoring
 
