@@ -480,6 +480,16 @@ rather than rewriting the history — that is how this file earns trust.
   §4 promised): this row is the CON-5 composition inventory the design named; the
   three capabilities above are its entries, and the design record carries the dated
   addendum at its §12.
+  Amendment (2026-10-17, issue #450 — the interface 0.1.1 revision): served
+  behavior anchors to the ACTIVE corpus's output defs, not to the sibling
+  transport. Run and lease output envelopes validate against the corpus
+  ``*_output`` defs (row 4's mirror); the paged pages do too, and every paged
+  response names its effective ``limit`` (one seam emission, both adapters pass
+  the seam's page dict through); ``document_get`` and ``run_check`` name content
+  origin (the ``origin`` twin — kind/basis, the gateway's derivation over stored
+  state); device objects carry the same twin and the OTDP ``conformance`` object
+  (CON-10's 2026-10-17 amendment). The corpus 0.1.1 copy carries the fields;
+  the 0.1.0 tree stays digest-frozen.
   Amendment (2026-10, L5 — the §E.1 input trio, gateway issue #463): the layout
   consumption gains three disabled-control arms in
   `src/benchweave/interfaces/ui_presentation.py` `_section_children` — a layout
@@ -737,6 +747,22 @@ rather than rewriting the history — that is how this file earns trust.
   environment at runtime (the env sentence is authoring/review surface —
   design §3.1, risk 5's disclosed residual); the mirror verifies declared
   files only.
+  Amendment (2026-10-17, issue #450 — the interface 0.1.1 wire field lands):
+  the device object carries an optional ``conformance`` object — the Q6
+  classification of the stored pin (``{otdp_version, status, conformance,
+  deprecated, acknowledged}``, closed enums only; the free-form VR-37
+  ``note`` never rides the wire — the operator log channel carries it).
+  PRESENCE RULE: the field is served exactly when the descriptor row
+  declares an ``otdp_version`` pin; legacy pre-dialect rows omit it (R10),
+  and malformed governance bytes omit it with the existing named log line
+  (the read path never crashes on governance bytes — fail-closed belongs at
+  admission). One classify, two consumers: ``_device_conformance``
+  (``operations.py``) serves the wire object and the VR-16
+  unacknowledged-mismatch warning from a single
+  ``classify_descriptor_pin`` call — the one authority admission enforces.
+  ``device_get`` and ``device_list`` share the one projection site. This
+  closes CON-1's 2026-09-27 parenthetical promise ("the wire field lands
+  with the next interface bump" — that bump is 0.1.1).
 
 - **[CON-11]** The OTDP validation report of the active version — its path is
   derived, never hardcoded: the live pin resolves

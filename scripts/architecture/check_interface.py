@@ -146,6 +146,38 @@ for o in catalog["operations"]:
 unique_operations = len({o["name"] for o in catalog["operations"]})
 check("20 unique REST operations", unique_operations == 20)
 check("17 unique MCP tools", len(maptools) == 17)
+# Rows 2 + D4 (issue #450, interface 0.1.1): the annotation family the
+# revision pins — the closed four-key shape (correcting the parent record's
+# two-key description against the frozen bytes: all 17 rows carried four
+# keys), the read-only/destructive contradiction class out for good, and
+# the contract-stated idempotent pair (§6 prose: run_cancel durable and
+# idempotent; lease release idempotent). What these rows do not catch:
+# idempotency for any tool the contract does not sentence about — there is
+# no mechanical source in the corpus; the named-pair row is deliberately
+# exhaustive over contract-stated idempotency (2 tools; denominator: 17).
+check(
+    "every tool carries the closed four-key annotation shape",
+    all(
+        set(t.get("annotations", {}))
+        == {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
+        for t in tools
+    ),
+)
+check(
+    "read-only tools never declare destructiveHint true",
+    all(
+        t["annotations"]["destructiveHint"] is not True
+        for t in tools
+        if t["annotations"].get("readOnlyHint") is True
+    ),
+)
+check(
+    "contract-stated idempotent pair is idempotentHint true",
+    all(
+        maptools[name]["annotations"]["idempotentHint"] is True
+        for name in ("stg_v1_run_cancel", "stg_v1_lease_release")
+    ),
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),

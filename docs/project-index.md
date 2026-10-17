@@ -20,7 +20,7 @@ This repository carries the BenchWeave implementation for packages WP01 to WP07.
 - [Contributor publishing design record](implementation-planning/10-contributor-publishing-design.md)
 - [Publishing guide](publishing-guide.md)
 - [Execution v0.2.0](../standards/execution/0.2.0/execution-contract.md)
-- [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)
+- [Interface v0.1.1](../standards/interface/0.1.1/interface-contract.md)
 - [Plugin UI v0.4.0](../standards/plugin-ui/0.4.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.2.0/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
 - [Acceptance closure](acceptance/end-to-end-review.md)
 

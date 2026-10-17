@@ -76,7 +76,7 @@ def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespace
         scopes=frozenset({"stg:control"}),
         expires_at=2**31,
     )
-    devices, _ = operations.device_list(
+    devices = operations.device_list(
         Identity(
             principal="ui-shell",
             audience="stg",
@@ -86,7 +86,7 @@ def served(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespace
         BENCH_ID,
         limit=10,
         cursor=None,
-    )
+    )["items"]
     raw = (FIXTURES / "run-binding.json").read_bytes()
     binding = json.loads(raw)
     ref = {

@@ -749,7 +749,7 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         ("documents", "project-index.md", "", "\n[Broken](missing.md)\n", "local link"),
         (
             "documents",
-            "interface/0.1.0/interface.schema.json",
+            _active_standard_dir("interface") + "/interface.schema.json",
             '"$ref": "#/$defs/',
             '"$ref": "#/$defs/missing-',
             "resolves",

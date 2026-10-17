@@ -37,9 +37,11 @@ from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 BENCH_ID = "sim-bench"  # the bootstrap bench (fixtures/execution/bench.json)
 DESCRIPTORS = {
@@ -356,7 +358,15 @@ def test_run_cancel_owner_scoping_stranger_forbidden_admin_allowed(
 def test_run_check_reports_valid_generation_and_findings(seam_control: SeamControl) -> None:
     ops, _, _ = seam_control
     result = ops.run_check(_control("p1"), BENCH_ID, seam_control.binding_ref)
-    assert result == {"valid": True, "generation": 1, "findings": []}
+    # Interface 0.1.1 (issue #450 D2): the stored binding's origin twin rides
+    # the data object (the lattice fixtures declare no $schema, so the honest
+    # basis is the fallback).
+    assert result == {
+        "valid": True,
+        "generation": 1,
+        "findings": [],
+        "origin": {"kind": "operator", "basis": "unclassified-fallback"},
+    }
 
 
 def test_run_check_flags_unknown_binding_document(seam_control: SeamControl) -> None:

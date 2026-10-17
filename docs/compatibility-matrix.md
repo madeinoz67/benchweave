@@ -19,7 +19,7 @@ committed file is stale. Commit SHAs are not pinned here — run
 | otdp | 0.2.3 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.2.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | registry | 0.1.3 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.1.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | execution | 0.2.0 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| interface | 0.1.0 | stable | 0.15.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| interface | 0.1.1 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui | 0.4.0 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.3.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-preview | 0.2.0 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-class-reference | 0.2.0 | stable | 0.15.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
@@ -48,7 +48,8 @@ adoption, design record D6).
 | registry | 0.1.3 | released | in range | — | — |
 | execution | 0.1.0 | released | in range | — | — |
 | execution | 0.2.0 | released (promoted from 0.2.0-dev) | in range | — | — |
-| interface | 0.1.0 | released | in range | — | — |
+| interface | 0.1.0 | released | out of range | — | — |
+| interface | 0.1.1 | released | in range | — | — |
 | plugin-ui | 0.1.0 | released | out of range | — | — |
 | plugin-ui | 0.1.1 | released | out of range | — | — |
 | plugin-ui | 0.2.0 | released | out of range | — | — |

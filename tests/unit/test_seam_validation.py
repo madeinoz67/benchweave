@@ -1,13 +1,14 @@
 """D8: seam input validation against the vendored corpus (spec Decision 2)."""
 import json
-from pathlib import Path
 
 import pytest
 
 from benchweave.interfaces import errors
 from benchweave.interfaces.validation import SeamValidator
+from benchweave.vendoring import active_contract_family
 
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 
 
 @pytest.fixture(scope="module")

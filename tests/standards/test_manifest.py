@@ -54,8 +54,11 @@ def test_the_manifest_keeps_its_raw_utf8_byte_form() -> None:
 
 
 def test_interface_reset_has_no_supersession() -> None:
+    """The reset-era invariant, extended at the first supersession: interface
+    0.1.1 (issue #450) supersedes 0.1.0 — the first post-reset bump of the
+    founding version, recorded per GOVERNANCE's supersession rule."""
     entry = next(e for e in load_manifest(ROOT).standards if e.id == "interface")
-    assert entry.version == "0.1.0" and entry.supersedes is None
+    assert entry.version == "0.1.1" and entry.supersedes == "0.1.0"
 
 
 def test_validation_passes_on_the_canonical_corpus() -> None:

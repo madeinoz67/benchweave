@@ -204,17 +204,14 @@ def build_mcp(
             )
 
     def _paged(
-        call: Callable[[], tuple[list[dict[str, Any]], str | None]]
+        call: Callable[[], dict[str, Any]]
     ) -> ToolResult:
-        """List endpoints: the seam's (items, next_cursor) tuple becomes the
-        contract ``items``/``next_cursor`` data object."""
+        """List endpoints: interface 0.1.1 (issue #450 row 3) moved the page
+        object's construction to the SEAM — both adapters pass the seam's
+        dict (``items``/``next_cursor``/``limit``) through unchanged, so the
+        echo is emitted at exactly one site per operation."""
 
-        def go() -> dict[str, Any]:
-            """Shape the seam's tuple into the contract page object."""
-            items, next_cursor = call()
-            return {"items": items, "next_cursor": next_cursor}
-
-        return _dispatch(go)
+        return _dispatch(call)
 
     registered_names: set[str] = set()
 

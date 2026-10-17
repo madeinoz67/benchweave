@@ -35,7 +35,7 @@
         ]
       },
       "interface": {
-        "range": ">=0.1.0,<0.2.0",
+        "range": ">=0.1.1,<0.2.0",
         "yanked": {},
         "retired": [
           "1.1.0",
@@ -168,17 +168,17 @@
     },
     {
       "id": "interface",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "status": "stable",
-      "released": "2026-09-16",
-      "supersedes": null,
+      "released": "2026-10-17",
+      "supersedes": "0.1.0",
       "normative": [
-        "standards/interface/0.1.0/examples/mcp-start-exchange.json",
-        "standards/interface/0.1.0/examples/operation-vectors.json",
-        "standards/interface/0.1.0/interface.schema.json",
-        "standards/interface/0.1.0/mcp-tools.json",
-        "standards/interface/0.1.0/openapi.json",
-        "standards/interface/0.1.0/operation-catalog.json"
+        "standards/interface/0.1.1/examples/mcp-start-exchange.json",
+        "standards/interface/0.1.1/examples/operation-vectors.json",
+        "standards/interface/0.1.1/interface.schema.json",
+        "standards/interface/0.1.1/mcp-tools.json",
+        "standards/interface/0.1.1/openapi.json",
+        "standards/interface/0.1.1/operation-catalog.json"
       ]
     },
     {

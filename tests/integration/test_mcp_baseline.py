@@ -21,9 +21,11 @@ from typing import Any
 import pytest
 
 from benchweave.interfaces.identity import IdentityRejected, issue, validate
+from benchweave.vendoring import active_contract_family
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_TOOLS = ROOT / "standards" / "interface/0.1.0" / "mcp-tools.json"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CONTRACT_TOOLS = active_contract_family("interface") / "mcp-tools.json"
 SECRET = b"wp02-test-secret-not-a-credential"
 AUDIENCE = "benchweave-gateway"
 INVOKE_SCOPE = "tools:invoke"

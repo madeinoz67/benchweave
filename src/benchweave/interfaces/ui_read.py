@@ -128,9 +128,9 @@ def register_read_pages(
         record, identity = authed
         try:
             bench = operations.bench_get(identity, bench_id)
-            devices, _next = operations.device_list(
+            devices = operations.device_list(
                 identity, bench_id, limit=max_page_size, cursor=None
-            )
+            )["items"]
             events = operations.events_get(
                 identity, bench_id, after=None, limit=_EVENTS_FIRST_PAGE
             )
@@ -202,9 +202,9 @@ def register_read_pages(
             # renders the conservative tile and logs loudly (GW-22's
             # honest floor is the join's failure mode too).
             try:
-                devices, _next = operations.device_list(
+                devices = operations.device_list(
                     identity, bench_id, limit=max_page_size, cursor=None
-                )
+                )["items"]
                 owners: dict[str, int] = {}
                 for item in devices:
                     if str(item["device_id"]) == device_id:

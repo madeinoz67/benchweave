@@ -334,6 +334,7 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
             "stream_id",
             "oldest_sequence",
             "current_sequence",
+            "limit",  # interface 0.1.1 (issue #450 row 3): the echo rides the page
         }
         assert data["events"] == baseline["events"]["bench.bench-a"]
         assert data["stream_id"] == "bench.bench-a"

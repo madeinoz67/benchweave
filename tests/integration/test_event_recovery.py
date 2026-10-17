@@ -93,6 +93,7 @@ from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.identity import issue
 from benchweave.interfaces.operations import scoped_request_key
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
 CHILD = Path(__file__).resolve().parent / "_event_recovery_child.py"
@@ -850,7 +851,7 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
 # --- D12 commissioned takeover (WP08 Task 3) -------------------------------------
 
 _TAKEOVER_EVENT_DEF = json.loads(
-    (REPO_ROOT / "standards" / "interface/0.1.0" / "interface.schema.json").read_bytes()
+    (active_contract_family("interface") / "interface.schema.json").read_bytes()
 )["$defs"]["event"]
 # The def, VERBATIM — its stream_id pattern admits the seam's
 # "bench.{bench_id}" naming (the fix-wave rename). Never patched here.

@@ -9,6 +9,7 @@ them monotonic and gap-free by construction.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -804,6 +805,20 @@ class Store:
             for row in rows[:limit]
         ]
         return items, has_more
+
+    def device_descriptor_digests(self) -> frozenset[str]:
+        """Digests of every admitted device's raw descriptor bytes — the
+        CON-10 projection join's key set, served for the interface-0.1.1
+        origin twin (row 5, issue #450: a document whose sha256 equals an
+        admitted device's descriptor digest classifies plugin). The digest
+        is computed over the stored text exactly as ``_device_projection``
+        computes it; the device inventory is bench-scale, so the read-path
+        scan is honest and un-cached (a cache would serve a stale origin
+        kind after an in-process admission)."""
+        rows = self._conn.execute("SELECT descriptor_json FROM devices").fetchall()
+        return frozenset(
+            hashlib.sha256(str(row[0]).encode()).hexdigest() for row in rows
+        )
 
     # --- run-state projection (WP07) ---------------------------------------------
 

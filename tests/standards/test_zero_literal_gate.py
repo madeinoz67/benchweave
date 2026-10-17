@@ -9,8 +9,10 @@ committed counter refuses anything else (SM-2 = 0 outside the register).
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -83,7 +85,15 @@ class TestActiveVersionFromCorpus:
         )
         assert active_version_from_corpus(corpus, "registry") == expected_registry
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
-        assert active_version_from_corpus(corpus, "interface") == "0.1.0"
+        expected_interface = next(
+            entry["version"]
+            for entry in committed["standards"]
+            if entry["id"] == "interface"
+        )
+        # Interface joined the derived form at the 0.1.1 bump (issue #450)
+        # — the otdp precedent: the literal form retires at the bump that
+        # moves it.
+        assert active_version_from_corpus(corpus, "interface") == expected_interface
         assert active_version_from_corpus(corpus, "plugin-ui") == "0.4.0"
         assert active_version_from_corpus(corpus, "plugin-ui-preview") == "0.2.0"
 
@@ -176,14 +186,134 @@ class TestVendoringHelpers:
     def test_active_contract_family_matches_the_literal_family(self) -> None:
         """Same value as the literal call each site makes today — the
         derivation is byte-identical in behavior wherever the literal
-        validated, by construction."""
+        validated, by construction. The interface pin moved to 0.1.1 with
+        the issue #450 revision bump (a hand edit, one line: a derived pin
+        would be vacuous — this tripwire's subject IS the active version)."""
         assert active_contract_family("execution") == contract_family("execution/0.2.0")
-        assert active_contract_family("interface") == contract_family("interface/0.1.0")
+        assert active_contract_family("interface") == contract_family("interface/0.1.1")
         assert active_contract_family("registry") == contract_family("registry/0.1.3")
 
     def test_active_contract_family_refuses_an_unknown_standard(self) -> None:
         with pytest.raises(StandardsError, match="standards_entry_absent: nosuch"):
             active_contract_family("nosuch")
+
+
+#: D1's registered exemptions (issue #450 §3-D1): the test files permitted
+#: to carry an ``interface/<version>`` literal OUTSIDE a docstring, each
+#: with its reason. The registered-exemption shape is the counter's
+#: REGISTER idiom — a file joins by a visible editorial diff, never by
+#: silence.
+_INTERFACE_LITERAL_REGISTER: dict[str, str] = {
+    "tests/unit/test_vendoring.py": (
+        "fake-tree fixtures — the literal is the test's own subject (the "
+        "packaged-first resolution keys on the literal family path)"
+    ),
+    "tests/standards/test_train_window.py": (
+        "synthetic scratch-tree paths — no real corpus load"
+    ),
+    "tests/standards/test_zero_literal_gate.py": (
+        "the active-version equality pin — a tripwire whose subject IS the "
+        "active version; a derived pin would be vacuous"
+    ),
+    "tests/contract/test_baseline.py": (
+        "the retired-identifier absence probe — names the retired interface "
+        "1.1.0 deliberately (a negative probe, never an active-version load)"
+    ),
+}
+
+_INTERFACE_LITERAL = re.compile(r"interface/\d+\.\d+\.\d+")
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    """Ids of docstring Constant nodes (first-statement position)."""
+    nodes: set[int] = set()
+
+    def visit_body(body: list[ast.stmt]) -> None:
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            nodes.add(id(body[0].value))
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            visit_body(node.body)
+
+    return nodes
+
+
+class TestInterfaceLoaderLiteralGuard:
+    """D1's held property (issue #450 §3-D1): no test under ``tests/``
+    builds a corpus-load path from an ``interface/<version>`` literal
+    except the registered exemptions — the sweep cannot rot back. The
+    guard does NOT catch: literals inside docstrings (AST-exempt by
+    position); f-string templates whose version is dynamic; and the
+    registered files above (their literals are their own subject)."""
+
+    def _violations(self) -> list[str]:
+        violations: list[str] = []
+        for path in sorted((ROOT / "tests").rglob("*.py")):
+            relative = path.relative_to(ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docstrings = _docstring_nodes(tree)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                    continue
+                if id(node) in docstrings:
+                    continue
+                if _INTERFACE_LITERAL.search(node.value):
+                    violations.append(f"{relative}:{node.lineno}")
+        return violations
+
+    def test_no_interface_version_literal_loads_outside_the_register(self) -> None:
+        """GREEN: exactly the registered exemptions carry the literal. A
+        planted literal in a swept file reds by name (the arm below)."""
+        violations = [
+            row
+            for row in self._violations()
+            if row.split(":")[0] not in _INTERFACE_LITERAL_REGISTER
+        ]
+        assert not violations, (
+            "interface/<version> corpus-load literals outside the D1 register "
+            f"(adopt active_contract_family or register with a reason): {violations}"
+        )
+
+    def test_the_registered_files_still_exist_and_carry_the_literal(self) -> None:
+        """The register cannot silently rot either: a registered file that
+        no longer carries the literal is a stale row (remove it)."""
+        carriers = {row.split(":")[0] for row in self._violations()}
+        for registered in _INTERFACE_LITERAL_REGISTER:
+            assert (ROOT / registered).is_file(), registered
+            assert registered in carriers, (
+                f"{registered} is registered but carries no interface literal — "
+                "retire the register row"
+            )
+
+    def test_a_planted_literal_load_reds_by_name(self, tmp_path: Path) -> None:
+        """The guard's RED proof (issue #450 §6, D1 row): a planted
+        ``interface/<version>`` corpus-load path in a swept file is named.
+        The plant runs against a SCRATCH tests/ tree — the working tree is
+        never dirtied."""
+        scratch = tmp_path / "planted"
+        (scratch / "tests").mkdir(parents=True)
+        (scratch / "tests" / "test_planted_loader.py").write_text(
+            "from pathlib import Path\n"
+            "CORPUS = Path(__file__) / \"standards\" / \"interface/0.1.0\"\n",
+            encoding="utf-8",
+        )
+        tree = ast.parse((scratch / "tests" / "test_planted_loader.py").read_text())
+        docstrings = _docstring_nodes(tree)
+        hits = [
+            f"tests/test_planted_loader.py:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+            and _INTERFACE_LITERAL.search(node.value)
+        ]
+        assert hits == ["tests/test_planted_loader.py:2"], hits
 
 
 def _counter_run(*argv: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

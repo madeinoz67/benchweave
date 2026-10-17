@@ -10,7 +10,7 @@ Prefer independent repositories and externally hosted releases for new device pl
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
-**Baseline:** architecture 1.5 · OTDP 0.2.3 · adapter API 1.1 · registry 0.1.3 · execution 0.2.0 · interface 0.1.0.
+**Baseline:** architecture 1.5 · OTDP 0.2.3 · adapter API 1.1 · registry 0.1.3 · execution 0.2.0 · interface 0.1.1.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, architecture CI (continuous integration), a simulator-first proof of concept (PoC) through its acceptance gate, and the **gateway side of the registry contract**. The gateway side covers: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader. It also provides an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published application binary interface (ABI) now. You can package and run them locally through the development loop. You can exercise admission against the committed signed catalogue. Host hardware qualification needs the corresponding implementation and bench evidence.
 
@@ -799,7 +799,7 @@ This is the implementation and qualification sequence for the planned host, not 
 
 > **WARNING:** UNATTENDED RUNS NEED A COMMISSIONED BOUNDED PROCEDURE. FUTURE MAINS-POWERED FIXTURES NEED SEPARATE QUALIFICATION BEFORE ENERGISED CONTROL.
 
-Network-facing interfaces need the authentication and authorisation model of the [interface contract](../standards/interface/0.1.0/interface-contract.md) and TLS. Restrict raw instrument protocols to the bench network. Publish REST and MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
+Network-facing interfaces need the authentication and authorisation model of the [interface contract](../standards/interface/0.1.1/interface-contract.md) and TLS. Restrict raw instrument protocols to the bench network. Publish REST and MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
 
 The host owns protective priority independently of ordinary plugin work. Device shutdown commands alone do not cover host failure. Define retention, backup/restore, health monitoring and resource limits as deployment inputs. A graceful stop must not be the only path to a safe condition.
 

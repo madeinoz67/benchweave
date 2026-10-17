@@ -14,10 +14,10 @@
 | [Registry checks](../standards/registry/0.1.3/validation-report.md) | 71 metadata-contract checks that pass (registry contract 0.1.3) |
 | [Procedure and bench contracts](../standards/execution/0.2.0/execution-contract.md) | Bounded execution, wiring and resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.2.0/validation-report.md) | 151 document and schema checks that pass; 6 linked synthetic examples |
-| [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | 20 REST operations, 17 MCP (Model Context Protocol) tools, authentication and recovery |
-| [OpenAPI](../standards/interface/0.1.0/openapi.json) | REST routes and schema references |
-| [MCP tools](../standards/interface/0.1.0/mcp-tools.json) | Input and output schemas for the pinned MCP baseline |
-| [Interface checks](../standards/interface/0.1.0/validation-report.md) | 256 document and mapping checks and explicit verification limits |
+| [REST/MCP contract](../standards/interface/0.1.1/interface-contract.md) | 20 REST operations, 17 MCP (Model Context Protocol) tools, authentication and recovery |
+| [OpenAPI](../standards/interface/0.1.1/openapi.json) | REST routes and schema references |
+| [MCP tools](../standards/interface/0.1.1/mcp-tools.json) | Input and output schemas for the pinned MCP baseline |
+| [Interface checks](../standards/interface/0.1.1/validation-report.md) | 260 document and mapping checks and explicit verification limits |
 | [Interface errata 1.1.1](../standards/interface/0.1.0/README.md) | D2 amendment: `change_apply` body admits the optional `approver_token`; 1.1.0 bytes untouched |
 | [Closure register](architecture-closure.md) | Review disposition, normative versions and qualification boundaries |
 | [Registry composition review](acceptance/registry-composition-review.md) | 16 package reuse and compatibility scenarios |

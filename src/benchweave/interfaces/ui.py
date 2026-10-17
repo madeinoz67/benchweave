@@ -626,9 +626,9 @@ def build_ui_router(
         identity = _session_identity(record)
         try:
             info = operations.gateway_info(identity)
-            items, _next = operations.bench_list(
+            items = operations.bench_list(
                 identity, limit=max_page_size, cursor=None
-            )
+            )["items"]
         except OperationFailure as fail:
             return _failure_page(fail)
         return _page(

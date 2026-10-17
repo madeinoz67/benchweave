@@ -648,7 +648,13 @@ def _dependency_policy_from_bytes(raw: bytes) -> DependencyPolicy:
     """The policy block from BYTES already read by the caller (issue #288
     LOW 6): the export reads the manifest once and both validates and
     embeds from these bytes — no re-read window between the two."""
-    document = json.loads(raw)
+    try:
+        document = json.loads(raw)
+    except ValueError as exc:
+        # Same fail-closed wrap as ``_retained_from``: malformed bytes are a
+        # typed refusal (the vendoring loader's ``standards_manifest_invalid_json``
+        # convention), so classification's StandardsError contract holds.
+        raise StandardsError(f"standards_manifest_invalid_json: {exc}") from exc
     block = document.get("dependency_policy")
     if not isinstance(block, dict) or block.get("policy_version") != 1:
         raise StandardsError(
@@ -812,7 +818,15 @@ def retained_versions_from_corpus(corpus: Path, standard_id: str) -> tuple[str, 
 def _retained_from(path: Path, standard_id: str) -> tuple[str, ...]:
     if not path.is_file():
         return ()
-    document = json.loads(path.read_bytes())
+    try:
+        document = json.loads(path.read_bytes())
+    except ValueError as exc:
+        # The loader family's fail-closed convention (the vendoring loader's
+        # ``standards_manifest_invalid_json`` shape): malformed corpus bytes
+        # are a typed refusal, never a raw JSONDecodeError — issue #450 F4's
+        # read-path degradation depends on classification failures arriving
+        # as StandardsError (``classify_descriptor_pin``'s own contract).
+        raise StandardsError(f"corpus_manifest_invalid: {exc}") from exc
     prefix = f"{standard_id}/"
     versions: set[str] = set()
     for row in document.get("files", []):
