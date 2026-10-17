@@ -713,6 +713,14 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
         over_holder = threading.Thread(target=hold_lock, args=(1.2,))
         over_holder.start()
         t2.join(timeout=30)
+        # The arm-1 guard's mirror (refute F1): a dispatch that never
+        # returned by the 30 s join is a HANG, not a deadline cut — the
+        # dilated cut returns at real ~22 s, inside the join — so red
+        # loudly by name instead of KeyErroring at the stamp line below.
+        if "result" not in arm2_result:
+            pytest.fail(
+                "arm 2 dispatch did not return within the 30 s join — hung, not cut"
+            )
         # Stamps BEFORE the asserts they diagnose (see the reference block).
         arm2_wall_ms = (arm2_timing["end"] - arm2_timing["start"]) * 1000
         print(
