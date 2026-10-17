@@ -539,9 +539,10 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
     OperationalError classifies RESOURCE_LIMIT, the session survives and
     staging is reclaimed — the asserted signals, not the magnitudes.
     Row B: the busy timeout is commissioned at open (300 ms) and the
-    dispatch clamp derives from it — remaining here (2000 ms deadline)
-    exceeds the commissioned default, so the clamp IS the open default
-    and this shape is unchanged."""
+    dispatch clamp derives from it — arm 1's deadline is derived in-run
+    from a reference capture and floored at 2000 ms, always above the
+    commissioned default, so the clamp IS the open default and this
+    shape is unchanged."""
     harness = MonitoredHarness(
         tmp_path / "contention.db", chunks=100, busy_timeout_ms=300
     )
@@ -558,6 +559,24 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
                 contender.rollback()
             finally:
                 contender.close()
+
+        # Row 12 (issue #241): arm 1's dispatch deadline is scaffolding, not
+        # an asserted band — it must simply never bind on the success path.
+        # Derived in-run from an uncontended reference capture (same paced
+        # workload), floored at the historical 2000 ms: quiet hosts keep
+        # today's exact behavior and loaded hosts scale (this file's own CI
+        # record shows 5.4x quiet-to-CI stretch; a fixed 2000 ms over a
+        # ~416 ms quiet workload cuts a capture whose hold released as
+        # designed). The reference runs BEFORE the first_append wrap below —
+        # its own first append must not set the event arm 1 sequences on.
+        ref_started = time.monotonic()
+        reference = harness.plugin.dispatch(
+            harness.capture_request("cap-ref"),
+            deadline_ns=harness.deadline_ns(10_000),
+        )
+        assert reference.status is OperationStatus.OK, "reference capture degenerate"
+        reference_ms = (time.monotonic() - ref_started) * 1000
+        arm1_budget_ms = max(2000.0, 3.0 * reference_ms + 300.0)
 
         # Arm 1 — release (150 ms) before the busy timeout (300 ms): the
         # mid-capture append waits the hold out; the capture completes.
@@ -576,7 +595,7 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
             arm1_timing["start"] = time.monotonic()
             arm1_result["result"] = harness.plugin.dispatch(
                 harness.capture_request("cap-stretch"),
-                deadline_ns=harness.deadline_ns(2000),
+                deadline_ns=harness.deadline_ns(arm1_budget_ms),
             )
             arm1_timing["end"] = time.monotonic()
 
@@ -589,7 +608,10 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
         t1.join(timeout=30)
         assert arm1_result["result"].status is OperationStatus.OK
         stretch_ms = (arm1_timing["end"] - arm1_timing["start"]) * 1000
-        print(f"\ncontention stretch (release-before-timeout): {stretch_ms:.1f} ms")
+        print(
+            f"\ncontention stretch (release-before-timeout): {stretch_ms:.1f} ms"
+            f" (budget {arm1_budget_ms:.0f} ms from reference {reference_ms:.0f} ms)"
+        )
         assert stretch_ms >= 110  # the hold was waited out mid-capture
 
         # Arm 2 — hold (600 ms) past the busy timeout (300 ms): classified.
