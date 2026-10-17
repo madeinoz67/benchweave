@@ -330,3 +330,39 @@ not spell the words out — the rubric's Step-1 list is the authority). The §4 
 adds none of the eight (no thread construction — the reference runs on the test thread).
 The expected test-file edit's added lines: same 0/8 by construction (the derivation uses
 only `time.monotonic`, arithmetic, and the existing dispatch surface).
+
+---
+
+## Addendum (2026-10-17) - refute corrections
+
+The adversarial refute of this record (PR #494, verdict DEFENDED — no code defect; the
+findings below are record-text corrections only) found two claim-discipline errors in
+§4. The committed body above is frozen; the corrections live here.
+
+**F1 (§4, parameter arithmetic) — two sentences are literally false.** "No host where
+the test passes today behaves differently" and "the derived term only lifts the budget
+where today's constant is what kills the run" both fail on the band the refute named:
+reference walls in (566.67, ~667) ms — such a host passes today (its quiet arm-1 total
+is reference + ~150 ms hold, ≈ 717–817 ms, far under the fixed 2000 ms deadline) and
+still receives a lifted budget, 3.0 × reference + 300 ∈ (2000, 2301] ms. Corrected
+claim: the lift applies wherever the reference exceeds 567 ms ((2000 − 300)/3); hosts
+passing today inside that band see only the scaffolding deadline move — no asserted
+magnitude and no test outcome changes there.
+
+**F2 (§4, quota check) — the mechanism quote is wrong; the conclusion holds.** §4
+quotes arm 2's gate allowance as `min(1024, 8192 − 1600)`. The code's gate
+(`src/benchweave/content/capture_store.py:230-234`) computes allowance =
+min(max_capture_bytes = 8192, max_dataset_bytes − used); the request's max_bytes = 1024
+is the compared operand (`if max_bytes > allowance`), not a min operand. With the
+reference plus arm 1 both finalised (used = 1600 bytes), allowance = min(8192, 6592) =
+6592 ≥ 1024, so arm 2 is admitted exactly as today (today: used = 800, allowance =
+7392 ≥ 1024 — same verdict, same reservation). The §4 conclusion stands; only the
+quoted formula was wrong.
+
+Recorded with the refute's verdict: its numb probe forced the derived budget to
+60000 ms AND stretched the hold to 5 s, and the capture still redded
+ERROR/RESOURCE_LIMIT through the busy clamp — no budget value turns a stuck hold into
+a silent pass.
+
+Step-1 scan over this addendum's added lines: 0/8 (mechanically scanned 2026-10-17,
+same method as §10.1).
