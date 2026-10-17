@@ -97,6 +97,9 @@ All notable changes to this project will be documented in this file.
 - Refresh the ui-html provenance stamps to 0.3.0 — the readiness audit's M2 (banner version rides PR-1's ui-html bump) (#463)
 - L5 derived surfaces — matrix re-render, docs sweeps, cross-constraint pin, train-window pin, byte-form fix
 - Matrix re-render at the v0.15.0 pairing + the class-2 register note (the governance row, #463 L5)
+- Issue #241 row-12 arm-1 deadline design record
+- Row-12 refute corrections addendum (F1, F2)
+- Issue #241 row 12 attempt 2 — deadline-timebase dilation via the F6 services-clock seam
 
 ### Features
 
@@ -155,6 +158,11 @@ All notable changes to this project will be documented in this file.
 - Bump fastmcp from 4.0.11 to 4.1.0
 - Regenerate uv.lock for the fastmcp 4.1.0 bump
 - Move the Python updater from pip to uv so uv.lock moves with pyproject.toml
+- Bump copier from 9.18.2 to 9.19.1
+- Bump ruff from 0.16.6 to 0.17.0
+- Bump markupsafe from 3.0.3 to 3.0.4
+- Bump types-jsonschema
+- Bump fastapi from 0.141.1 to 0.143.0
 
 ### Refactoring
 
@@ -188,6 +196,9 @@ All notable changes to this project will be documented in this file.
 - Fold the L3 refute rows - bounds arm, staging pair, value-level hex arm
 - The sdk class-set census pin rides the v0.14.0 pairing
 - The panel-id pattern conflict pin + the real panel set (B3)
+- Derive arm-1 contention deadline in-run, floored at 2000 ms
+- Row-12 arm-1 deadline on a dilated services timebase (attempt 2)
+- Fold refute F1 — mirror the arm-1 hang guard onto arm 2
 
 ### Build
 

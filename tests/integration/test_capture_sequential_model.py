@@ -49,6 +49,7 @@ import json
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -179,7 +180,12 @@ class MonitoredHarness:
     tick's start time recorded on the real monotonic clock."""
 
     def __init__(
-        self, db_path: Path, *, chunks: int = 400, busy_timeout_ms: int | None = None
+        self,
+        db_path: Path,
+        *,
+        chunks: int = 400,
+        busy_timeout_ms: int | None = None,
+        services_clock: Callable[[], float] | None = None,
     ) -> None:
         self.clock = SystemClock()
         self.wall = SystemClock()
@@ -207,7 +213,15 @@ class MonitoredHarness:
             descriptor_digest=digest,
             content=content,
             writer=self.writer,
-            clock=time.monotonic,
+            # Row 12 attempt 2 (issue #241): the bundle clock is the
+            # existing injection seam, F6-pinned (the whole deadline path
+            # — entry checks, bounded(), the dispatch clamp, cooperative
+            # cancellation — reads this clock and no hidden second one;
+            # the store reads no clock at all, STO-1). A test that hands a
+            # dilated clock here moves every deadline the bridge consumes
+            # onto a slower timebase while everything the test MEASURES
+            # stays on the real clock. None keeps today's exact behavior.
+            clock=services_clock if services_clock is not None else time.monotonic,
             wall=self.wall.now_iso,
             quota=QuotaLimits(
                 max_dataset_bytes=8192, max_evidence_entries=50, max_event_batch=10
@@ -261,8 +275,13 @@ class MonitoredHarness:
         self._original_tick()
 
     def deadline_ns(self, milliseconds: float) -> int:
-        """A deadline on the SAME timebase as the bundle clock (the bridge
-        compares services.monotonic() seconds against deadline_ns/1e9)."""
+        """A deadline on the REAL monotonic base: the bridge compares
+        services.monotonic() seconds against deadline_ns/1e9, so with the
+        default services clock the two timebases coincide — and a harness
+        whose services clock runs DILATION_S behind the real base puts the
+        deadline DILATION_S AHEAD on the services clock (the literal's
+        real-time cut becomes nominal + DILATION_S; the literal itself
+        never changes)."""
         return int((time.monotonic() + milliseconds / 1000) * 1_000_000_000)
 
     def capture_request(self, capture_id: str = "cap-seq") -> OperationRequest:
@@ -539,12 +558,32 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
     OperationalError classifies RESOURCE_LIMIT, the session survives and
     staging is reclaimed — the asserted signals, not the magnitudes.
     Row B: the busy timeout is commissioned at open (300 ms) and the
-    dispatch clamp derives from it — arm 1's deadline is derived in-run
-    from a reference capture and floored at 2000 ms, always above the
-    commissioned default, so the clamp IS the open default and this
-    shape is unchanged."""
+    dispatch clamp derives from it — arm 1's 2000 ms deadline literal is
+    byte-identical but its REAL cut sits at ~22 s via the dilated
+    services timebase, so the clamp sees ~22 s of remaining, resolves to
+    the commissioned 300 ms open default (more margin than a 2 s literal
+    ever left) and this shape is unchanged."""
+    # Row 12 attempt 2 (issue #241): arm 1's dispatch deadline is pure
+    # scaffolding — its only job is to NEVER bind on the success path. A
+    # magnitude derivation cannot deliver that property (attempt 1's
+    # in-run budget was killed: an uncontended reference shares no
+    # load-shaped term with a contended arm and no term at all with
+    # episodic stalls), so the property is delivered as a TIMEBASE
+    # separation instead: every literal stays byte-identical on the real
+    # monotonic base while the services clock — the one clock the
+    # bridge's deadline path reads — runs DILATION_S behind it. Arm 1's
+    # 2000 ms literal then cuts at real ~22 s (52x the 416.3 ms quiet
+    # total, ~10x this file's worst documented quiet-to-CI stretch),
+    # while everything this test MEASURES — the pacing sleeps, the
+    # holder's lock and sleeps, SQLite's busy handler, the stretch below
+    # — stays on the real clock.
+    DILATION_S = 20.0
+    arm1_deadline_ms = 2000
     harness = MonitoredHarness(
-        tmp_path / "contention.db", chunks=100, busy_timeout_ms=300
+        tmp_path / "contention.db",
+        chunks=100,
+        busy_timeout_ms=300,
+        services_clock=lambda: time.monotonic() - DILATION_S,
     )
     try:
         db_path = str(
@@ -560,31 +599,42 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
             finally:
                 contender.close()
 
-        # Row 12 (issue #241): arm 1's dispatch deadline is scaffolding, not
-        # an asserted band — it must simply never bind on the success path.
-        # Derived in-run from an uncontended reference capture (same paced
-        # workload), floored at the historical 2000 ms: quiet hosts keep
-        # today's exact behavior and loaded hosts scale (this file's own CI
-        # record shows 5.4x quiet-to-CI stretch; a fixed 2000 ms over a
-        # ~416 ms quiet workload cuts a capture whose hold released as
-        # designed). The reference runs BEFORE the first_append wrap below —
-        # its own first append must not set the event arm 1 sequences on.
+        # The reference capture (the same paced workload, uncontended) is a
+        # PROBE, not a budget input: attempt 1's in-run derivation was
+        # killed precisely because an uncontended reference cannot bound a
+        # contended arm. Its printed wall is the regime datum that
+        # classifies any future red (a uniform stall scales it with arm 1;
+        # a differential stall leaves it quiet while arm 1 reddens). It
+        # runs BEFORE the first_append wrap below — its own first append
+        # must not set the event arm 1 sequences on.
         ref_started = time.monotonic()
         reference = harness.plugin.dispatch(
             harness.capture_request("cap-ref"),
             deadline_ns=harness.deadline_ns(10_000),
         )
-        assert reference.status is OperationStatus.OK, "reference capture degenerate"
         reference_ms = (time.monotonic() - ref_started) * 1000
-        arm1_budget_ms = max(2000.0, 3.0 * reference_ms + 300.0)
+        # Stamps print BEFORE the assert they diagnose: the timing lane
+        # replays captured stdout only for FAILING tests, so a print placed
+        # after an assert is unreachable on exactly the red it exists for
+        # (attempt 1's only diagnostic sat after the failing assert — every
+        # red was blind).
+        print(f"\nreference capture wall: {reference_ms:.1f} ms (uncontended probe)")
+        assert reference.status is OperationStatus.OK, "reference capture degenerate"
 
         # Arm 1 — release (150 ms) before the busy timeout (300 ms): the
         # mid-capture append waits the hold out; the capture completes.
+        # The deadline literal stays 2000 ms (the historical value); the
+        # dilated services timebase — not a retuned constant — is what
+        # keeps it from ever binding on the success path.
         first_append = threading.Event()
         original_append = harness.writer.append
+        arm1_appends: dict[str, Any] = {"count": 0, "first": None}
 
         def observed_append(capture_id: str, data: bytes, context_key: str) -> None:
             original_append(capture_id, data, context_key)
+            arm1_appends["count"] += 1
+            if arm1_appends["first"] is None:
+                arm1_appends["first"] = time.monotonic()
             first_append.set()
 
         harness.writer.append = observed_append  # type: ignore[method-assign]
@@ -595,7 +645,7 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
             arm1_timing["start"] = time.monotonic()
             arm1_result["result"] = harness.plugin.dispatch(
                 harness.capture_request("cap-stretch"),
-                deadline_ns=harness.deadline_ns(arm1_budget_ms),
+                deadline_ns=harness.deadline_ns(arm1_deadline_ms),
             )
             arm1_timing["end"] = time.monotonic()
 
@@ -606,30 +656,53 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
         holder.start()
         holder.join(timeout=10)
         t1.join(timeout=30)
-        assert arm1_result["result"].status is OperationStatus.OK
+        # A dispatch that never returned by the 30 s join is a HANG, not a
+        # deadline cut — the dilated cut returns at real ~22 s, inside the
+        # join — so red loudly by name instead of KeyErroring on the OK
+        # assert below.
+        if "result" not in arm1_result:
+            pytest.fail(
+                "arm 1 dispatch did not return within the 30 s join — hung, not cut"
+            )
+        # Stamps BEFORE the asserts they diagnose (the lane replays captured
+        # stdout only for failing tests — see the reference block).
         stretch_ms = (arm1_timing["end"] - arm1_timing["start"]) * 1000
+        first_append_ms = (arm1_appends["first"] - arm1_timing["start"]) * 1000
         print(
             f"\ncontention stretch (release-before-timeout): {stretch_ms:.1f} ms"
-            f" (budget {arm1_budget_ms:.0f} ms from reference {reference_ms:.0f} ms)"
+            f" (reference {reference_ms:.1f} ms; arm-1 deadline literal"
+            f" {arm1_deadline_ms:.0f} ms on services clock dilated"
+            f" -{DILATION_S:.0f} s, real cut ~{arm1_deadline_ms / 1000 + DILATION_S:.0f} s)"
         )
+        print(
+            f"arm-1 first append at {first_append_ms:.1f} ms,"
+            f" appends {arm1_appends['count']}"
+        )
+        assert arm1_result["result"].status is OperationStatus.OK
         assert stretch_ms >= 110  # the hold was waited out mid-capture
 
         # Arm 2 — hold (600 ms) past the busy timeout (300 ms): classified.
         # (No pre-open: the bridge's G3 gate opens the capture itself.)
         appended = threading.Event()
+        arm2_appends: dict[str, Any] = {"first": None}
 
         def counted_append(capture_id: str, data: bytes, context_key: str) -> None:
             original_append(capture_id, data, context_key)
+            if arm2_appends["first"] is None:
+                arm2_appends["first"] = time.monotonic()
             appended.set()
 
         harness.writer.append = counted_append  # type: ignore[method-assign]
         arm2_result: dict[str, OperationResult] = {}
+        arm2_timing: dict[str, float] = {}
 
         def arm2_capture() -> None:
+            arm2_timing["start"] = time.monotonic()
             arm2_result["result"] = harness.bridge.dispatch(
                 harness.capture_request("cap-contention"),
                 deadline_ns=harness.deadline_ns(2000),
             )
+            arm2_timing["end"] = time.monotonic()
 
         t2 = threading.Thread(target=arm2_capture)
         t2.start()
@@ -640,6 +713,21 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
         over_holder = threading.Thread(target=hold_lock, args=(1.2,))
         over_holder.start()
         t2.join(timeout=30)
+        # The arm-1 guard's mirror (refute F1): a dispatch that never
+        # returned by the 30 s join is a HANG, not a deadline cut — the
+        # dilated cut returns at real ~22 s, inside the join — so red
+        # loudly by name instead of KeyErroring at the stamp line below.
+        if "result" not in arm2_result:
+            pytest.fail(
+                "arm 2 dispatch did not return within the 30 s join — hung, not cut"
+            )
+        # Stamps BEFORE the asserts they diagnose (see the reference block).
+        arm2_wall_ms = (arm2_timing["end"] - arm2_timing["start"]) * 1000
+        print(
+            f"arm-2 dispatch wall {arm2_wall_ms:.1f} ms (first append at"
+            f" {(arm2_appends['first'] - arm2_timing['start']) * 1000:.1f} ms;"
+            f" deadline literal 2000 ms on the same dilated services clock)"
+        )
         result = arm2_result["result"]
         assert result.error is not None
         assert result.error.code is ErrorCode.RESOURCE_LIMIT
