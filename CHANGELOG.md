@@ -152,6 +152,9 @@ All notable changes to this project will be documented in this file.
 - Bump actions/upload-artifact from 7.0.1 to 7.0.2
 - Bump actions/download-artifact from 8.0.1 to 8.0.2
 - Move codeql-action init+analyze together to v4.38.3, group the pair in dependabot
+- Bump fastmcp from 4.0.11 to 4.1.0
+- Regenerate uv.lock for the fastmcp 4.1.0 bump
+- Move the Python updater from pip to uv so uv.lock moves with pyproject.toml
 
 ### Refactoring
 
