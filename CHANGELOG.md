@@ -99,6 +99,7 @@ All notable changes to this project will be documented in this file.
 - Matrix re-render at the v0.15.0 pairing + the class-2 register note (the governance row, #463 L5)
 - Issue #241 row-12 arm-1 deadline design record
 - Row-12 refute corrections addendum (F1, F2)
+- Issue #241 row 12 attempt 2 — deadline-timebase dilation via the F6 services-clock seam
 
 ### Features
 
@@ -196,6 +197,8 @@ All notable changes to this project will be documented in this file.
 - The sdk class-set census pin rides the v0.14.0 pairing
 - The panel-id pattern conflict pin + the real panel set (B3)
 - Derive arm-1 contention deadline in-run, floored at 2000 ms
+- Row-12 arm-1 deadline on a dilated services timebase (attempt 2)
+- Fold refute F1 — mirror the arm-1 hang guard onto arm 2
 
 ### Build
 
