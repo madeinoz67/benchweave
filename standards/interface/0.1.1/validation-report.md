@@ -2,7 +2,7 @@
 
 # Interface contract verification
 
-**Result: 266/266 checks passed; 0 failed.**
+**Result: 267/267 checks passed; 0 failed.**
 
 Checked shared/tool JSON Schemas, 20 synthetic operation vectors, required fields, REST/MCP mapping equality, local OpenAPI references, error mappings and selected lifecycle/chunk rejections. The OpenAPI mapping was checked structurally against the catalog; no full OpenAPI meta-validator or live protocol suite was run.
 
@@ -74,6 +74,7 @@ No HTTP server, OAuth provider, MCP client, physical command, request store or e
 - PASS: change_submit requires target_ref
 - PASS: conformance presence description names the degraded-governance omission
 - PASS: contract-stated idempotent pair is idempotentHint true
+- PASS: descriptor schema root is closed to the approval quartet
 - PASS: device_get MCP/REST input parity
 - PASS: device_get MCP/REST output parity
 - PASS: device_get OpenAPI mapping

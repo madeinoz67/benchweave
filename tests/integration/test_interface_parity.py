@@ -1142,6 +1142,12 @@ def test_document_get_serves_origin_per_document_family(
     # (fold row 13: the gateway kind derives from the approval binding
     # shape verify_approval requires, never a hand-written schema_id; the
     # urn:stg:approval self-declaration lane is gone with the suffix).
+    # Not the fixture-of-the-bypass pattern (the row-12 clarification's
+    # rule): there is no in-tree approval writer to route through (row
+    # 13's tree-wide search — a measured fact, not test convenience), and
+    # the arm's PASS CONDITION never reads the stored schema_id — delete
+    # _is_approval_document and this arm reds on these same stored bytes
+    # (the fold's captured RED); a bypass fixture would stay green.
     approval_body = {
         "change_id": "chg-origin-census",
         "expected_generation": 1,

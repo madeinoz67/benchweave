@@ -241,7 +241,7 @@
     },
     "conformance": {
       "type": "object",
-      "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+      "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission — and the omission is forced rather than chosen: the conformance field is required with the closed conforming/non-conforming enum, so there is no unavailable value to serve, and adding one is a corpus motion, not a read-path decision); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
       "properties": {
         "otdp_version": {
           "type": "string",
@@ -774,11 +774,11 @@
             "gateway-approval-binding",
             "unclassified-fallback"
           ],
-          "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+          "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the family's schema $id (the active family directory — a family claim: classification spans every retained version, not the pin that admitted the document, and a document's self-declared identity is never read); unclassified-fallback also serves rows stored before the writers recorded family identities (first admission wins — no migration), so the same document can serve the fallback from an upgraded store and its family basis from a fresh one: the disclosed cost of not migrating. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
         },
         "document": {
           "$ref": "#/$defs/ref",
-          "description": "The descriptor ref triple, present on plugin-classified document_get results and run_check's twin of the checked binding; the device envelope omits it (the adjacent descriptor field already carries the triple)."
+          "description": "The descriptor ref triple, present on plugin-classified document_get results and run_check's twin of the checked binding; the device envelope omits it (the adjacent descriptor field already carries the triple). A versionless descriptor serves no fabricated version: the triple is omitted there too (the ref requires a version; the origin then carries kind and basis only)."
         }
       },
       "required": [

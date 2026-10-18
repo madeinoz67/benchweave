@@ -254,6 +254,30 @@ check(
     "store-time family identity"
     in D["origin"]["properties"]["basis"]["description"],
 )
+# Final-fold row 2: the descriptor schema root is validator-closed — the
+# approval quartet cannot appear on a schema-valid descriptor, so a
+# descriptor carrying it is malformed bytes that the WRITER-RECORDED
+# family identity (not the content shape) classifies. Opening the root
+# (adding a quartet key to the root properties, or dropping
+# additionalProperties: false) reds here. The otdp corpus is read through
+# the same manifest-derived resolver as the interface corpus.
+otdp_dir = _validation_report.corpus_directory(STANDARDS, "otdp")
+descriptor_schema = json.loads(
+    (otdp_dir / "otdp-device-descriptor.schema.json").read_text(encoding="utf-8")
+)
+check(
+    "descriptor schema root is closed to the approval quartet",
+    descriptor_schema.get("additionalProperties") is False
+    and not (
+        {
+            "change_id",
+            "expected_generation",
+            "approver_principal",
+            "policy_version",
+        }
+        & set(descriptor_schema.get("properties", {}))
+    ),
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),

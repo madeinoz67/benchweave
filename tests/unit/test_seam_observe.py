@@ -6,7 +6,7 @@ import base64
 import hashlib
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -556,3 +556,193 @@ def test_cache_only_descriptor_classifies_plugin_at_document_get(
     assert document["origin"]["basis"] == "descriptor-schema-id"
     assert document["origin"]["document"]["id"] == "dev.benchweave.sim-psu-spare"
     store.close()
+
+
+def _scratch_lattice_with_spare(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], None], *, tag: str
+) -> tuple[Operations, Store, str]:
+    """The census cluster's shared shape: a scratch copy of the fixture
+    lattice plus ONE unpinned (cache-only) spare descriptor, mutated by the
+    caller, admitted through the REAL bootstrap path (admit_startup_bench)
+    — never a direct store seed (the row-12 clarification's rule: an arm
+    that pins a writer's behaviour must go through the writer)."""
+    lattice = tmp_path / f"lattice-{tag}"
+    shutil.copytree(FIXTURES, lattice)
+    spare = json.loads((FIXTURES / "descriptor-sim-psu.json").read_text())
+    spare["id"] = "dev.benchweave.sim-psu-spare"
+    mutate(spare)
+    spare_raw = json.dumps(spare, indent=2) + "\n"
+    (lattice / "descriptor-sim-psu-spare.json").write_text(spare_raw)
+    store = Store.open(tmp_path / f"state-{tag}.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, lattice, now="2026-09-12T00:00:00Z")
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+    )
+    sha = hashlib.sha256(
+        (lattice / "descriptor-sim-psu-spare.json").read_bytes()
+    ).hexdigest()
+    return ops, store, sha
+
+
+def test_declared_schema_cannot_steer_the_served_kind(tmp_path: Path) -> None:
+    """Final-fold row 1 (issue #450, both refute lanes converged): the
+    document's own ``$schema`` declaration must NEVER redirect the stored
+    identity — the marker is the gateway's derivation, never the author's
+    claim. An adversary-authored cache-only descriptor declaring the
+    execution bench urn (operator impersonation) and one declaring a
+    foreign URL (the under-marking escape) both classify by the WRITER's
+    family stamp: plugin, descriptor-schema-id."""
+    for index, hostile in enumerate(
+        (
+            "urn:stg:execution:bench:0.2.0",
+            "https://adversary.example/schema.json",
+        )
+    ):
+        def mutate(spare: dict[str, Any], hostile: str = hostile) -> None:
+            spare["$schema"] = hostile
+
+        ops, store, sha = _scratch_lattice_with_spare(
+            tmp_path, mutate, tag=f"steer-{index}"
+        )
+        document = ops.document_get(OBSERVE, sha)
+        assert document["origin"]["kind"] == "plugin", (hostile, document["origin"])
+        assert document["origin"]["basis"] == "descriptor-schema-id", (
+            hostile,
+            document["origin"],
+        )
+        assert document["origin"]["document"]["id"] == "dev.benchweave.sim-psu-spare"
+        assert document["origin"]["document"]["sha256"] == sha
+        store.close()
+
+
+def test_descriptor_family_outranks_the_approval_quartet(tmp_path: Path) -> None:
+    """Final-fold row 2 (converged): the approval quartet is CONTENT SHAPE;
+    a document the writer recorded under the descriptor family must never
+    classify gateway however its bytes are shaped. A cache-only spare
+    carrying the four approval keys is plugin-authored content — it
+    classifies plugin, not the gateway's own words. The structural backstop
+    is the checker row pinning the descriptor schema root validator-closed
+    (the quartet cannot appear on a schema-valid descriptor)."""
+    def mutate(spare: dict[str, Any]) -> None:
+        spare["change_id"] = "chg-steer"
+        spare["expected_generation"] = 1
+        spare["approver_principal"] = "attacker"
+        spare["policy_version"] = "1"
+
+    ops, store, sha = _scratch_lattice_with_spare(tmp_path, mutate, tag="quartet")
+    document = ops.document_get(OBSERVE, sha)
+    assert document["origin"]["kind"] == "plugin", document["origin"]
+    assert document["origin"]["basis"] == "descriptor-schema-id", document["origin"]
+    store.close()
+
+
+def test_versionless_descriptor_serves_no_fabricated_version(tmp_path: Path) -> None:
+    """Final-fold row 4: ``_descriptor_triple`` fabricated ``version: "1"``
+    for a versionless descriptor — a value the document never declared. The
+    triple is omitted instead (the ref requires a version, so the origin
+    serves kind and basis only; the schema description states the rule)."""
+    def mutate(spare: dict[str, Any]) -> None:
+        spare.pop("version", None)
+        spare.pop("descriptor_version", None)
+
+    ops, store, sha = _scratch_lattice_with_spare(tmp_path, mutate, tag="noversion")
+    document = ops.document_get(OBSERVE, sha)
+    assert document["origin"]["kind"] == "plugin", document["origin"]
+    assert document["origin"]["basis"] == "descriptor-schema-id", document["origin"]
+    assert "document" not in document["origin"], document["origin"]
+    store.close()
+
+
+def test_a_three_key_approval_classifies_fallback_not_gateway(
+    tmp_path: Path,
+) -> None:
+    """Final-fold row 3 (the classification half): the quartet the
+    derivation requires is the set ``verify_approval`` validates — post-fix
+    all four, so an approval document missing ``policy_version`` is not a
+    valid approval and must NOT wear the gateway kind (it stays the honest
+    operator/fallback residual until tooling binds its policy version)."""
+    store = Store.open(tmp_path / "state-3key.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, FIXTURES, now="2026-09-12T00:00:00Z")
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+    )
+    body = {
+        "change_id": "chg-3key",
+        "expected_generation": 1,
+        "approver_principal": "approver-x",
+    }
+    raw = json.dumps(body, sort_keys=True).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(raw, sha, body, "urn:stg:admitted", "2026-09-12T00:00:00Z")
+    document = ops.document_get(OBSERVE, sha)
+    assert document["origin"] == {"kind": "operator", "basis": "unclassified-fallback"}
+    store.close()
+
+
+def test_legacy_family_identity_rows_keep_their_classification(
+    tmp_path: Path,
+) -> None:
+    """Final-fold row 5 (the stability half): rows stored by a PREVIOUS
+    gateway generation carry a previously active ``$id`` — the classifier's
+    family glob spans every retained version directory, so a vintage row
+    keeps its classification across bumps. The direct store is the honest
+    simulation of a vintage row: no current writer produces one
+    (first-admission-wins means upgraded stores carry them), exactly the
+    approval arm's no-writer-exists shape."""
+    store = Store.open(tmp_path / "state-vintage.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, FIXTURES, now="2026-09-12T00:00:00Z")
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+    )
+    body = json.loads((FIXTURES / "descriptor-sim-psu.json").read_text())
+    raw = json.dumps(body, indent=2).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(
+        raw, sha, body, "urn:otdp:device-descriptor:0.2.2", "2026-09-12T00:00:00Z"
+    )
+    document = ops.document_get(OBSERVE, sha)
+    assert document["origin"]["kind"] == "plugin", document["origin"]
+    assert document["origin"]["basis"] == "descriptor-schema-id", document["origin"]
+    store.close()
+
+
+def test_corpus_version_dirs_are_covered_by_the_family_glob_sets() -> None:
+    """Final-fold row 5 (the census half): every retained corpus version
+    directory's schema ``$id`` is present in the glob sets the classifier
+    uses — a future narrowing (a version directory leaving the manifest or
+    the glob's reach) reds here instead of silently reclassifying rows
+    stored under the removed version's identity."""
+    from benchweave.standards.manifest import load_manifest, retained_versions
+
+    root = Path(__file__).resolve().parents[2]
+    descriptor_ids = operations._family_schema_ids(
+        "otdp", "otdp-device-descriptor.schema.json"
+    )
+    execution_ids = operations._execution_schema_ids()
+    for version in retained_versions(root, "otdp"):
+        descriptor_path = (
+            root / "standards" / "otdp" / version / "otdp-device-descriptor.schema.json"
+        )
+        schema = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        assert schema["$id"] in descriptor_ids, (version, schema["$id"])
+    for version in retained_versions(root, "execution"):
+        for path in sorted((root / "standards" / "execution" / version).glob("*.schema.json")):
+            schema_id = json.loads(path.read_text(encoding="utf-8")).get("$id")
+            if schema_id:
+                assert schema_id in execution_ids, (version, path.name, schema_id)
+    assert load_manifest(root)  # the census reads the real manifest

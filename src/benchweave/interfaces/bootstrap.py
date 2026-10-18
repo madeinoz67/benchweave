@@ -197,14 +197,14 @@ def admit_startup_bench(
             bench_raw,
             bench,
             now,
-            family_schema_id=_corpus_schema_id(contracts, "bench.schema.json"),
+            family_schema_id=_family_or_legacy(contracts, "bench.schema.json"),
         ),
         content_sha(
             content,
             commissioning_raw,
             commissioning,
             now,
-            family_schema_id=_corpus_schema_id(contracts, "commissioning.schema.json"),
+            family_schema_id=_family_or_legacy(contracts, "commissioning.schema.json"),
         ),
     ]
 
@@ -246,11 +246,13 @@ def admit_startup_bench(
 
     # Fold row 12 (issue #450): the descriptor family identity the cache
     # loop records at store time — the ACTIVE corpus's descriptor schema
-    # ``$id`` (the family-naming URN the fold sanctions). Classification
-    # is by FAMILY: a cache-only member is not schema-validated, and the
-    # origin def's disclosed over-marking direction covers exactly this
-    # conservative case; the pinned twins hit the digest-join rule first.
-    descriptor_family_id = _corpus_schema_id(
+    # ``$id``. A FAMILY claim, not a validation claim (final-fold row 9):
+    # a cache-only member is not schema-validated, so no validating
+    # identity exists to record, and classification is by family across
+    # every retained version (the stability arms pin that vintage ``$id``
+    # rows classify identically); the pinned twins hit the digest-join
+    # rule first.
+    descriptor_family_id = _family_or_legacy(
         active_contract_family("otdp"), "otdp-device-descriptor.schema.json"
     )
     for descriptor_path in sorted(fixtures_dir.glob("descriptor-*.json")):
@@ -279,13 +281,13 @@ def admit_startup_bench(
                 raw,
                 json.loads(raw),
                 now,
-                family_schema_id=_corpus_schema_id(contracts, schema_name),
+                family_schema_id=_family_or_legacy(contracts, schema_name),
             )
         )
     for pattern, schema_name in (
         ("procedure-*.json", "procedure.schema.json"),
     ):
-        family_schema_id = _corpus_schema_id(contracts, schema_name)
+        family_schema_id = _family_or_legacy(contracts, schema_name)
         for path in sorted(fixtures_dir.glob(pattern)):
             raw = path.read_bytes()
             stored.append(
@@ -305,18 +307,28 @@ def content_sha(
     family_schema_id: str | None = None,
 ) -> str:
     """Store one document keyed by content digest. ``schema_id`` records
-    the identity the WRITER can vouch for, in order: the document's own
-    declared ``$schema``/``schema_id``; else the family identity the writer
-    knows (fold row 12, issue #450 — a cache-only descriptor is
-    plugin-authored content and an admitted lattice document validated
-    against its execution schema; the stored family identity is what the
-    origin derivation classifies on, so the writer-side identity replaces
-    the ``urn:stg:admitted`` under-marking fallback); else the legacy
-    admission urn. First admission wins (``put_document``), so rows stored
-    before this change keep their fallback identity — no migration."""
+    the identity the WRITER can vouch for — and only the writer (final-fold
+    row 1, issue #450: the document's own declared ``$schema``/``schema_id``
+    must never steer the stored identity; an adversary-authored cache-only
+    descriptor declaring an execution urn served operator, and one
+    declaring a foreign URL escaped to the fallback — the contract forbids
+    both, the marker is the gateway's derivation, never the author's
+    claim). Precedence: the family identity the writer knows (fold row 12 —
+    a FAMILY claim, not a per-document validation claim: classification is
+    by family across every retained version, and a cache-only member is
+    not schema-validated, so no validating identity exists to record); else
+    the legacy admission urn. The document's declared identity is read only
+    by callers that know no family — every in-tree caller passes one, so
+    the declared branch serves out-of-tree callers only. First admission
+    wins (``put_document``), so rows stored before these changes keep their
+    stored identity — no migration (the vintage divergence is disclosed in
+    the corpus basis description)."""
     sha = hashlib.sha256(raw).hexdigest()
-    declared = parsed.get("$schema") or parsed.get("schema_id")
-    schema_id = str(declared if declared else (family_schema_id or "urn:stg:admitted"))
+    if family_schema_id is not None:
+        schema_id = family_schema_id
+    else:
+        declared = parsed.get("$schema") or parsed.get("schema_id")
+        schema_id = str(declared if declared else "urn:stg:admitted")
     content.put_document(raw, sha, parsed, schema_id, now)
     return sha
 
@@ -331,6 +343,14 @@ def _corpus_schema_id(directory: Path, filename: str) -> str | None:
     except (OSError, ValueError):
         return None
     return str(value) if value else None
+
+
+def _family_or_legacy(directory: Path, filename: str) -> str:
+    """The writer's family identity for one document family — never
+    ``None``, so ``content_sha``'s declared-identity branch (final-fold
+    row 1) is unreachable from bootstrap: an unreadable corpus schema
+    degrades to the legacy admission urn, not to the author's claim."""
+    return _corpus_schema_id(directory, filename) or "urn:stg:admitted"
 
 
 # --- WP08 Task 7: the fixture resolver session --------------------------------

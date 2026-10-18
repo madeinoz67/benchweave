@@ -638,7 +638,7 @@
     },
     "tests/standards/test_zero_literal_gate.py": {
       "core": 4,
-      "total": 70
+      "total": 74
     },
     "tests/test_package.py": {
       "core": 0,
@@ -878,7 +878,7 @@
     },
     "tests/unit/test_seam_admin.py": {
       "core": 0,
-      "total": 21
+      "total": 22
     },
     "tests/unit/test_seam_control.py": {
       "core": 0,
@@ -890,7 +890,7 @@
     },
     "tests/unit/test_seam_observe.py": {
       "core": 0,
-      "total": 32
+      "total": 38
     },
     "tests/unit/test_seam_validation.py": {
       "core": 0,

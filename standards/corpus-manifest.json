@@ -185,12 +185,12 @@
     {
       "path": "interface/0.1.1/interface.schema.json",
       "source": "standards/interface/0.1.0/interface.schema.json",
-      "sha256": "d3989cc05f1233501e85c387b7f0003a7af51dbd7d64048284fd1b564bdb7290"
+      "sha256": "356c1d1af9b3c93a1ca2958215fb673da84d31e01c26ce1f81111e6da85960fe"
     },
     {
       "path": "interface/0.1.1/mcp-tools.json",
       "source": "standards/interface/0.1.0/mcp-tools.json",
-      "sha256": "6d187ce78c062da177306b5fe573dafdb9d550b446afd71dbfe139954cfd0a57"
+      "sha256": "5d30c4eb96c0cfb494cd8f865219a0e8caa3f30c2b8808d31756b3d889efb661"
     },
     {
       "path": "interface/0.1.1/openapi.json",

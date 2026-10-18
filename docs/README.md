@@ -17,7 +17,7 @@
 | [REST/MCP contract](../standards/interface/0.1.1/interface-contract.md) | 20 REST operations, 17 MCP (Model Context Protocol) tools, authentication and recovery |
 | [OpenAPI](../standards/interface/0.1.1/openapi.json) | REST routes and schema references |
 | [MCP tools](../standards/interface/0.1.1/mcp-tools.json) | Input and output schemas for the pinned MCP baseline |
-| [Interface checks](../standards/interface/0.1.1/validation-report.md) | 266 document and mapping checks and explicit verification limits |
+| [Interface checks](../standards/interface/0.1.1/validation-report.md) | 267 document and mapping checks and explicit verification limits |
 | [Interface errata 1.1.1](../standards/interface/0.1.0/README.md) | D2 amendment: `change_apply` body admits the optional `approver_token`; 1.1.0 bytes untouched |
 | [Closure register](architecture-closure.md) | Review disposition, normative versions and qualification boundaries |
 | [Registry composition review](acceptance/registry-composition-review.md) | 16 package reuse and compatibility scenarios |
@@ -101,4 +101,4 @@ From the 0.1.0 baseline forward, the corpus retains superseded versions digest-f
 
 ## Baseline verification
 
-1222 document and schema checks and selected semantic and coverage checks passed: OTDP 717, registry 71, execution 151, interface 266 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).
+1223 document and schema checks and selected semantic and coverage checks passed: OTDP 717, registry 71, execution 151, interface 267 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).

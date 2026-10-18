@@ -257,6 +257,42 @@ def test_apply_with_detached_token_but_no_document(
     assert ops.change_get(ADMIN, "chg-ok")["state"] == "failed"
 
 
+def test_verify_approval_requires_the_bound_policy_version(
+    seam_admin: tuple[Operations, Store, ContentStore],
+) -> None:
+    """Final-fold row 3 (issue #450): the docstring's binding set names
+    four keys but the code validated three — a minted-token approval
+    missing ``policy_version`` was ACCEPTED while the origin derivation
+    refused it the gateway kind (accepted-but-unmarked, the inconsistency
+    both lanes flagged). ``verify_approval`` now refuses the three-key
+    shape, so the validated set and the derived quartet agree."""
+    ops, _, content = seam_admin
+    body = {
+        "change_id": "chg-ok",
+        "expected_generation": 1,
+        "approver_principal": "approver-x",
+    }
+    raw = json.dumps(body, sort_keys=True).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(raw, sha, body, "urn:stg:approval", NOW)
+    token = issue(
+        SECRET,
+        principal="approver-x",
+        audience="gateway-admin",
+        scopes=["stg:admin"],
+        expires_at=2**31,
+    )
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.verify_approval(
+            {"id": "a3", "version": "1", "sha256": sha},
+            change_id="chg-ok",
+            expected_generation=1,
+            approver_token=token,
+        )
+    assert exc.value.failure.code == "forbidden", exc.value.failure
+    assert "policy version" in exc.value.failure.message, exc.value.failure
+
+
 def test_apply_rejects_approval_authored_by_the_applier(
     seam_admin: tuple[Operations, Store, ContentStore],
 ) -> None:

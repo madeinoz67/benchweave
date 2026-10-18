@@ -97,6 +97,7 @@ from benchweave.cli.demo import (
     resolve_fixtures,
 )
 from benchweave.cli.output import emit
+from benchweave.interfaces.bootstrap import _corpus_schema_id
 from benchweave.performance import (
     ACCEPTANCE_TARGET_P95_MS,
     LABEL_ACCEPTANCE,
@@ -109,6 +110,7 @@ from benchweave.performance import (
     measure_reads,
     measure_stress,
 )
+from benchweave.vendoring import active_contract_family
 
 if TYPE_CHECKING:
     import uvicorn
@@ -253,7 +255,17 @@ def _binding_variant(
     document["request_id"] = request_id
     raw = json.dumps(document, indent=2).encode()
     sha = hashlib.sha256(raw).hexdigest()
-    content.put_document(raw, sha, document, "urn:stg:binding", _now_iso())
+    # Final-fold row 10 (issue #450): the binding variant stamps the SAME
+    # family identity bootstrap's writer records for run-binding documents
+    # — the journey's second bindings served a different basis from the
+    # lattice's first binding (urn:stg:binding → unclassified-fallback
+    # while the writer's rows served execution-doc-schema-id). One family,
+    # one identity; the legacy urn is the degraded fallback, never the
+    # primary stamp.
+    binding_family = _corpus_schema_id(
+        active_contract_family("execution"), "run-binding.schema.json"
+    ) or "urn:stg:binding"
+    content.put_document(raw, sha, document, binding_family, _now_iso())
     version = str(document.get("version") or document.get("contract_version", "1"))
     return {"id": request_id, "version": version, "sha256": sha}, document
 
