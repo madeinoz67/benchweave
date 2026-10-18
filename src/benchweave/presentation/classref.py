@@ -18,7 +18,12 @@ regeneration. The F1/F2/F1-da fixtures were generated ONCE from the SDK
 expander at the submodule pin (v0.14.0, ``201c343``); the F5 trio fixture
 was generated from the SDK expander on the L5 widening branch
 (``feat/l5-sdk-widening`` @ ``8f6b5ee``), whose semantics the derivation
-functions here mirror.
+functions here mirror. At the L11 family bump (0.2.0 -> 0.3.0) the four
+triples were regenerated from THIS derivation over the new corpus, an
+8-line stamp-only delta (the layout block's ``contract_version`` and the
+envelope's derived manifest pin), verified against the SDK derivation at
+the pin reproducing the pre-bump bytes exactly — the SDK's own vendored
+corpus carries 0.2.0 until the batched promotion leg re-stamps its side.
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -107,7 +112,7 @@ _FAMILY = "plugin-ui-class-reference"
 #: the registry's corpus pin (design record §3; R4's mitigation) cites the
 #: served family version, derived from the corpus manifest, never a
 #: literal in the render path (the constant documents the founding pin).
-FOUNDING_FAMILY_VERSION = "0.2.0"
+FOUNDING_FAMILY_VERSION = "0.3.0"
 
 
 class ClassRefusal(ValueError):

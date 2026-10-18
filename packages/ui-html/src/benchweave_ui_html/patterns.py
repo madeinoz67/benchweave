@@ -6,9 +6,9 @@ severity cells, §D.1 wording cells), so the library cannot drift from the
 contract without the gate's own rows reding first.
 
 The export writes a static tree — plain rendered HTML files, no server:
-``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; sixteen pages
-(one per §E.1 component + one refusal page + one class-reference capture
-page) × two themes; every page root
+``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; eighteen
+pages (one per §E.1 component + one refusal page + the two class-reference
+pages) × two themes; every page root
 carries ``data-bw-pattern-library``. Screenshots (UR-13) are captured into
 the same tree by the browser lane (slice 4). Styling inlines the REAL token
 CSS read through G1a's path constants (one mirror, no copy) and the export
@@ -353,6 +353,21 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The dc_psu class page (L11 of the class sweep; gateway issue #463,
+    # design record 2026-10-18): the class's output-page composition —
+    # readings, trend, table, alert — rendered from the committed
+    # reference/descriptor expansion (classref.py — host composition of
+    # the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-dc_psu",
+            fixture_id="output",
+            kind="class-page",
+            page="class-output",
+            render=classref.render_output_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -379,6 +394,7 @@ _PAGE_TITLES: dict[str, str] = {
     "confirm-action": "Confirm action",
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
+    "class-output": "DC power supply output (class reference)",
 }
 
 
@@ -389,6 +405,7 @@ def pages() -> tuple[str, ...]:
     ordered = [key for key in _keys("e-1-components")]
     ordered.append("refusals")
     ordered.append("class-capture")
+    ordered.append("class-output")
     return tuple(ordered)
 
 

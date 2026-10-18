@@ -4,10 +4,13 @@ Landing 1 of the class-reference program (design record
 ``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``); the
 L5 widening rides design record
 ``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
-The family's ACTIVE version ``plugin-ui-class-reference/0.2.0`` ships two
-machine schemas and the founding ``class-logic_analyser.json`` reference
-(the 0.1.0 predecessor stays digest-frozen — the retained-freeze arms below
-assert it). Every schema rule carries a
+The family's ACTIVE version ``plugin-ui-class-reference/0.3.0`` ships two
+machine schemas and TWO class references — the founding
+``class-logic_analyser.json`` (re-stamped, zero content change) and the L11
+``class-dc_psu.json`` (the first scalar/readings-shaped class; design record
+``.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md``). The 0.1.0
+and 0.2.0 predecessors stay digest-frozen — the retained-freeze arms below
+assert them. Every schema rule carries a
 valid and an invalid case; the reference-content tests pin the D2
 structure-not-data discipline and the D12a extension-seam namespace at the
 corpus level (the expansion-side A-rules are Landing 2).
@@ -24,15 +27,16 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.2.0"
+DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
+REFERENCE_PSU = DIRECTORY / "class-dc_psu.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.2.0/class-reference.schema.json"
+    "/0.3.0/class-reference.schema.json"
 )
 LAYOUT_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.2.0/layout.schema.json"
+    "/0.3.0/layout.schema.json"
 )
 LAYOUT_REF = f"{LAYOUT_ID}#/$defs/layout_page"
 # The plugin-ui manifest schema whose extensions seam carries the layout
@@ -83,7 +87,7 @@ def minimal_layout_page() -> dict[str, Any]:
 
 def minimal_reference(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "profile_id": "otdp.logic_analyser/1.0.0",
         "title": "Class reference",
         "targets": {"plugin_ui": ">=0.3.1"},
@@ -117,7 +121,7 @@ def test_all_family_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = (
             "https://benchweave.dev/contracts/plugin-ui-class-reference"
-            f"/0.2.0/{name}.schema.json"
+            f"/0.3.0/{name}.schema.json"
         )
         assert schema["$id"] == expected
 
@@ -251,7 +255,13 @@ def test_action_slot_requires_its_action() -> None:
     [
         ({"kind": "dashboard"}, "page-kind"),
         ({"binding_slots": 42}, "binding-slots-type"),
-        ({"binding_slots": ["lanes"], "plot": {"kind": "time_series"}}, "plot-kind"),
+        (
+            {
+                "binding_slots": ["lanes"],
+                "plot": {"kind": "waveform", "over_slot": "lanes"},
+            },
+            "plot-kind",
+        ),
         (
             {
                 "binding_slots": ["lanes"],
@@ -567,7 +577,7 @@ def test_controls_levels_match_the_class_ladder() -> None:
 
 def test_minimal_layout_document_validates() -> None:
     layout = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [minimal_layout_page()],
     }
     assert layout_validator().is_valid(layout)
@@ -576,7 +586,7 @@ def test_minimal_layout_document_validates() -> None:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda doc: doc.update(contract_version="0.3.0"),
+        lambda doc: doc.update(contract_version="0.2.0"),
         lambda doc: doc.update(pages=[]),
         lambda doc: doc["pages"][0].pop("page_id"),
         lambda doc: doc["pages"][0].update(sections=[]),
@@ -585,7 +595,7 @@ def test_minimal_layout_document_validates() -> None:
 )
 def test_layout_document_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout)
@@ -603,7 +613,7 @@ def test_layout_document_rules_refuse(mutate: Any) -> None:
 )
 def test_section_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout["pages"][0]["sections"][0])
@@ -612,7 +622,7 @@ def test_section_rules_refuse(mutate: Any) -> None:
 
 def test_control_kinds_are_closed() -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -634,7 +644,7 @@ def test_control_kinds_are_closed() -> None:
 def test_text_body_is_bounded() -> None:
     body = "x" * 512
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -661,7 +671,7 @@ def test_text_body_is_bounded() -> None:
 )
 def test_layout_nodes_are_closed_world(node: dict[str, Any]) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -680,7 +690,7 @@ def test_depth_is_bounded_at_three() -> None:
 
     leaf = node("inner", [{"binding_id": "arm", "kind": "button"}])
     three_deep: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [leaf])])]}
         ],
@@ -688,7 +698,7 @@ def test_depth_is_bounded_at_three() -> None:
     assert layout_validator().is_valid(three_deep)
     beyond = node("inner", [node("beyond", [{"body": "x"}])])
     four_deep: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [beyond])])]}
         ],
@@ -767,7 +777,7 @@ def test_seventeen_layout_pages_refuse_both_ways() -> None:
     as a standalone block AND as reference layouts."""
     pages = [minimal_layout_page() for _ in range(17)]
     assert not layout_validator().is_valid(
-        {"contract_version": "0.2.0", "pages": pages}
+        {"contract_version": "0.3.0", "pages": pages}
     )
     assert not reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -777,7 +787,7 @@ def test_sixteen_layout_pages_admit_both_ways() -> None:
     sixteen pages admit on both writers."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
-        {"contract_version": "0.2.0", "pages": pages}
+        {"contract_version": "0.3.0", "pages": pages}
     )
     assert reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -802,7 +812,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
     kinds; the trio admit as control nodes (RED against the 0.1.0 schema,
     which refuses them — the widening is what admits)."""
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -822,7 +832,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
 def test_control_kinds_still_admit_the_founding_kinds() -> None:
     """The widening is additive: the founding kinds keep admitting."""
     layout: dict[str, Any] = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -848,6 +858,7 @@ def test_retained_freeze_predecessor_dirs_still_exist() -> None:
     stay in the tree, digest-frozen by their corpus rows."""
     for relpath in (
         "standards/plugin-ui-class-reference/0.1.0",
+        "standards/plugin-ui-class-reference/0.2.0",
         "standards/plugin-ui/0.3.1",
     ):
         assert (ROOT / relpath).is_dir(), f"predecessor dir removed: {relpath}"
@@ -863,6 +874,9 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
         ("plugin-ui-class-reference/0.1.0",
          ("class-reference.schema.json", "layout.schema.json",
           "class-logic_analyser.json")),
+        ("plugin-ui-class-reference/0.2.0",
+         ("class-reference.schema.json", "layout.schema.json",
+          "class-logic_analyser.json")),
         ("plugin-ui/0.3.1",
          ("ui-manifest.schema.json", "binding-catalogue.schema.json",
           "configuration-preset.schema.json", "presentation-envelope.schema.json")),
@@ -875,7 +889,7 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
                 f"retained row diverges from its frozen bytes: {relpath}"
             )
             checked += 1
-    assert checked == 7, f"expected 7 predecessor rows, checked {checked}"
+    assert checked == 10, f"expected 10 predecessor rows, checked {checked}"
 
 
 def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
@@ -898,3 +912,197 @@ def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
         (ROOT / "standards/plugin-ui/0.3.1/ui-manifest.schema.json").read_bytes()
     )
     assert manifest_schema["properties"]["contract_version"]["const"] == "0.3.1"
+
+
+# --- the L11 widening and the dc_psu reference (issue #463 slot L11) ------------
+
+
+class TestPlotKindWidening:
+    """The 0.3.0 MINOR's substance: ``page_template.plot.kind`` widens
+    const -> enum ``[digital_lanes, time_series]`` with per-kind
+    conditionals — the lanes group machinery stays exactly as it was
+    (digital_lanes), ``time_series`` adds the one structural field
+    ``series: "numeric_variables"`` (the closed derivation rule), and
+    ``waveform`` is deliberately NOT admitted (L13 widens again on its
+    own evidence). RED against the 0.2.0 schema: time_series refuses,
+    the widening is what admits."""
+
+    def _page(self, plot: dict[str, Any]) -> dict[str, Any]:
+        document = minimal_reference()
+        document["pages"] = [
+            {
+                "id": "output",
+                "title": "Output",
+                "kind": "readings",
+                "binding_slots": ["lanes"],
+                "plot": plot,
+            }
+        ]
+        return document
+
+    def test_time_series_plot_admits(self) -> None:
+        assert reference_validator().is_valid(
+            self._page({"kind": "time_series", "over_slot": "lanes"})
+        )
+
+    def test_time_series_with_the_series_rule_admits(self) -> None:
+        assert reference_validator().is_valid(
+            self._page(
+                {
+                    "kind": "time_series",
+                    "over_slot": "lanes",
+                    "series": "numeric_variables",
+                }
+            )
+        )
+
+    def test_time_series_with_group_machinery_refuses(self) -> None:
+        assert not reference_validator().is_valid(
+            self._page(
+                {
+                    "kind": "time_series",
+                    "over_slot": "lanes",
+                    "group_size": 8,
+                }
+            )
+        )
+
+    def test_digital_lanes_with_series_refuses(self) -> None:
+        assert not reference_validator().is_valid(
+            self._page(
+                {
+                    "kind": "digital_lanes",
+                    "over_slot": "lanes",
+                    "series": "numeric_variables",
+                }
+            )
+        )
+
+    def test_waveform_is_not_admitted(self) -> None:
+        assert not reference_validator().is_valid(
+            self._page({"kind": "waveform", "over_slot": "lanes"})
+        )
+
+    def test_series_value_is_closed(self) -> None:
+        assert not reference_validator().is_valid(
+            self._page(
+                {
+                    "kind": "time_series",
+                    "over_slot": "lanes",
+                    "series": "named_variables",
+                }
+            )
+        )
+
+
+class TestDcPsuReference:
+    """The committed ``class-dc_psu.json`` (L11): the first
+    scalar/readings-shaped class — binding ``otdp.dc_psu/1.0.0``."""
+
+    def test_the_committed_reference_validates(self) -> None:
+        assert REFERENCE_PSU.is_file(), f"Missing {REFERENCE_PSU.name}"
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        assert document["profile_id"] == "otdp.dc_psu/1.0.0"
+        assert reference_validator().is_valid(document)
+
+    def test_the_reference_binds_the_catalogued_class_actions(self) -> None:
+        """Every action the reference names exists in the OTDP catalogue's
+        dc_psu row, and every required action (configure, output, measure)
+        is bound."""
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        catalog = json.loads(OTDP_CATALOG.read_bytes())
+        profile = next(
+            p for p in catalog["profiles"] if p["id"] == document["profile_id"]
+        )
+        bound = {
+            slot["action"]
+            for slot in document["slots"].values()
+            if "action" in slot
+        }
+        assert bound <= set(catalog["actions"])
+        assert set(profile["required_actions"]) <= bound
+
+    def test_dc_psu_numbers_are_structural_only(self) -> None:
+        """D2: the PSU reference's only numbers are the layout spans
+        (12, 7, 5) and the trend section's plot_index (0); its only
+        pure-numeric string is the count-arity literal "1"."""
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        numbers: list[int | float] = []
+        numeric_strings: list[str] = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, bool):
+                return
+            if isinstance(node, (int, float)):
+                numbers.append(node)
+            elif isinstance(node, str):
+                try:
+                    float(node)
+                except ValueError:
+                    return
+                numeric_strings.append(node)
+            elif isinstance(node, dict):
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(document)
+        assert set(numbers) == {0, 12, 7, 5}
+        assert set(numeric_strings) == {"1"}
+
+    def test_dc_psu_layouts_carry_no_text_nodes(self) -> None:
+        document = json.loads(REFERENCE_PSU.read_bytes())
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if "body" in node:
+                    pytest.fail("reference layout carries a text node")
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        for layout_page in document.get("layouts", []):
+            walk(layout_page)
+
+    def test_dc_psu_controls_match_the_class_ladder(self) -> None:
+        """configure is preset-mediated at birth, the output toggle
+        declares a deviation (the directional §C.1 presentation is beyond
+        the per-action vocabulary — the record's §2.2); measure needs no
+        control (the dataset slot is page-covered)."""
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        controls = document["expect"]["controls"]
+        assert controls == {
+            "otdp.dc_psu.configure/1.0.0": "preset",
+            "otdp.dc_psu.output/1.0.0": "deviation",
+        }
+
+    def test_dc_psu_declares_the_analyser_forbid_set(self) -> None:
+        """The analyser's four forbid ids stand (the record's §2): the
+        intermediated-energy-removing-action id declares the class's
+        intent even though the gate's D7 slug set does not yet name
+        output."""
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        assert set(document["expect"]["forbid"]) == {
+            "confirm-wrapped-run-action",
+            "color-role-hint-on-lane",
+            "untraceable-lane-label",
+            "intermediated-energy-removing-action",
+        }
+
+    def test_dc_psu_cannot_derive_names_the_mockup_elements(self) -> None:
+        """Every cannot_derive id traces to a mockup element (the record's
+        §2.3 table): the six ids, verbatim."""
+        document = json.loads(REFERENCE_PSU.read_bytes())
+        ids = {str(row["id"]) for row in document["cannot_derive"]}
+        assert ids == {
+            "output-control",
+            "setpoint-staging",
+            "margin-alert",
+            "limit-overlay",
+            "presets",
+            "channel-names",
+        }

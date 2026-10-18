@@ -1461,6 +1461,26 @@
       "path": "plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
       "source": "standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json",
       "sha256": "36dfc2440aa60fcb27db5fca919d0ee9b83c3c84a665c087190fa287190ada27"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-reference.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/class-reference.schema.json",
+      "sha256": "d7f95209a28245b5866ff74373bdd20e97edc9b0d99fe90f62a06a6e5be1a9e7"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/layout.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/layout.schema.json",
+      "sha256": "c33cd4ca6b2b93f193370884489db16e1f2a415f7237ceb0804fe6bc8323bd86"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
+      "sha256": "c0a1369235086700e7794950d4acac913382a375c37a0fa3a262ca8318d7bbcd"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-dc_psu.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-dc_psu.json",
+      "sha256": "20655ed2298fadbec97057bf79a5572a6dd08610288ee835ec2ac51a41365311"
     }
   ]
 }

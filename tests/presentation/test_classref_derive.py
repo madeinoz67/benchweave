@@ -228,8 +228,9 @@ class TestParityB8:
 class TestDecoderDerivation:
     """The decoder behaviors the derivation mirrors from the SDK expander
     (v0.15.0 after the L5 pointer leg; the fixtures on this branch were
-    regenerated from v0.14.0's derivation against the 0.2.0 corpus —
-    REG-4): pinned-decoder lane rows, the
+    regenerated from v0.14.0's derivation against the 0.2.0 corpus and
+    stamp-only re-derived against the 0.3.0 corpus at L11 — REG-4):
+    pinned-decoder lane rows, the
     annotation form's capture rebinding, and the decode binding's page
     append on the plot page."""
 
@@ -283,25 +284,47 @@ class TestSelection:
     def test_unknown_class_selects_no_reference(self) -> None:
         """The fail-open signal: a descriptor whose profiles name no class
         with a corpus reference selects NOTHING (the composition then
-        renders today's no-attachment absence — B3)."""
+        renders today's no-attachment absence — B3). dc_psu carried this
+        arm until L11 gave it a reference; dmm (L12) carries it now."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.scalar",
-            "profiles": ["otdp.dc_psu/1.0.0"],
+            "profiles": ["otdp.dmm/1.0.0"],
         }
         assert select_references(corpus_root(), descriptor) is None
 
     def test_selection_is_bytewise_sorted_first_with_a_reference(self) -> None:
-        """Reference selection: profiles sorted bytewise; the first profile
-        WITH a reference applies; profiles without one are skipped."""
+        """Reference selection: profiles sorted bytewise; a profile
+        without a corpus reference is skipped and the next one applies.
+        dc_psu was the skipped profile until L11 gave it a reference; dmm
+        (L12, sorted before the analyser bytewise) carries the skip arm
+        now — and the L11 corpus pair adds its own multi-profile arm
+        below."""
+        descriptor = {
+            "otdp_version": "0.2.3",
+            "id": "dev.example.multi",
+            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.dmm/1.0.0"],
+        }
+        selected = select_references(corpus_root(), descriptor)
+        assert selected is not None and len(selected) == 1
+        assert selected[0]["profile_id"] == "otdp.logic_analyser/1.0.0"
+
+    def test_a_two_reference_descriptor_selects_both_sorted(self) -> None:
+        """L11: with the dc_psu reference in the corpus, a descriptor
+        declaring both classes selects BOTH — sorted bytewise (dc_psu
+        before logic_analyser) — the multi-profile merge input (parent
+        §3.8)."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.multi",
             "profiles": ["otdp.logic_analyser/1.0.0", "otdp.dc_psu/1.0.0"],
         }
         selected = select_references(corpus_root(), descriptor)
-        assert selected is not None and len(selected) == 1
-        assert selected[0]["profile_id"] == "otdp.logic_analyser/1.0.0"
+        assert selected is not None and len(selected) == 2
+        assert [r["profile_id"] for r in selected] == [
+            "otdp.dc_psu/1.0.0",
+            "otdp.logic_analyser/1.0.0",
+        ]
 
 
 class TestRefusals:
@@ -396,7 +419,7 @@ class TestRefusals:
         §3.3's ``classref_unknown_slot``): a page binding a slot key absent
         from the reference's slots refuses."""
         reference = json.loads(
-            (corpus_root() / "plugin-ui-class-reference/0.2.0/class-logic_analyser.json")
+            (corpus_root() / "plugin-ui-class-reference/0.3.0/class-logic_analyser.json")
             .read_bytes()
         )
         reference["pages"][0]["binding_slots"].append("ghost-slot")
@@ -434,7 +457,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.3.0/class-logic_analyser.json"
         tampered = (corpus / relpath).read_bytes() + b"\n"
         (corpus / relpath).write_bytes(tampered)
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -445,7 +468,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.2.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.3.0/class-logic_analyser.json"
         (corpus / relpath).write_bytes(b"{not json")
         self._re_pin(corpus, relpath, b"{not json")
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())

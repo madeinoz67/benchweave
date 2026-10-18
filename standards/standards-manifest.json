@@ -73,12 +73,15 @@
         }
       },
       "plugin-ui-class-reference": {
-        "range": ">=0.1.0,<0.3.0",
+        "range": ">=0.1.0,<0.4.0",
         "yanked": {},
         "retired": [],
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.2.0/README.md"
+          },
+          "0.3.0": {
+            "migration_note": "standards/plugin-ui-class-reference/0.3.0/README.md"
           }
         }
       }
@@ -208,14 +211,15 @@
     },
     {
       "id": "plugin-ui-class-reference",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "status": "stable",
-      "released": "2026-10-16",
-      "supersedes": "0.1.0",
+      "released": "2026-10-18",
+      "supersedes": "0.2.0",
       "normative": [
-        "standards/plugin-ui-class-reference/0.2.0/class-reference.schema.json",
-        "standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
-        "standards/plugin-ui-class-reference/0.2.0/layout.schema.json"
+        "standards/plugin-ui-class-reference/0.3.0/class-reference.schema.json",
+        "standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json",
+        "standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
+        "standards/plugin-ui-class-reference/0.3.0/layout.schema.json"
       ]
     }
   ]

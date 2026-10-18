@@ -51,14 +51,14 @@ def test_the_retrofit_row_is_exactly_the_evidenced_set() -> None:
     rows = load_cross_constraints(ROOT)
     assert [(row.standard, row.version) for row in rows] == [
         ("execution", "0.2.0"),
-        ("plugin-ui-class-reference", "0.2.0"),
+        ("plugin-ui-class-reference", "0.3.0"),
     ]
     row = rows[0]
     assert row.requires == {"otdp": ">=0.2.0,<0.3.0", "adapter_api": "1.1"}
     assert "PR #201" in row.evidence
     admission = rows[1]
     assert admission.requires == {"plugin-ui": ">=0.4.0,<0.5.0"}
-    assert "2026-10-16-classref-l5-plugin-ui-0-4-0-design.md" in admission.evidence
+    assert "2026-10-18-classref-l11-dc-psu-design.md" in admission.evidence
     note = json.loads(CROSS.read_bytes())["note"]
     assert "plugin-ui" in note and "deliberate" in note
 

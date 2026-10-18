@@ -522,7 +522,9 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # The interface 0.1.1 bump (2026-10-17, gateway issue #450) joins the
     # judged set compliant: the SDK lock at its gitlink (fca9c415, v0.15.0)
     # carries interface 0.1.0 — the predecessor's SDK leg was complete, so
-    # the G-5 sync-completion pacing holds.
+    # the G-5 sync-completion pacing holds. # classref family 0.1.0->0.2.0 via the 0.2.0 README). The L11 bump
+    # (2026-10-18, slot L11) adds the family's 0.2.0->0.3.0 entry the
+    # same way (the 0.3.0 README's from-predecessor note).
     # The scratch family above carries the non-vacuity burden; this row
     # pins the deployment state — the judged set's shape, and a
     # non-compliant future bump still refuses by name below.
@@ -532,5 +534,6 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
         ("plugin-ui", "0.4.0", "0.3.1"),
         ("registry", "0.1.3", "0.1.2"),
         ("plugin-ui-class-reference", "0.2.0", "0.1.0"),
+        ("plugin-ui-class-reference", "0.3.0", "0.2.0"),
     ]
     assert check_train_windows(ROOT) == ()

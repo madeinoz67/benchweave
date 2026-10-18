@@ -565,3 +565,55 @@ OTDP example at 0.1.2 — the active 0.2.3 copy is the right fixture, 0.1.2 bein
 retained frozen predecessor; (c) the family range already admits a PATCH (`<0.3.0`),
 so the version-event cost asymmetry is MINOR-vs-PATCH, not range-motion-vs-none —
 recorded in §1 because it changes what Shape B costs.
+
+
+---
+
+## Addendum — the principal's row-call rulings and the build's landing shape (18 October 2026, post-build)
+
+Recorded after the build pass; the body above is the frozen pre-committed
+design and is not rewritten. The rulings:
+
+- **RC-L11-1 — ACCEPTED, Shape A.** MINOR 0.3.0 with the `time_series`
+  plot template: `page_template.plot.kind` widens const → enum
+  `["digital_lanes", "time_series"]` with per-kind conditionals
+  (`digital_lanes` keeps its group machinery and may not carry `series`;
+  `time_series` adds `series: "numeric_variables"` and may not carry the
+  group machinery); `waveform` deliberately not admitted.
+- **RC-L11-2 — BATCHING chosen, not per-class promotion.** This slice
+  lands the corpus (the 0.3.0 family version), the `class-dc_psu.json`
+  reference, the pattern-library output page, the mockup hook pass and
+  the gateway-side tests, and does NOT cut the SDK release and does NOT
+  advance the gateway pointer — the version promotion's SDK leg (the §3
+  widening inventory, the vendored ingest, the 0.16.0 release) batches
+  with the adjacent class (L12 `dmm`) per the bump-minimization train
+  rule. Consequence, disclosed: the branch carries the sync-pair reds
+  (`served_set_drift`, `sdk_version_mismatch`, `policy_mirror_drift`,
+  the stale-generated family) for the batch's authoring window — the L5
+  precedent's branch-internal red, now longer-lived by the owner's
+  batching decision, never merged red; the merge gate is the batched
+  promotion's pointer leg, per issue #408's order. A4's `verify-ui`
+  coverage half defers with the same leg (the SDK's vendored corpus
+  carries no dc_psu reference until then); A4's `find_reference` RED was
+  demonstrated on today's tree (SDK-side `None`, gateway-side
+  `select_references` → `None`) and greens gateway-side in this slice.
+- **RC-L11-3 — ACCEPTED.** The mockup carries the §E.1 component hooks
+  (`bw-reading` on the cards, `bw-alert-bubble` on the aside, `bw-plot`
+  on the trend figure, `bw-data-table` on the table); the
+  consistency check keys on the contract surfaces.
+- **RC-L11-4 — ACCEPTED.** The ACTIVE `standards/otdp/0.2.3/examples/
+  class-dc_psu.json` is the canonical expansion fixture (F-psu-1); the
+  mockup-shaped single-channel fixture (F-psu-2) derives from it in-test.
+
+Build-time verifications this addendum records (each with its evidence in
+the build log/commit message): the analyser re-stamp is exactly one line
+(`/contract_version`, sorted-key diff); the copy-never-move proof holds
+(six predecessor files byte-identical to the pre-change tree); repin
+wrote exactly 4 rows with 0 frozen-row rewrites; the parity fixtures
+regenerated stamp-only (8 lines across 8 files), with the SDK derivation
+at the pin reproducing the pre-bump committed bytes exactly before the
+regeneration; the gateway's `compose_layout_sections` already renders
+`reading-tile` and `data-table` nodes with the ghost-binding honesty arm
+(the design's §3 build-time verification — the arm is NOT missing; no
+gateway runtime motion rides this slice); the mockup's existing test arms
+all stay green through the hook pass (nothing weakened).
