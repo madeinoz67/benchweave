@@ -318,8 +318,10 @@ def content_sha(
     by family across every retained version, and a cache-only member is
     not schema-validated, so no validating identity exists to record); else
     the legacy admission urn. The document's declared identity is read only
-    by callers that know no family — every in-tree caller passes one, so
-    the declared branch serves out-of-tree callers only. First admission
+    by callers that know no family — every PRODUCTION caller passes one
+    (the gateway source's five sites and the evidence CLI); the test tree
+    exercises the declared branch directly, and no production path reaches
+    it. First admission
     wins (``put_document``), so rows stored before these changes keep their
     stored identity — no migration (the vintage divergence is disclosed in
     the corpus basis description)."""

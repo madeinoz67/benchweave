@@ -658,6 +658,89 @@ def test_versionless_descriptor_serves_no_fabricated_version(tmp_path: Path) -> 
     store.close()
 
 
+def test_document_get_ref_agrees_with_the_origin_triple(tmp_path: Path) -> None:
+    """Narrow-fold row A: the top-level document ref and the origin triple
+    are ONE derivation (the shared version precedence — legacy ``version``
+    first, ``descriptor_version`` for full-form — and row 4's omission
+    rule). Before: a pinned descriptor served document.version "1" beside
+    origin.document.version "1.0.0" in the same response, and a versionless
+    descriptor fabricated "1" at the top level while the origin disclaimed
+    the fabrication."""
+    def mutate(spare: dict[str, Any]) -> None:
+        # Full-form shape: descriptor_version only, no legacy version key —
+        # the case where the two sites disagreed (top level read only the
+        # legacy key and served "1").
+        spare.pop("version", None)
+        spare["descriptor_version"] = "9.9.9"
+
+    ops, store, sha = _scratch_lattice_with_spare(tmp_path, mutate, tag="agree")
+    document = ops.document_get(OBSERVE, sha)
+    # Both sites read the SAME declared version — no "1" fabrication, no
+    # disagreement.
+    assert document["document"]["version"] == document["origin"]["document"]["version"]
+    assert document["origin"]["document"]["version"] == "9.9.9", document["origin"]
+    store.close()
+
+
+def test_versionless_ref_omits_version_at_both_sites(tmp_path: Path) -> None:
+    """Narrow-fold row A's omission half + row E: a versionless descriptor
+    omits ``version`` at BOTH sites (the top-level ref keeps id and
+    sha256; the origin omits the whole triple, whose ref requires a
+    version), and a NON-STRING descriptor_version declares no version —
+    host state is never stringified into the wire."""
+    def mutate(spare: dict[str, Any]) -> None:
+        spare.pop("version", None)
+        spare["descriptor_version"] = True  # row E: non-string
+
+    ops, store, sha = _scratch_lattice_with_spare(tmp_path, mutate, tag="omitv")
+    document = ops.document_get(OBSERVE, sha)
+    assert "version" not in document["document"], document["document"]
+    assert document["document"]["sha256"] == sha
+    assert "document" not in document["origin"], document["origin"]
+    assert document["origin"]["kind"] == "plugin", document["origin"]
+    store.close()
+
+
+def test_vintage_descriptor_shaped_row_is_never_gateway(tmp_path: Path) -> None:
+    """Narrow-fold row B (the preferred structural fix): a row stored
+    BEFORE the family-stamping writer (schema_id urn:stg:admitted) whose
+    content is DESCRIPTOR-SHAPED (the schema's own required keys are all
+    present) can never classify gateway — the exact laundering row 2
+    closed, reopened through store age, closed again by shape. The direct
+    store is the vintage simulation (no current writer produces such
+    rows); the honest landing for an unstamped vintage descriptor is the
+    operator/fallback residual — under-marked, never laundered."""
+    store = Store.open(tmp_path / "state-vintage-b.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, FIXTURES, now="2026-09-12T00:00:00Z")
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+    )
+    # The fixture descriptor IS descriptor-shaped (admission validated the
+    # pinned twins against the schema); graft the quartet onto it — the
+    # row-2 laundering payload, on a vintage unstamped row.
+    body = json.loads((FIXTURES / "descriptor-sim-psu.json").read_text())
+    body.update(
+        {
+            "change_id": "chg-vintage",
+            "expected_generation": 1,
+            "approver_principal": "attacker",
+            "policy_version": "1",
+        }
+    )
+    raw = json.dumps(body, indent=2).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(raw, sha, body, "urn:stg:admitted", "2026-09-12T00:00:00Z")
+    document = ops.document_get(OBSERVE, sha)
+    assert document["origin"]["kind"] != "gateway", document["origin"]
+    assert document["origin"] == {"kind": "operator", "basis": "unclassified-fallback"}
+    store.close()
+
+
 def test_a_three_key_approval_classifies_fallback_not_gateway(
     tmp_path: Path,
 ) -> None:

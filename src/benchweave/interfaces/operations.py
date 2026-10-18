@@ -214,14 +214,39 @@ _APPROVAL_BINDING_KEYS = frozenset(
 )
 
 
+@lru_cache(maxsize=1)
+def _descriptor_required_keys() -> frozenset[str]:
+    """The ACTIVE descriptor schema's root required keys — the structural
+    mark of descriptor-shaped content (narrow-fold row B, manifest-derived
+    like the family sets, never a hand-listed shape rule). A document
+    carrying ALL of them is descriptor-shaped whatever its store age or
+    stored identity, so the gateway kind is structurally unreachable for
+    it — the laundering row 2 closed for stamped rows, extended to vintage
+    rows by shape. An unreadable corpus degrades to the empty set (the
+    guard becomes a no-op, never a false gateway refusal of its own)."""
+    root = active_contract_family("otdp")
+    try:
+        schema = json.loads(
+            (root / "otdp-device-descriptor.schema.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):  # pragma: no cover - a vanished corpus root
+        return frozenset()
+    required = schema.get("required", [])
+    keys = frozenset(str(key) for key in required if isinstance(key, str))
+    return keys or frozenset()
+
+
 def _is_approval_document(parsed: dict[str, Any]) -> bool:
     """The approval binding shape: all four binding keys present (extra
-    keys allowed) — the exact set ``verify_approval`` validates (final-fold
-    row 3 aligned the two). An operator-authored document crafted to carry
-    the quartet classifies gateway — the disclosed over-marking direction,
-    and only when no store evidence named a family first (final-fold
-    row 2)."""
-    return _APPROVAL_BINDING_KEYS.issubset(parsed)
+    keys allowed) AND the content is not descriptor-shaped — the exact set
+    ``verify_approval`` validates (final-fold row 3 aligned the two). The
+    shape conjunct is narrow-fold row B's structural closure: a
+    descriptor-shaped document can never wear the gateway kind, regardless
+    of store age or stored identity (row 2 closed the stamped lane; this
+    closes the vintage lane the refute reopened)."""
+    return _APPROVAL_BINDING_KEYS.issubset(parsed) and not (
+        _descriptor_required_keys().issubset(parsed)
+    )
 
 
 def _require_integer_page_limit(operation: str, limit: int) -> None:
@@ -276,13 +301,15 @@ def _document_origin(
     """Row 5/D2 (interface 0.1.1): the content-origin twin — a pure
     derivation over the stored row plus the admitted inventory (no store
     migration; issue #450 §3.4's ordered rules, total over the served set).
-    Final-fold row 2 fixed the ORDER, not just the tuning: STORE EVIDENCE
-    (the digest join and the writer-recorded family identities) decides
-    before any content-shape rule can — a descriptor-family row can never
-    classify gateway, however its bytes are shaped (at the fold base a
-    cache-only descriptor carrying the approval quartet served
-    gateway/gateway-approval-binding: plugin-authored content marked as
-    the gateway's own words):
+    Final-fold row 2 fixed the ORDER, not just the tuning, and narrow-fold
+    row B extended the closure from writer scope to content scope: STORE
+    EVIDENCE (the digest join and the writer-recorded family identities)
+    decides before any content-shape rule can, and DESCRIPTOR-SHAPED
+    content (the schema's own required keys all present) can never
+    classify gateway at all — whatever its store age or stored identity
+    (at the final-fold base a stamped cache-only descriptor carrying the
+    approval quartet served gateway; the narrow refute reopened the same
+    laundering through a VINTAGE unstamped row, and this closes both):
 
     1. ``plugin`` — the row's sha256 equals an admitted device's descriptor
        digest (the CON-10 projection join), or its schema_id names the
@@ -300,10 +327,10 @@ def _document_origin(
        row 12; a legacy self-declared match reads the same set); anything
        else falls to 3.
     3. ``gateway`` — the document carries the approval binding shape (the
-       four-key quartet ``verify_approval`` validates); reached only when
-       no store evidence named a family, which is exactly the
-       operator-tooling approval shape (no in-tree writer exists — the
-       fold's row-13 finding).
+       four-key quartet ``verify_approval`` validates) AND is not
+       descriptor-shaped; reached only when no store evidence named a
+       family, which is exactly the operator-tooling approval shape (no
+       in-tree writer exists — the fold's row-13 finding).
     4. ``operator``/``unclassified-fallback`` — the honest residual (kind
        still served — nothing serves unkinded).
 
@@ -331,19 +358,33 @@ def _document_origin(
     return {"kind": "operator", "basis": "unclassified-fallback"}
 
 
+def _declared_version(parsed: dict[str, Any]) -> str | None:
+    """The version a document declares for itself — legacy ``version``
+    first, ``descriptor_version`` for full-form, the one precedence every
+    serving site applies so they cannot disagree (narrow-fold row A). A
+    NON-STRING value declares no version (narrow-fold row E): host state
+    is never stringified into the wire — the version is omitted, per row
+    4's rule."""
+    for key in ("version", "descriptor_version"):
+        value = parsed.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def _descriptor_triple(parsed: dict[str, Any], sha: str) -> dict[str, str]:
     """The ``{id, version, sha256}`` ref triple for a plugin-classified
-    document — the same key precedence ``_device_projection`` applies
-    (legacy ``version`` first, ``descriptor_version`` for full-form).
-    Final-fold row 4: a versionless descriptor serves NO fabricated
+    document — the same key precedence ``_device_projection`` applies,
+    through the one ``_declared_version`` helper. Final-fold row 4: a
+    versionless (or non-string-version) descriptor serves NO fabricated
     version — the triple is empty and the origin omits ``document`` (the
     ref requires a version; the schema description states the rule)."""
-    version = parsed.get("version") or parsed.get("descriptor_version")
+    version = _declared_version(parsed)
     if version is None:
         return {}
     return {
         "id": str(parsed.get("id", sha)),
-        "version": str(version),
+        "version": version,
         "sha256": sha,
     }
 
@@ -613,9 +654,19 @@ class Operations:
         if doc is None:
             raise errors.OperationFailure(errors.failure("not_found", f"document {sha256}"))
         return {
-            "document": {"id": doc["content"].get("id", sha256),
-                         "version": str(doc["content"].get("version", "1")),
-                         "sha256": sha256},
+            # Narrow-fold row A: the top-level ref and the origin triple
+            # read ONE declared version (the shared precedence helper) —
+            # the two sites cannot disagree, and a versionless descriptor
+            # omits the key here too instead of fabricating "1".
+            "document": {
+                "id": str(doc["content"].get("id", sha256)),
+                **(
+                    {"version": version}
+                    if (version := _declared_version(doc["content"])) is not None
+                    else {}
+                ),
+                "sha256": sha256,
+            },
             "schema_id": doc["schema_id"],
             "content": doc["content"],
             "original_utf8_base64": base64.b64encode(doc["raw_bytes"]).decode(),

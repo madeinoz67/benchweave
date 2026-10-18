@@ -890,7 +890,7 @@
     },
     "tests/unit/test_seam_observe.py": {
       "core": 0,
-      "total": 38
+      "total": 41
     },
     "tests/unit/test_seam_validation.py": {
       "core": 0,

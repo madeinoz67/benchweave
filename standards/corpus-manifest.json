@@ -185,22 +185,22 @@
     {
       "path": "interface/0.1.1/interface.schema.json",
       "source": "standards/interface/0.1.0/interface.schema.json",
-      "sha256": "8b7292ac061af51708a18fe4b27fc00b6563cf8982e85186c5f5369d27a889d7"
+      "sha256": "58e443cb9aa2b5a1d12ee74acb37f91994ccf65947d9a11b87ea770274b1a001"
     },
     {
       "path": "interface/0.1.1/mcp-tools.json",
       "source": "standards/interface/0.1.0/mcp-tools.json",
-      "sha256": "fd4160b725d0317858e1f8415371d8a1a202672cbd210f9de54979818a508ae0"
+      "sha256": "5e3de1b0cc2faf4de5c3f08b6e06558c7b9980dc91a21b8ba3a89cdb1a18996a"
     },
     {
       "path": "interface/0.1.1/openapi.json",
       "source": "standards/interface/0.1.0/openapi.json",
-      "sha256": "05e5445fda8880cb7c7f16cb3c75e1365c5690476acb097a143b038e929e2803"
+      "sha256": "cc168f1bbc0007431e372076d9dd3e6f59cfba16ed24ad4bb05ff1b631711663"
     },
     {
       "path": "interface/0.1.1/operation-catalog.json",
       "source": "standards/interface/0.1.0/operation-catalog.json",
-      "sha256": "6ab5da2fc180bbf24ea690a0eebfe7d01874d2f7b7bd156efa65150164840f2c"
+      "sha256": "05bfeec996b0d23f99d8f4696f60d5073e21367aecd704c2dccaf7fd004d5df4"
     },
     {
       "path": "otdp/0.1.0/device-profile-catalog.json",

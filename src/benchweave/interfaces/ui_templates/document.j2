@@ -5,7 +5,9 @@
   <dl class="bw-kv" data-bw-document-facts>
     <div><dt>SHA-256</dt><dd><code data-bw-document-sha>{{ document.document.sha256 }}</code></dd></div>
     <div><dt>Id</dt><dd data-bw-document-id>{{ document.document.id }}</dd></div>
+    {% if document.document.version is defined %}
     <div><dt>Version</dt><dd data-bw-document-version>{{ document.document.version }}</dd></div>
+    {% endif %}
     <div><dt>Schema</dt><dd><code data-bw-document-schema>{{ document.schema_id }}</code></dd></div>
   </dl>
   {% if content is not none %}

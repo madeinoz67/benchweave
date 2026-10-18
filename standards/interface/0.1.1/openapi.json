@@ -894,7 +894,6 @@
                           },
                           "required": [
                             "id",
-                            "version",
                             "sha256"
                           ],
                           "additionalProperties": false

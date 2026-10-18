@@ -2,6 +2,7 @@ import base64
 import copy
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -276,6 +277,21 @@ check(
             "policy_version",
         }
         & set(descriptor_schema.get("properties", {}))
+    )
+    # Narrow-fold row C: the PATTERN channel too. patternProperties
+    # overrides additionalProperties:false, so a permissive pattern
+    # admitted all four quartet keys while this row stayed green (the
+    # refute's plant: "^[a-z_]+$"). JSON Schema patterns are SEARCHED,
+    # not anchored: a pattern admits a key iff re.search matches it.
+    and not any(
+        re.search(pattern, key)
+        for pattern in descriptor_schema.get("patternProperties", {})
+        for key in (
+            "change_id",
+            "expected_generation",
+            "approver_principal",
+            "policy_version",
+        )
     ),
 )
 
