@@ -2,7 +2,7 @@
 
 # Interface contract verification
 
-**Result: 265/265 checks passed; 0 failed.**
+**Result: 266/266 checks passed; 0 failed.**
 
 Checked shared/tool JSON Schemas, 20 synthetic operation vectors, required fields, REST/MCP mapping equality, local OpenAPI references, error mappings and selected lifecycle/chunk rejections. The OpenAPI mapping was checked structurally against the catalog; no full OpenAPI meta-validator or live protocol suite was run.
 
@@ -210,6 +210,7 @@ No HTTP server, OAuth provider, MCP client, physical command, request store or e
 - PASS: no always-populates-everywhere claim remains in the schema
 - PASS: no self-approval Boolean
 - PASS: nonterminal cannot claim pass
+- PASS: origin basis descriptions name the store-time family identity
 - PASS: origin def closes kind-basis pairs to the emitted five
 - PASS: origin document ref rides plugin pairs only
 - PASS: read-only tools never declare destructiveHint true

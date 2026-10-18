@@ -242,6 +242,18 @@ check(
     "malformed governance" in D["conformance"]["description"]
     and "malformed governance" in json.dumps(D["device"]),
 )
+# Row 12's prose half (the lane-B/mechanism-critic reconciliation): the
+# basis descriptions must describe what the mechanism serves on
+# SCHEMA-VALID state — the store-time family identity the writer records.
+# A sentence that reads the same whether or not any valid document can
+# match it is the G4 defect both lanes flagged: pre-fix, the two family
+# bases were reachable only through the ungated $schema read on
+# corpus-INVALID bytes.
+check(
+    "origin basis descriptions name the store-time family identity",
+    "store-time family identity"
+    in D["origin"]["properties"]["basis"]["description"],
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),

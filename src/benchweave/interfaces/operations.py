@@ -246,8 +246,11 @@ def _family_schema_ids(standard_id: str, filename: str) -> frozenset[str]:
     retained version dir's schema names its own URN; never a version
     literal). Cached per (standard, filename): the corpus moves only at
     bumps, and a test's scratch corpus re-points ``_otdp_corpus`` rather
-    than this set (the OTDP set feeds only the descriptor-schema-id basis,
-    which no scratch-census cell exercises)."""
+    than this set. The OTDP set feeds the descriptor-schema-id basis —
+    reachable on schema-valid state since fold row 12 (the bootstrap
+    writer stamps the family identity at store time; the cache-only
+    census cell exercises it), not only through a legacy row's
+    self-declared URN."""
     root = active_contract_family(standard_id).parent
     try:
         candidates = sorted(root.glob(f"*/{filename}"))
@@ -275,12 +278,20 @@ def _document_origin(
        four-key quartet ``verify_approval`` requires); the kind derives
        from content, never from a self-declared schema identity.
     2. ``plugin`` — the row's sha256 equals an admitted device's descriptor
-       digest (the CON-10 projection join), or its schema_id is a vendored
-       OTDP descriptor schema identity; plugin results carry the descriptor
-       ref triple (the same id/version/sha256 the device projection serves).
-    3. ``operator`` — an execution-corpus schema identity names the family;
-       anything else is the honest ``unclassified-fallback`` residual
-       (kind still served — nothing serves unkinded).
+       digest (the CON-10 projection join), or its schema_id names the
+       descriptor family: the bootstrap writer RECORDS that identity at
+       store time for descriptor-family members (fold row 12 — the
+       conforming path; a schema-valid descriptor carries no ``$schema``
+       of its own, so the identity is the writer's, never the document's
+       claim), and a legacy row that itself declared a vendored descriptor
+       URN matches the same set (the disclosed over-marking direction).
+       Plugin results carry the descriptor ref triple (the same
+       id/version/sha256 the device projection serves).
+    3. ``operator`` — the schema_id names the execution family (the lattice
+       writer records the validating schema's ``$id`` at store time — fold
+       row 12; a legacy self-declared match reads the same set); anything
+       else is the honest ``unclassified-fallback`` residual (kind still
+       served — nothing serves unkinded).
 
     The kind is the gateway's derivation, never the document author's
     claim; over-marking (an operator document carrying a descriptor URN)

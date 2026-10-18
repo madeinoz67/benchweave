@@ -1528,7 +1528,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -3194,7 +3194,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -4818,7 +4818,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -6489,7 +6489,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -8118,7 +8118,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -9789,7 +9789,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -11478,7 +11478,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -13149,7 +13149,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -14773,7 +14773,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -16397,7 +16397,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -18031,7 +18031,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -19672,7 +19672,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -21313,7 +21313,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -22947,7 +22947,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -24626,7 +24626,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -26305,7 +26305,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
@@ -27983,7 +27983,7 @@
                   "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
-                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
+                "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. descriptor-schema-id and execution-doc-schema-id fire on the store-time family identity the gateway writer records — a schema-valid descriptor declares no $schema of its own, so the bootstrap writer stamps the descriptor family's schema $id at store time, and the lattice writer stamps the execution schema $id that validated the document; neither basis reads a document's self-declared identity. gateway-approval-binding fires on the approval binding shape (change_id, expected_generation, approver_principal, policy_version) — content-derived, never a writer's self-declared schema identity. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
               },
               "document": {
                 "$ref": "#/$defs/ref",
