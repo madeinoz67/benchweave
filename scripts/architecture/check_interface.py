@@ -278,6 +278,55 @@ check(
         & set(descriptor_schema.get("properties", {}))
     ),
 )
+
+
+def _schema_site_description(def_name: str) -> str:
+    """The schema's ``data.properties.origin`` site description for one
+    output def — the authority the openapi sites must mirror."""
+    for branch in D[def_name]["oneOf"]:
+        origin = (
+            branch.get("properties", {}).get("data", {}).get("properties", {}).get("origin")
+        )
+        if isinstance(origin, dict):
+            return str(origin["description"])
+    raise AssertionError(f"no origin site in {def_name}")
+
+
+# Final-fold row 12 (the amendment's re-attack): openapi.json was silently
+# excluded from the prose sweeps — the fourth machine artifact still
+# carried row 7's false always-populates claim at the run-checks site.
+# This pin DERIVES openapi's origin site descriptions from the schema's
+# site descriptions and requires equality for both sites, so a fifth
+# silent exclusion cannot recur; a phrasing-specific ban is narrower than
+# the claim, which is exactly why this one survived.
+check(
+    "openapi origin site descriptions equal the schema's",
+    all(
+        api["paths"][path][method]["responses"]["200"]["content"]["application/json"]
+        ["schema"]["properties"]["data"]["properties"]["origin"]["description"]
+        == _schema_site_description(def_name)
+        for path, (method, def_name) in {
+            "/v1/benches/{bench_id}/run-checks": ("post", "run_check_output"),
+            "/v1/documents/{sha256}": ("get", "document_get_output"),
+        }.items()
+    ),
+)
+# Final-fold row 11 (amendment): the 17 inline mcp-tools copies of the
+# origin basis description must equal the schema def's text, and the copy
+# COUNT is pinned. CON-3 pins served==vendored per tool, not tools==
+# schema — this row pins the pair, closing the row-13 self-miss class (an
+# enumerated surface set that silently excluded copies, with a pin
+# narrower than the claim).
+_schema_basis_description = D["origin"]["properties"]["basis"]["description"]
+_tool_basis_descriptions = [
+    tool["outputSchema"]["$defs"]["origin"]["properties"]["basis"]["description"]
+    for tool in tools
+    if "origin" in tool.get("outputSchema", {}).get("$defs", {})
+]
+check(
+    "mcp-tools origin basis descriptions equal the schema def (17 copies)",
+    _tool_basis_descriptions == [_schema_basis_description] * 17,
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),
