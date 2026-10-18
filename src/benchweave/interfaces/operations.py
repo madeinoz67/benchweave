@@ -199,11 +199,44 @@ def _resolve_event_evidence(
 # twin (document_get, run_check, device objects), and the OTDP conformance
 # object (device objects). All are additive-optional in the 0.1.1 corpus.
 
-#: Row 5's gateway kind: the gateway-minted schema-identity suffixes, the
-#: same suffix family ``documents_by_schema_suffix`` walks. The
-#: terminal-record family has no content-store emitter today (the run row
-#: carries terminal records); approval is the served specimen.
-_GATEWAY_SCHEMA_SUFFIXES = ("urn:stg:approval", "urn:stg:terminal-record")
+#: Row 5's gateway kind (fold row 13, issue #450): derived from the
+#: approval document's CONTENT SHAPE — the four-key binding quartet
+#: ``verify_approval`` requires (Decision 7) — never from a writer's
+#: self-declared schema identity: production approvals arrive from
+#: operator tooling that names no schema, so the kind must not depend on
+#: a self-declaration. The retired ``_GATEWAY_SCHEMA_SUFFIXES`` shape
+#: (``urn:stg:approval`` / ``urn:stg:terminal-record``) had no production
+#: writers — approval was hand-crafted test rows only, and the
+#: terminal-record family has no content-store emitter (the run row
+#: carries terminal records).
+_APPROVAL_BINDING_KEYS = frozenset(
+    {"change_id", "expected_generation", "approver_principal", "policy_version"}
+)
+
+
+def _is_approval_document(parsed: dict[str, Any]) -> bool:
+    """The approval binding shape: all four binding keys present (extra
+    keys allowed). An operator-authored document crafted to carry the
+    quartet classifies gateway — the disclosed over-marking direction."""
+    return _APPROVAL_BINDING_KEYS.issubset(parsed)
+
+
+def _require_integer_page_limit(operation: str, limit: int) -> None:
+    """Fold row 15 (issue #450): refuse a non-integer page limit as typed
+    ``invalid_request`` BEFORE any slicing. Draft 2020-12's ``integer``
+    accepts an integral float, and ``rows[:2.0]`` then raised a raw
+    TypeError — the seam owns the refusal, not the store. What this guard
+    does not catch: out-of-bounds integers and the bool form — the corpus
+    schema's own bounds (minimum 1, maximum the published page cap)
+    refuse those at the same validate step (bool is not a JSON integer)."""
+    if not isinstance(limit, int) or isinstance(limit, bool):
+        raise errors.OperationFailure(
+            errors.failure(
+                "invalid_request",
+                f"{operation}: limit must be an integer, "
+                f"got {type(limit).__name__}",
+            )
+        ) from None
 
 
 @lru_cache(maxsize=1)
@@ -238,7 +271,9 @@ def _document_origin(
     derivation over the stored row plus the admitted inventory (no store
     migration; issue #450 §3.4's ordered rules, total over the served set):
 
-    1. ``gateway`` — the row's schema_id carries a gateway-minted identity.
+    1. ``gateway`` — the document carries the approval binding shape (the
+       four-key quartet ``verify_approval`` requires); the kind derives
+       from content, never from a self-declared schema identity.
     2. ``plugin`` — the row's sha256 equals an admitted device's descriptor
        digest (the CON-10 projection join), or its schema_id is a vendored
        OTDP descriptor schema identity; plugin results carry the descriptor
@@ -251,9 +286,9 @@ def _document_origin(
     claim; over-marking (an operator document carrying a descriptor URN)
     is the conservative direction, disclosed in the schema description."""
     schema_id = str(doc["schema_id"])
-    if schema_id.endswith(_GATEWAY_SCHEMA_SUFFIXES):
-        return {"kind": "gateway", "basis": "gateway-family-schema-id"}
     parsed = doc["content"]
+    if _is_approval_document(parsed):
+        return {"kind": "gateway", "basis": "gateway-approval-binding"}
     if sha in store.device_descriptor_digests():
         return {
             "kind": "plugin",
@@ -487,6 +522,7 @@ class Operations:
         the page object and pass this dict through (A13)."""
         require_permission(identity, "observe")
         self._validator.validate("bench_list", {"limit": limit, "cursor": cursor})
+        _require_integer_page_limit("bench_list", limit)
         offset = self._cursor_offset(identity.principal, cursor, "benches")
         rows, has_more = self._store.list_benches(limit=limit, offset=offset)
         items = [self._bench_projection(row) for row in rows]
@@ -514,6 +550,7 @@ class Operations:
         self._validator.validate("device_list", {
             "bench_id": bench_id, "limit": limit, "cursor": cursor,
         })
+        _require_integer_page_limit("device_list", limit)
         stream = f"devices:{bench_id}"
         offset = self._cursor_offset(identity.principal, cursor, stream)
         rows, has_more = self._store.list_devices(bench_id, limit=limit, offset=offset)
@@ -622,6 +659,7 @@ class Operations:
         self._validator.validate("events_get", {
             "bench_id": bench_id, "after": after, "limit": limit,
         })
+        _require_integer_page_limit("events_get", limit)
         stream = f"bench.{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
         if oldest is None and self._store.get_bench(bench_id) is None:
@@ -676,7 +714,7 @@ class Operations:
     def run_check(
         self, identity: Identity, bench_id: str, binding_ref: dict[str, Any]
     ) -> dict[str, Any]:
-        """Advisory preflight (interface/0.1.0 run_check): does the stored
+        """Advisory preflight (interface/0.1.1 run_check): does the stored
         binding document name this bench, and are its pinned documents
         present? No reservation, no device I/O; never an admission token."""
         require_permission(identity, "control")

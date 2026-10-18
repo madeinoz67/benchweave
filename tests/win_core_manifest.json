@@ -346,7 +346,7 @@
     },
     "tests/integration/test_interface_parity.py": {
       "core": 0,
-      "total": 54
+      "total": 61
     },
     "tests/integration/test_issue146_e2e.py": {
       "core": 0,
@@ -638,7 +638,7 @@
     },
     "tests/standards/test_zero_literal_gate.py": {
       "core": 4,
-      "total": 55
+      "total": 70
     },
     "tests/test_package.py": {
       "core": 0,
@@ -890,7 +890,7 @@
     },
     "tests/unit/test_seam_observe.py": {
       "core": 0,
-      "total": 13
+      "total": 32
     },
     "tests/unit/test_seam_validation.py": {
       "core": 0,

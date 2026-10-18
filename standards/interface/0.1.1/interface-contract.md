@@ -35,7 +35,7 @@ A lost or expired client access token prevents new client requests, including le
 
 Gateway info reports contract/protocol versions and finite supported limits. Bench/device listing returns only authorised resources and contains configuration generation, qualification/trip state, profile IDs and descriptor references; connection secrets and sensitive raw endpoint details are never returned. Reachability and a ready-looking UI do not imply permission to start a run.
 
-Documents are addressed by SHA-256 and returned only from admitted local storage with ID/version/schema identity. Each document result carries an optional origin object naming who authored the content (kind: plugin, operator or gateway) and the derivation rule that produced the classification (basis); plugin-classified results carry the descriptor ref triple inside the marker. Device objects and run_check results carry the same marker, derived from the same stored state; the marker is the gateway's derivation, never a claim by the document's author. Device objects additionally carry an optional conformance object — the classification of the stored OTDP pin — present exactly when the descriptor declares an otdp_version pin; its free-form note never rides the wire. original_utf8_base64 carries the exact stored JSON bytes: decoding and SHA-256 must match document.sha256, and parsing those bytes must equal content and satisfy schema_id. The server must retain original bytes; reserialising content is not a valid substitute for integrity verification. The configured JSON limit includes base64 overhead. Read permission must apply to both the document and its associated bench; knowing a digest is not access. Document size above the published JSON limit returns payload_too_large; larger binary evidence uses the chunk operation. Sensitive administrative approvals/credentials are excluded from the control document view.
+Documents are addressed by SHA-256 and returned only from admitted local storage with ID/version/schema identity. Each document result carries an optional origin object naming who authored the content (kind: plugin, operator or gateway) and the derivation rule that produced the classification (basis); plugin-classified results carry the descriptor ref triple inside the marker. Device objects and run_check results carry the same marker, derived from the same stored state — on run_check, exactly when the checked binding document is stored (an unstored binding reports its finding and omits the marker); the marker is the gateway's derivation, never a claim by the document's author, and its kind-basis pairs are closed to the five the derivation emits. Device objects additionally carry an optional conformance object — the classification of the stored OTDP pin — present exactly when the descriptor declares an otdp_version pin; its free-form note never rides the wire. original_utf8_base64 carries the exact stored JSON bytes: decoding and SHA-256 must match document.sha256, and parsing those bytes must equal content and satisfy schema_id. The server must retain original bytes; reserialising content is not a valid substitute for integrity verification. The configured JSON limit includes base64 overhead. Read permission must apply to both the document and its associated bench; knowing a digest is not access. Document size above the published JSON limit returns payload_too_large; larger binary evidence uses the chunk operation. Sensitive administrative approvals/credentials are excluded from the control document view.
 
 Observation endpoints return retained records. They do not trigger instrument reads, drain device queues or take ownership. Fresh data acquisition requires an approved procedure and applicable ownership. Signal monitoring remains local and independent of observer polling frequency.
 
@@ -111,11 +111,15 @@ Supersedes interface 1.0.0 in the design package. Adds original_utf8_base64 to d
 
 Supersedes interface 0.1.0 (issue #450 revision, 2026-10-17). Errata, all
 additive-optional: the 17 tool descriptions move to the template family
-(version-stamped posture sentence plus per-class lifecycle sentences); four
+(version-stamped posture sentence plus per-class lifecycle sentences; the
+lease family's lifecycle sentence is the synchronous-reservation rule of §6,
+not the run family's acceptance-vs-completion sentence); four
 annotation rows correct to the closed four-key family shape (run_find and
 run_check join the read family; run_cancel and lease_release declare
 idempotentHint true per §6); paged responses carry the effective limit;
-document_get, run_check and device objects carry the origin marker; device
+document_get, run_check and device objects carry the origin marker (on
+run_check, exactly when the checked binding document is stored; the marker's
+kind-basis pairs are closed to the five the derivation emits); device
 objects carry the optional OTDP conformance object (the CON-10 amendment's
 promised wire field). REST v1/tool names remain; clients inspect the
 advertised interface version and validate against this exact catalog. This

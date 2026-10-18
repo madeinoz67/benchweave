@@ -178,6 +178,70 @@ check(
         for name in ("stg_v1_run_cancel", "stg_v1_lease_release")
     ),
 )
+# Rows 7/11 (issue #450 fold): the origin def's pair closure and its
+# presence rule. The pair set is derived FROM the def's own allOf branches
+# and pinned to the five pairs the gateway derivation emits
+# (operations._document_origin: two plugin bases, two operator bases, one
+# gateway basis); the checker cannot import gateway code, so the emitted set
+# is the named literal here — the named-specimen precedent of the
+# idempotent-pair row above. What these rows do not catch: the code emitter
+# drifting from the set — the wire census arms in
+# tests/integration/test_interface_parity.py pin the served side.
+origin_def = D["origin"]
+derived_pairs = []
+document_forbidden_kinds = set()
+for rule in origin_def.get("allOf", []):
+    kind_clause = rule["if"]["properties"]["kind"]
+    then_clause = rule["then"]
+    basis_enum = then_clause.get("properties", {}).get("basis", {}).get("enum")
+    if basis_enum:
+        for kind in kind_clause.get("enum", [kind_clause["const"]]):
+            derived_pairs.extend((kind, basis) for basis in basis_enum)
+    if "not" in then_clause:
+        document_forbidden_kinds.update(kind_clause["enum"])
+check(
+    "origin def closes kind-basis pairs to the emitted five",
+    sorted(derived_pairs)
+    == sorted(
+        (
+            ("plugin", "admitted-device-ref"),
+            ("plugin", "descriptor-schema-id"),
+            ("operator", "execution-doc-schema-id"),
+            ("operator", "unclassified-fallback"),
+            ("gateway", "gateway-approval-binding"),
+        )
+    ),
+)
+check(
+    "origin document ref rides plugin pairs only",
+    document_forbidden_kinds == {"operator", "gateway"},
+)
+# Row 7: the presence rule is stated where it binds, and the blanket
+# always-populates claim (false on run_check: an unstored binding serves
+# its finding and omits the marker — pinned at the seam by
+# test_run_check_serves_the_binding_document_origin) is gone. The
+# document_get site's "on success" wording stays: a document_get success
+# has a stored row by construction, so the claim is true there.
+check(
+    "run_check origin description states the stored-binding rule",
+    "exactly when the checked binding document is stored"
+    in json.dumps(D["run_check_output"]),
+)
+check(
+    "no always-populates-everywhere claim remains in the schema",
+    "always populates it where this marker is defined" not in json.dumps(schema),
+)
+# Row 14: the conformance presence rule names the degraded-governance
+# omission — a PINNED device whose classification refuses (malformed
+# governance bytes) omits the field, so "exactly when pinned" alone was
+# false. The seam arm
+# (test_device_conformance_malformed_governance_omits_the_field) pins the
+# behavior; this row pins the published description.
+check(
+    "conformance presence description names the degraded-governance omission",
+    "malformed governance" in D["conformance"]["description"]
+    and "malformed governance" in json.dumps(D["device"]),
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),

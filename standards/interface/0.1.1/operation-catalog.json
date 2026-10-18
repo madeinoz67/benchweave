@@ -524,7 +524,7 @@
                   },
                   "origin": {
                     "$ref": "#/$defs/origin",
-                    "description": "The content-origin twin (interface 0.1.1): optional and additive; the serving gateway always populates it on success."
+                    "description": "The content-origin twin (interface 0.1.1): optional and additive; populated exactly when the checked binding document is stored (an unstored binding reports the finding and omits this field — absent, never fabricated)."
                   }
                 },
                 "required": [

@@ -359,13 +359,15 @@ def test_run_check_reports_valid_generation_and_findings(seam_control: SeamContr
     ops, _, _ = seam_control
     result = ops.run_check(_control("p1"), BENCH_ID, seam_control.binding_ref)
     # Interface 0.1.1 (issue #450 D2): the stored binding's origin twin rides
-    # the data object (the lattice fixtures declare no $schema, so the honest
-    # basis is the fallback).
+    # the data object. Fold row 12: bootstrap records the validating
+    # execution schema's $id at store time, so the execution-doc-schema-id
+    # basis is the honest answer for a lattice document (the fallback stays
+    # for documents no rule classifies).
     assert result == {
         "valid": True,
         "generation": 1,
         "findings": [],
-        "origin": {"kind": "operator", "basis": "unclassified-fallback"},
+        "origin": {"kind": "operator", "basis": "execution-doc-schema-id"},
     }
 
 

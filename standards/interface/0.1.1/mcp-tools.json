@@ -996,7 +996,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -1510,7 +1510,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -1525,7 +1525,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -1539,7 +1539,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -2573,7 +2662,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -3087,7 +3176,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -3102,7 +3191,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -3116,7 +3205,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -4108,7 +4286,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -4622,7 +4800,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -4637,7 +4815,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -4651,7 +4829,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -5690,7 +5957,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -6204,7 +6471,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -6219,7 +6486,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -6233,7 +6500,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -7230,7 +7586,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -7744,7 +8100,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -7759,7 +8115,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -7773,7 +8129,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -8812,7 +9257,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -9326,7 +9771,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -9341,7 +9786,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -9355,7 +9800,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -10151,7 +10685,7 @@
                   },
                   "origin": {
                     "$ref": "#/$defs/origin",
-                    "description": "The content-origin twin (interface 0.1.1): optional and additive; the serving gateway always populates it on success."
+                    "description": "The content-origin twin (interface 0.1.1): optional and additive; populated exactly when the checked binding document is stored (an unstored binding reports the finding and omits this field — absent, never fabricated)."
                   }
                 },
                 "required": [
@@ -10412,7 +10946,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -10926,7 +11460,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -10941,7 +11475,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -10955,7 +11489,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -11994,7 +12617,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -12508,7 +13131,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -12523,7 +13146,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -12537,7 +13160,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -13529,7 +14241,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -14043,7 +14755,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -14058,7 +14770,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -14072,7 +14784,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -15064,7 +15865,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -15578,7 +16379,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -15593,7 +16394,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -15607,7 +16408,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -16609,7 +17499,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -17123,7 +18013,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -17138,7 +18028,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -17152,7 +18042,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -17165,7 +18144,7 @@
     },
     {
       "name": "stg_v1_lease_create",
-      "description": "Issue a bench lease at the next fencing sequence. Acceptance is not completion; poll run_get (or resolve run_find) to a terminal state before asserting the result. Apply interface 0.1.1 authorisation and lifecycle rules.",
+      "description": "Issue a bench lease at the next fencing sequence: a synchronous reservation of manual bench authority (201 Created), not an energising state; conflicts with existing manual or gateway-owned authority are rejected, and duration is bounded by commissioned policy and published server limits (§6). Apply interface 0.1.1 authorisation and lifecycle rules.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -18161,7 +19140,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -18675,7 +19654,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -18690,7 +19669,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -18704,7 +19683,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -18717,7 +19785,7 @@
     },
     {
       "name": "stg_v1_lease_renew",
-      "description": "Renew a held lease at the next fencing sequence. Acceptance is not completion; poll run_get (or resolve run_find) to a terminal state before asserting the result. Apply interface 0.1.1 authorisation and lifecycle rules.",
+      "description": "Renew a held lease at the next fencing sequence: synchronous, and requires the same authenticated owner, exact lease ID and current sequence; each renewal increments sequence, a duplicate request returns the same renewal (not an extra extension), and a late renewal cannot revive an expired lease (§6). Apply interface 0.1.1 authorisation and lifecycle rules.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -19713,7 +20781,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -20227,7 +21295,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -20242,7 +21310,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -20256,7 +21324,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -20269,7 +21426,7 @@
     },
     {
       "name": "stg_v1_lease_release",
-      "description": "Release a held lease and trigger the approved safe transition. Acceptance is not completion; poll run_get (or resolve run_find) to a terminal state before asserting the result. Apply interface 0.1.1 authorisation and lifecycle rules.",
+      "description": "Release a held lease: synchronous and idempotent, and it triggers the approved safe transition for associated manual work; lease loss/release cannot terminate another principal's gateway-owned run (§6). Apply interface 0.1.1 authorisation and lifecycle rules.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -21258,7 +22415,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -21772,7 +22929,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -21787,7 +22944,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -21801,7 +22958,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -22848,7 +24094,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -23362,7 +24608,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -23377,7 +24623,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -23391,7 +24637,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -24438,7 +25773,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -24952,7 +26287,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -24967,7 +26302,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -24981,7 +26316,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },
@@ -26027,7 +27451,7 @@
           },
           "conformance": {
             "type": "object",
-            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin; legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
+            "description": "OTDP conformance of the device's stored descriptor pin (interface 0.1.1; the CON-10 amendment's promised wire field). Present exactly when the descriptor declares an otdp_version pin, except that malformed governance bytes omit the field too (the read path never crashes on governance bytes; the device_conformance_unavailable log line carries the refusal; fail-closed belongs at admission); legacy pre-dialect rows omit the field. The classification is the same Q6 table admission enforces (classify_descriptor_pin); the free-form note never rides the wire — an agent needing the refusal detail reads it through the operator log channel.",
             "properties": {
               "otdp_version": {
                 "type": "string",
@@ -26541,7 +27965,7 @@
           },
           "origin": {
             "type": "object",
-            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; the serving gateway always populates it where this marker is defined. The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here.",
+            "description": "Content-origin twin (interface 0.1.1): who authored the marked content and the derivation rule that produced the classification. Optional and additive; populated on every device envelope and every document_get success, and on run_check exactly when the checked binding document is stored — an unstored binding serves its explicit finding and omits the marker (absent, never fabricated). The kind is the gateway's derivation over stored state, never a claim by the document's author: an operator-authored document crafted to carry a descriptor schema identity classifies plugin — the conservative (over-marking) direction, disclosed here. The kind-basis pairs are closed to the five the derivation emits; the document ref rides plugin-classified document results only.",
             "properties": {
               "kind": {
                 "enum": [
@@ -26556,7 +27980,7 @@
                   "descriptor-schema-id",
                   "admitted-device-ref",
                   "execution-doc-schema-id",
-                  "gateway-family-schema-id",
+                  "gateway-approval-binding",
                   "unclassified-fallback"
                 ],
                 "description": "The derivation rule that fired, named on the wire so a consumer can weigh the claim. unclassified-fallback is the honest residual when no specific rule matched (the kind is still served)."
@@ -26570,7 +27994,96 @@
               "kind",
               "basis"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "plugin"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "admitted-device-ref",
+                        "descriptor-schema-id"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "operator"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "execution-doc-schema-id",
+                        "unclassified-fallback"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "gateway"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "basis": {
+                      "enum": [
+                        "gateway-approval-binding"
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "operator",
+                        "gateway"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
+                },
+                "then": {
+                  "not": {
+                    "required": [
+                      "document"
+                    ]
+                  }
+                }
+              }
+            ]
           }
         }
       },

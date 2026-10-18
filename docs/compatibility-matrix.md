@@ -48,7 +48,7 @@ adoption, design record D6).
 | registry | 0.1.3 | released | in range | — | — |
 | execution | 0.1.0 | released | in range | — | — |
 | execution | 0.2.0 | released (promoted from 0.2.0-dev) | in range | — | — |
-| interface | 0.1.0 | released | out of range | — | — |
+| interface | 0.1.0 | released | in range | — | — |
 | interface | 0.1.1 | released | in range | — | — |
 | plugin-ui | 0.1.0 | released | out of range | — | — |
 | plugin-ui | 0.1.1 | released | out of range | — | — |

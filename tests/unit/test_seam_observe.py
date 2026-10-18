@@ -15,6 +15,7 @@ import pytest
 from benchweave.content.store import ContentStore
 from benchweave.interfaces import errors, operations
 from benchweave.interfaces.bootstrap import admit_startup_bench
+from benchweave.interfaces.errors import OperationFailure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.validation import SeamValidator
@@ -446,3 +447,112 @@ def test_device_origin_is_served_on_list_and_get(seam: Seam) -> None:
         assert "document" not in device["origin"]
     single = ops.device_get(OBSERVE, "sim-bench", listed["items"][0]["device_id"])
     assert single["origin"] == {"kind": "plugin", "basis": "admitted-device-ref"}
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [0, -5, 1001, 2**63, True, 2.0],
+)
+def test_bench_list_refuses_every_non_conforming_limit(
+    seam: Seam, limit: object
+) -> None:
+    """Fold row 15 (issue #450): the seam refuses every non-conforming
+    page limit as typed ``invalid_request``. The integer cells (0, -5,
+    1001, 2**63) and the bool form are refused by the corpus schema's own
+    bounds (bool is not a JSON integer); the integral FLOAT cell is the
+    row's own defect — Draft 2020-12's ``integer`` accepts 2.0, and
+    ``rows[:2.0]`` raised a raw TypeError at the fold base, so the seam
+    (not the store) owns the refusal now. Denominator: the boundary
+    table's six refusal cells plus the accepted 2, over bench_list, with
+    the float cell pinned on the other two paged operations below."""
+    ops, _ = seam
+    with pytest.raises(OperationFailure) as raised:
+        ops.bench_list(OBSERVE, limit=limit, cursor=None)  # type: ignore[arg-type]
+    assert raised.value.failure.code == "invalid_request", raised.value.failure
+
+
+def test_bench_list_accepts_the_conforming_two(seam: Seam) -> None:
+    """The boundary table's conforming cell: an integer within the
+    published bounds serves a page (the refusal above is not a blanket
+    rejection of the parameter)."""
+    ops, _ = seam
+    page = ops.bench_list(OBSERVE, limit=2, cursor=None)
+    assert page["limit"] == 2
+    assert len(page["items"]) <= 2
+
+
+@pytest.mark.parametrize("operation", ["device_list", "events_get"])
+def test_other_paged_ops_refuse_the_float_limit(
+    seam: Seam, operation: str
+) -> None:
+    """The same hole class on the paged siblings: the integral float is
+    refused as typed ``invalid_request`` on both (one seam guard serves
+    the three paged operations)."""
+    ops, _ = seam
+    with pytest.raises(OperationFailure) as raised:
+        if operation == "device_list":
+            ops.device_list(OBSERVE, "sim-bench", limit=2.0, cursor=None)  # type: ignore[arg-type]
+        else:
+            ops.events_get(OBSERVE, "sim-bench", after=None, limit=2.0)  # type: ignore[arg-type]
+    assert raised.value.failure.code == "invalid_request", raised.value.failure
+
+
+def test_gateway_default_page_cap_never_exceeds_the_corpus_maximum() -> None:
+    """Fold row 16 (issue #450): the gateway's default ``max_page_size``
+    and the active corpus's paged-input ``maximum`` are two unlinked
+    constants that both carry 1000 — this pin refuses silent drift in the
+    direction that matters (the gateway's cap must stay at or below the
+    wire schema's cap, or a page size the gateway itself serves would be
+    schema-invalid on the wire; the drift direction corpus-below-gateway
+    is the defect, gateway-below-corpus merely narrows pages)."""
+    from benchweave.interfaces import app_entry
+
+    schema = json.loads((CORPUS / "interface.schema.json").read_text())
+    for operation in ("bench_list", "device_list", "events_get"):
+        maximum = schema["$defs"][f"{operation}_input"]["properties"]["limit"][
+            "maximum"
+        ]
+        assert app_entry._LIMITS["max_page_size"] <= maximum, (
+            operation,
+            maximum,
+            app_entry._LIMITS["max_page_size"],
+        )
+
+
+def test_cache_only_descriptor_classifies_plugin_at_document_get(
+    tmp_path: Path,
+) -> None:
+    """Fold row 12 (issue #450 — the mechanism critic's strongest
+    finding): a cache-only (unpinned) descriptor family member is
+    plugin-authored content, and the WRITER records the family identity at
+    store time (bootstrap's cache loop through ``content_sha``'s family
+    parameter), so ``document_get``'s origin twin classifies it plugin
+    with the descriptor triple — not the under-marked
+    operator/unclassified-fallback the ``urn:stg:admitted`` fallback
+    served. RED at the fold base: the fallback classified this document
+    operator (its pinned twin classified plugin — the exact under-marking
+    asymmetry the row exists to close)."""
+    lattice = tmp_path / "lattice"
+    shutil.copytree(FIXTURES, lattice)
+    spare = json.loads((FIXTURES / "descriptor-sim-psu.json").read_text())
+    spare["id"] = "dev.benchweave.sim-psu-spare"
+    spare_raw = json.dumps(spare, indent=2) + "\n"
+    (lattice / "descriptor-sim-psu-spare.json").write_text(spare_raw)
+    store = Store.open(tmp_path / "state.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, lattice, now="2026-09-12T00:00:00Z")
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+    )
+    spare_sha = hashlib.sha256(
+        (lattice / "descriptor-sim-psu-spare.json").read_bytes()
+    ).hexdigest()
+    document = ops.document_get(OBSERVE, spare_sha)
+    assert document["origin"]["kind"] == "plugin", document["origin"]
+    assert document["origin"]["basis"] == "descriptor-schema-id"
+    assert document["origin"]["document"]["id"] == "dev.benchweave.sim-psu-spare"
+    store.close()

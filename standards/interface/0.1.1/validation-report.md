@@ -2,7 +2,7 @@
 
 # Interface contract verification
 
-**Result: 260/260 checks passed; 0 failed.**
+**Result: 265/265 checks passed; 0 failed.**
 
 Checked shared/tool JSON Schemas, 20 synthetic operation vectors, required fields, REST/MCP mapping equality, local OpenAPI references, error mappings and selected lifecycle/chunk rejections. The OpenAPI mapping was checked structurally against the catalog; no full OpenAPI meta-validator or live protocol suite was run.
 
@@ -72,6 +72,7 @@ No HTTP server, OAuth provider, MCP client, physical command, request store or e
 - PASS: change_submit requires reason
 - PASS: change_submit requires request_id
 - PASS: change_submit requires target_ref
+- PASS: conformance presence description names the degraded-governance omission
 - PASS: contract-stated idempotent pair is idempotentHint true
 - PASS: device_get MCP/REST input parity
 - PASS: device_get MCP/REST output parity
@@ -206,8 +207,11 @@ No HTTP server, OAuth provider, MCP client, physical command, request store or e
 - PASS: local OpenAPI reference interface.schema.json#/$defs/limits
 - PASS: local OpenAPI reference interface.schema.json#/$defs/origin
 - PASS: local OpenAPI reference interface.schema.json#/$defs/run
+- PASS: no always-populates-everywhere claim remains in the schema
 - PASS: no self-approval Boolean
 - PASS: nonterminal cannot claim pass
+- PASS: origin def closes kind-basis pairs to the emitted five
+- PASS: origin document ref rides plugin pairs only
 - PASS: read-only tools never declare destructiveHint true
 - PASS: reject invalid chunk length 0
 - PASS: reject invalid chunk length 65537
@@ -228,6 +232,7 @@ No HTTP server, OAuth provider, MCP client, physical command, request store or e
 - PASS: run_check MCP/REST output parity
 - PASS: run_check OpenAPI mapping
 - PASS: run_check inputSchema meta-schema
+- PASS: run_check origin description states the stored-binding rule
 - PASS: run_check outputSchema meta-schema
 - PASS: run_check positive input
 - PASS: run_check positive output

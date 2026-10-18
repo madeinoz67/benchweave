@@ -216,12 +216,189 @@ _INTERFACE_LITERAL_REGISTER: dict[str, str] = {
         "active version; a derived pin would be vacuous"
     ),
     "tests/contract/test_baseline.py": (
-        "the retired-identifier absence probe — names the retired interface "
-        "1.1.0 deliberately (a negative probe, never an active-version load)"
+        "the obsolete-identifier absence probe — names interface 1.0.0 "
+        "deliberately (a negative probe, never an active-version load; "
+        "1.0.0 is an obsolete pre-line identifier, not a retired one)"
     ),
 }
 
 _INTERFACE_LITERAL = re.compile(r"interface/\d+\.\d+\.\d+")
+
+#: The dynamic-piece marker for the folded-path detector (issue #450 fold
+#: row 6): any subexpression the bounded fold cannot evaluate — a name, a
+#: call, a comprehension — folds to this single character, so a template
+#: whose LITERAL context spells ``interface/`` with a dynamic version is
+#: still nameable (the evasion the plain-literal walk misses by design).
+_DYNAMIC_MARKER = "\x00"
+
+#: The folded-path pattern: ``interface/`` followed by a concrete version
+#: OR the dynamic marker.
+_FOLDED_INTERFACE_LITERAL = re.compile(r"interface/(?:\d+\.\d+\.\d+|\x00)")
+
+#: One evasion form per shape (issue #450 fold row 6): each builds a
+#: corpus-load path the plain-literal walk cannot see; the folded detector
+#: must name each planted loader by file and line.
+_EVASION_FORMS: dict[str, str] = {
+    "concatenation": (
+        "ROOT = None\n"
+        "CORPUS = str(ROOT) + \"/standards/interface/\" + \"0.1.0\"\n"
+    ),
+    "percent-format": (
+        "CORPUS = \"standards/interface/%s/mcp-tools.json\" % \"0.1.0\"\n"
+    ),
+    "dot-format": (
+        "CORPUS = \"standards/interface/{}/mcp-tools.json\".format(\"0.1.0\")\n"
+    ),
+    "slash-join": (
+        "CORPUS = \"/\".join([\"standards\", \"interface\", \"0.1.0\"])\n"
+    ),
+    "dynamic-fstring": (
+        "version = \"0.1.0\"\n"
+        "CORPUS = f\"standards/interface/{version}/mcp-tools.json\"\n"
+    ),
+    "path-segments": (
+        "from pathlib import Path\n"
+        "CORPUS = (\n"
+        "    Path(__file__).resolve().parents[2]\n"
+        "    / \"standards\"\n"
+        "    / \"interface\"\n"
+        "    / \"0.1.0\"\n"
+        ")\n"
+    ),
+}
+
+
+def _folded_string(node: ast.AST, memo: dict[int, str | None]) -> str | None:
+    """Bounded constant-expression fold over one AST node (issue #450 fold
+    row 6; the counter's assembly allowlist — obligation 20 — is the shape).
+
+    Returns the folded string with dynamic pieces as ``_DYNAMIC_MARKER``,
+    or ``None`` when the expression is outside the fold's allowlist. The
+    caught shapes: ``Constant`` str; ``JoinedStr`` (f-string templates —
+    each ``FormattedValue`` becomes the marker, so the template's literal
+    context stays visible); ``+`` concatenation; ``%`` substitution of
+    positional ``%s``/``%d``/``%r``; ``str.format`` over positional
+    auto/numeric fields; ``<sep>.join`` over a literal list/tuple; and
+    pathlib ``/`` chains (either side may be dynamic — the marker takes
+    its place). Every other input class folds to ``None`` — the named
+    misses live in the guard class's docstring below.
+    """
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    memo[key] = None  # cycle guard; overwritten with the real result below
+
+    def dynamic(node: ast.AST) -> str | None:
+        # A dynamic-but-present expression contributes the marker; a
+        # non-string Constant contributes nothing (the expression is not
+        # a string expression at all — bail, never fabricate).
+        if isinstance(node, ast.Constant):
+            return None
+        return _DYNAMIC_MARKER
+
+    result: str | None = None
+    if isinstance(node, ast.Constant):
+        result = node.value if isinstance(node.value, str) else None
+    elif isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for value in node.values:
+            if isinstance(value, ast.FormattedValue):
+                parts.append(_DYNAMIC_MARKER)
+            elif isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            else:
+                parts = []
+                break
+        result = "".join(parts) if parts else None
+    elif isinstance(node, ast.BinOp):
+        left = _folded_string(node.left, memo)
+        right = _folded_string(node.right, memo)
+        op = type(node.op)
+        if op is ast.Add:
+            left_part = left if left is not None else dynamic(node.left)
+            right_part = right if right is not None else dynamic(node.right)
+            if left_part is not None and right_part is not None:
+                result = left_part + right_part
+        elif op is ast.Div:
+            # pathlib truediv: ``base / "interface" / "0.1.0"``.
+            left_part = left if left is not None else dynamic(node.left)
+            right_part = right if right is not None else dynamic(node.right)
+            if left_part is not None and right_part is not None:
+                result = left_part + "/" + right_part
+        elif op is ast.Mod and isinstance(left, str):
+            values: list[str | None]
+            if isinstance(node.right, ast.Tuple):
+                values = [_folded_string(e, memo) for e in node.right.elts]
+            else:
+                values = [_folded_string(node.right, memo)]
+            out: list[str] = []
+            index = 0
+            position = 0
+            while position < len(left):
+                conversion = (
+                    left[position] == "%"
+                    and position + 1 < len(left)
+                    and left[position + 1] in "sdr"
+                )
+                if conversion:
+                    piece = values[index] if index < len(values) else None
+                    out.append(piece if piece is not None else _DYNAMIC_MARKER)
+                    index += 1
+                    position += 2
+                else:
+                    out.append(left[position])
+                    position += 1
+            result = "".join(out)
+    elif isinstance(node, ast.Call):
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "join"
+            and isinstance(func.value, ast.Constant)
+            and isinstance(func.value.value, str)
+            and node.args
+            and isinstance(node.args[0], (ast.List, ast.Tuple))
+            and node.args[0].elts
+        ):
+            # "<sep>".join([...]): a literal iterable folds elementwise; a
+            # non-literal argument (a comprehension, a generator, map) is
+            # a named miss — None, never a fabricated join.
+            pieces: list[str] = []
+            for element in node.args[0].elts:
+                folded = _folded_string(element, memo)
+                pieces.append(folded if folded is not None else _DYNAMIC_MARKER)
+            result = func.value.value.join(pieces)
+        elif (
+            isinstance(func, ast.Attribute)
+            and func.attr == "format"
+            and isinstance(func.value, ast.Constant)
+            and isinstance(func.value.value, str)
+        ):
+            template = func.value.value
+            if not re.search(r"\{[^{}]*[:!]", template):
+                args = [_folded_string(a, memo) for a in node.args]
+                out = []
+                auto = 0
+                position = 0
+                while position < len(template):
+                    if template[position] == "{":
+                        end = template.find("}", position)
+                        field = template[position + 1 : end]
+                        if field and not field.isdigit():
+                            return None  # keyword argument — a named miss
+                        slot = int(field) if field else auto
+                        if not field:
+                            auto += 1
+                        piece = args[slot] if slot < len(args) else None
+                        out.append(piece if piece is not None else _DYNAMIC_MARKER)
+                        position = end + 1
+                        continue
+                    out.append(template[position])
+                    position += 1
+                result = "".join(out)
+    memo[key] = result
+    return result
+
 
 
 def _docstring_nodes(tree: ast.AST) -> set[int]:
@@ -245,12 +422,29 @@ def _docstring_nodes(tree: ast.AST) -> set[int]:
 
 
 class TestInterfaceLoaderLiteralGuard:
-    """D1's held property (issue #450 §3-D1): no test under ``tests/``
-    builds a corpus-load path from an ``interface/<version>`` literal
-    except the registered exemptions — the sweep cannot rot back. The
-    guard does NOT catch: literals inside docstrings (AST-exempt by
-    position); f-string templates whose version is dynamic; and the
-    registered files above (their literals are their own subject)."""
+    """D1's held property (issue #450 §3-D1, extended by fold row 6): no
+    test under ``tests/`` builds a corpus-load path from an
+    ``interface/<version>`` literal — plain, assembled, or
+    dynamic-templated — except the registered exemptions; the sweep
+    cannot rot back. The detector folds the bounded constant-expression
+    shapes (``+`` concatenation, ``%`` substitution, positional
+    ``str.format``, ``<sep>.join`` over a literal iterable, pathlib ``/``
+    chains, f-string templates) with dynamic pieces marked, so a template
+    whose LITERAL context spells ``interface/`` with a dynamic version is
+    nameable.
+
+    What the guard does NOT catch (the bounded fold's named residuals,
+    mirroring the counter's assembly allowlist — obligation 20):
+    ``os.path.join`` and every other stdlib string constructor;
+    ``.format`` keyword arguments and format-specs/conversions;
+    ``%``-with-dict (``%(name)s``); ``<sep>.join`` over a non-literal
+    iterable (a comprehension, a generator, ``map``); a path built with
+    NO literal ``interface/`` context (every segment dynamic); a version
+    piece assembled from several dynamic parts (each folds to the
+    marker — only the surrounding literal context is reported);
+    conditional-expression arms; starred format arguments; literals
+    inside docstrings (AST-exempt by position); and the registered files
+    above (their literals are their own subject)."""
 
     def _violations(self) -> list[str]:
         violations: list[str] = []
@@ -259,17 +453,24 @@ class TestInterfaceLoaderLiteralGuard:
             tree = ast.parse(path.read_text(encoding="utf-8"))
             docstrings = _docstring_nodes(tree)
             for node in ast.walk(tree):
-                if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                    continue
-                if id(node) in docstrings:
-                    continue
-                if _INTERFACE_LITERAL.search(node.value):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and id(node) not in docstrings
+                    and _INTERFACE_LITERAL.search(node.value)
+                ):
                     violations.append(f"{relative}:{node.lineno}")
+                    continue
+                if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+                    folded = _folded_string(node, {})
+                    if folded is not None and _FOLDED_INTERFACE_LITERAL.search(folded):
+                        violations.append(f"{relative}:{node.lineno}")
         return violations
 
     def test_no_interface_version_literal_loads_outside_the_register(self) -> None:
-        """GREEN: exactly the registered exemptions carry the literal. A
-        planted literal in a swept file reds by name (the arm below)."""
+        """GREEN: exactly the registered exemptions carry the literal, in
+        any buildable form. A planted literal in a swept file reds by name
+        (the arms below)."""
         violations = [
             row
             for row in self._violations()
@@ -314,6 +515,113 @@ class TestInterfaceLoaderLiteralGuard:
             and _INTERFACE_LITERAL.search(node.value)
         ]
         assert hits == ["tests/test_planted_loader.py:2"], hits
+
+    #: One evasion form per shape (fold row 6): the module-level
+    #: ``_EVASION_FORMS`` table, one planted loader arm per form.
+    @pytest.mark.parametrize("form", sorted(_EVASION_FORMS))
+    def test_each_evasion_form_is_named(self, tmp_path: Path, form: str) -> None:
+        """Fold row 6's teeth, per form: the planted loader is named
+        (file:line) whatever shape builds the corpus path — the forms the
+        plain-literal walk missed by design (the refute-B finding). The
+        path-segments form is the real-world evasion this row came from
+        (tests/interfaces_ui/test_ui_stream_gaps.py at the fold base)."""
+        source = _EVASION_FORMS[form]
+        scratch = tmp_path / "planted" / "tests"
+        scratch.mkdir(parents=True)
+        planted = scratch / "test_planted_loader.py"
+        planted.write_text(source, encoding="utf-8")
+        tree = ast.parse(planted.read_text())
+        assign = next(
+            statement
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            and any(getattr(t, "id", None) == "CORPUS" for t in statement.targets)
+        )
+        hits = {
+            f"tests/test_planted_loader.py:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call))
+            and (
+                folded := _folded_string(node, {})
+            )
+            is not None
+            and _FOLDED_INTERFACE_LITERAL.search(folded)
+        }
+        # Exactly one hit, on the CORPUS construction line itself — the
+        # plant is named by file and line whatever shape builds the path.
+        assert hits == {f"tests/test_planted_loader.py:{assign.value.lineno}"}, (
+            form,
+            hits,
+        )
+
+    @pytest.mark.parametrize(
+        "form", sorted({k: v for k, v in _EVASION_FORMS.items() if k != "concatenation"})
+    )
+    def test_the_named_misses_stay_misses(self, tmp_path: Path, form: str) -> None:
+        """The disclosure is honest (G4): shapes outside the fold's
+        allowlist do NOT fire — the guard never claims coverage its
+        mechanism does not have."""
+        sources = {
+            "percent-format": (
+                # %-with-dict: the named miss.
+                "CORPUS = \"standards/interface/%(v)s/mcp-tools.json\" % {\"v\": \"0.1.0\"}\n"
+            ),
+            "dot-format": (
+                # .format kwargs and format-spec: the named misses.
+                "a = \"standards/interface/{v}/x.json\".format(v=\"0.1.0\")\n"
+                "b = \"standards/interface/{:>4}/x.json\".format(\"0.1.0\")\n"
+            ),
+            "slash-join": (
+                # join over a comprehension: the named miss.
+                "parts = [\"standards\", \"interface\", \"0.1.0\"]\n"
+                "CORPUS = \"/\".join(p for p in parts)\n"
+            ),
+            "dynamic-fstring": (
+                # No literal interface/ context: the named miss.
+                "family, version = None, None\n"
+                "CORPUS = f\"{family}/{version}/mcp-tools.json\"\n"
+            ),
+            "path-segments": (
+                # os.path.join — the stdlib-constructor named miss.
+                "import os\n"
+                "CORPUS = os.path.join(\"standards\", \"interface\", \"0.1.0\")\n"
+            ),
+        }
+        source = sources[form]
+        scratch = tmp_path / "miss" / "tests"
+        scratch.mkdir(parents=True)
+        planted = scratch / "test_planted_loader.py"
+        planted.write_text(source, encoding="utf-8")
+        tree = ast.parse(planted.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+                folded = _folded_string(node, {})
+                assert folded is None or not _FOLDED_INTERFACE_LITERAL.search(
+                    folded
+                ), (form, folded)
+
+    def test_the_fold_marks_dynamic_pieces_without_losing_context(self) -> None:
+        """The marker's contract: a folded template keeps its literal
+        context around the dynamic piece — the plain string forms fold
+        exactly, the dynamic forms fold to the marker, and no fold ever
+        fabricates a version the expression does not carry."""
+        module = ast.parse(
+            "a = \"standards/interface/\" + \"0.1.0\"\n"
+            "b = \"standards/interface/%s/x\" % version\n"
+            "c = f\"standards/interface/{v}/x\"\n"
+            "d = 4 / 2\n"
+        )
+        memo: dict[int, str | None] = {}
+        folds: dict[str, str | None] = {}
+        for statement in module.body:
+            if isinstance(statement, ast.Assign) and isinstance(
+                statement.targets[0], ast.Name
+            ):
+                folds[statement.targets[0].id] = _folded_string(statement.value, memo)
+        assert folds["a"] == "standards/interface/0.1.0"
+        assert folds["b"] == f"standards/interface/{_DYNAMIC_MARKER}/x"
+        assert folds["c"] == f"standards/interface/{_DYNAMIC_MARKER}/x"
+        assert folds["d"] is None  # numeric division never folds
 
 
 def _counter_run(*argv: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

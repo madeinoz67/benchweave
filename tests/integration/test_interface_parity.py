@@ -1086,9 +1086,13 @@ def test_paged_corpus_arms_catch_planted_page_faults(
     )
     assert status == 200 and rest_json["ok"], rest_json
     _validate_corpus_output("bench_list", rest_json)  # optional field: schema-clean
-    with pytest.raises((KeyError, AssertionError)):  # the matrix's echo assert reds
-        # The fault omits the key: the matrix's own subscript reds here.
-        assert isinstance(rest_json["data"]["limit"], int)
+    # Fold row 17 (issue #450): the third leg invokes the REAL echo arm —
+    # the clamp oracle above, with its own REST and MCP calls — instead of
+    # a copy of its assert; under the fault the arm itself must red (its
+    # subscript on the omitted key), so this leg cannot stay green while
+    # the real arm rots.
+    with pytest.raises((KeyError, AssertionError)):
+        test_paged_limit_echo_is_the_clamped_value_on_both_transports(gateway)
 
 
 def test_document_get_serves_origin_per_document_family(
@@ -1098,8 +1102,9 @@ def test_document_get_serves_origin_per_document_family(
     success, census over the three kinds the derivation names. Denominator:
     the module lattice's served families — a pinned descriptor (plugin via
     the admitted-device-ref join), the binding document (operator — the
-    synthetic fixtures declare no $schema, so the honest basis is the
-    fallback), and a stored approval (gateway). Terminal records have no
+    writer-side family identity fold row 12 records at store time, so the
+    execution-doc-schema-id basis is the honest answer the dead basis
+    needed), and a stored approval (gateway). Terminal records have no
     content-store emitter (the run row carries them), so the gateway kind's
     served specimen here is the approval family."""
     # plugin: the controller descriptor is an admitted device's descriptor.
@@ -1120,17 +1125,23 @@ def test_document_get_serves_origin_per_document_family(
     assert mcp_json == rest_json
     _validate_corpus_output("document_get", rest_json)
 
-    # operator: the binding document (the lattice family; no declared
-    # $schema — the unclassified-fallback basis is the honest answer).
+    # operator: the binding document (the lattice family; fold row 12 —
+    # bootstrap records the validating execution schema's $id at store
+    # time, so the execution-doc-schema-id basis fires; a document the
+    # writer could not classify keeps the honest fallback).
     _, binding_json = _rest(
         gateway, "get", f"/v1/documents/{BINDING_SHA}", None, OBSERVE
     )
     assert binding_json["data"]["origin"]["kind"] == "operator", binding_json
-    assert binding_json["data"]["origin"]["basis"] == "unclassified-fallback"
+    assert binding_json["data"]["origin"]["basis"] == "execution-doc-schema-id"
     assert "document" not in binding_json["data"]["origin"]
     _validate_corpus_output("document_get", binding_json)
 
-    # gateway: a stored approval record (the parity fixture's own family).
+    # gateway: a stored approval record, stored the way production
+    # approvals arrive — operator tooling, no schema identity declared
+    # (fold row 13: the gateway kind derives from the approval binding
+    # shape verify_approval requires, never a hand-written schema_id; the
+    # urn:stg:approval self-declaration lane is gone with the suffix).
     approval_body = {
         "change_id": "chg-origin-census",
         "expected_generation": 1,
@@ -1140,13 +1151,13 @@ def test_document_get_serves_origin_per_document_family(
     raw = json.dumps(approval_body, sort_keys=True).encode()
     approval_sha = hashlib.sha256(raw).hexdigest()
     gateway.content.put_document(
-        raw, approval_sha, approval_body, "urn:stg:approval", NOW_ISO
+        raw, approval_sha, approval_body, "urn:stg:admitted", NOW_ISO
     )
     _, approval_json = _rest(
         gateway, "get", f"/v1/documents/{approval_sha}", None, OBSERVE
     )
     assert approval_json["data"]["origin"]["kind"] == "gateway", approval_json
-    assert approval_json["data"]["origin"]["basis"] == "gateway-family-schema-id"
+    assert approval_json["data"]["origin"]["basis"] == "gateway-approval-binding"
     assert "document" not in approval_json["data"]["origin"]
     _validate_corpus_output("document_get", approval_json)
 
@@ -1220,7 +1231,7 @@ def test_run_check_serves_the_binding_document_origin(
     assert rest_json["ok"], rest_json
     assert rest_json["data"]["origin"] == {
         "kind": "operator",
-        "basis": "unclassified-fallback",
+        "basis": "execution-doc-schema-id",
     }, rest_json
     mcp_json = _call(
         gateway.port,
@@ -1292,11 +1303,14 @@ def test_wire_descriptions_carry_the_template_family(
 ) -> None:
     """Row 1b (issue #450 §3.1): the 17 descriptions are the template
     family — every one carries the version-stamped posture sentence naming
-    interface 0.1.1, the mutating family carries acceptance-vs-completion,
-    run_start/run_cancel carry the outcome_unknown sentence, and the read
-    family carries the observation sentence. The served-vs-vendored
-    equality pin lives in the tools/list test above; this arm pins the
-    family itself, so a revert to one-liners reds here and in the checker."""
+    interface 0.1.1, the run family carries acceptance-vs-completion, the
+    lease family carries the §6 synchronous-reservation rule (fold row 8:
+    leases are synchronous reservations, not runs to poll — the
+    acceptance sentence was false guidance there), run_start/run_cancel
+    carry the outcome_unknown sentence, and the read family carries the
+    observation sentence. The served-vs-vendored equality pin lives in the
+    tools/list test above; this arm pins the family itself, so a revert to
+    one-liners reds here and in the checker."""
     headers = _bearer(OBSERVE)
     status, session = _initialize(gateway.port, headers)
     assert status == 200 and session is not None
@@ -1320,11 +1334,23 @@ def test_wire_descriptions_carry_the_template_family(
     for name in (
         "stg_v1_run_start",
         "stg_v1_run_cancel",
+    ):
+        assert accept in descriptions[name], name
+    for name in (
         "stg_v1_lease_create",
         "stg_v1_lease_renew",
         "stg_v1_lease_release",
     ):
-        assert accept in descriptions[name], name
+        assert accept not in descriptions[name], name
+    assert "synchronous reservation of manual bench authority" in descriptions[
+        "stg_v1_lease_create"
+    ], descriptions["stg_v1_lease_create"]
+    assert "synchronous, and requires the same authenticated owner" in descriptions[
+        "stg_v1_lease_renew"
+    ], descriptions["stg_v1_lease_renew"]
+    assert "synchronous and idempotent" in descriptions[
+        "stg_v1_lease_release"
+    ], descriptions["stg_v1_lease_release"]
     outcome = (
         "A terminal run may carry outcome_unknown: the final record is "
         "missing; wait for terminal evidence, never assume passed."
