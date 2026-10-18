@@ -51,25 +51,61 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 class _HookCensus(HTMLParser):
-    """The §E.1 hook count per ``data-theme`` section of the mockup."""
+    """The §E.1 hook count per ``data-theme`` section of the mockup, with
+    each occurrence's tag and the classes of its ancestors — the census
+    is PLACEMENT-AWARE (the refute fold's F1: a count-conserving move of
+    a hook onto the wrong element is a structural lie, not a pass)."""
+
+    VOID = {"meta", "br", "img", "input", "hr", "link", "line", "rect",
+            "path", "pattern", "polyline"}
 
     def __init__(self) -> None:
         super().__init__()
         self.counts: dict[str, dict[str, int]] = {}
+        #: (theme, hook, tag, ancestors) per hook occurrence, where each
+        #: ancestor is the (tag, class-tuple) pair from the open stack.
+        self.placements: list[
+            tuple[str, str, str, tuple[tuple[str, tuple[str, ...]], ...]]
+        ] = []
+        #: elements carrying the "control" class (the staged-output card)
+        #: and any hook they carry — the cannot_derive surface.
+        self.control_hooks: list[tuple[str, str, tuple[str, ...]]] = []
         self._theme: str | None = None
+        self._stack: list[tuple[str, tuple[str, ...]]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         fields = {key: value for key, value in attrs}
-        classes = set((fields.get("class") or "").split())
+        classes = tuple((fields.get("class") or "").split())
+        class_set = set(classes)
         theme = fields.get("data-theme")
-        if "mock-theme" in classes and theme is not None:
+        if "mock-theme" in class_set and theme is not None:
             self._theme = theme
             self.counts[theme] = {hook: 0 for hook in HOOKS}
+            self._stack.append((tag, classes))
             return
         if self._theme is not None:
             for hook in HOOKS:
-                if hook in classes:
+                if hook in class_set:
                     self.counts[self._theme][hook] += 1
+                    self.placements.append(
+                        (self._theme, hook, tag, tuple(self._stack))
+                    )
+            if "control" in class_set:
+                self.control_hooks.append(
+                    (
+                        self._theme or "",
+                        tag,
+                        tuple(hook for hook in HOOKS if hook in class_set),
+                    )
+                )
+        if tag not in self.VOID:
+            self._stack.append((tag, classes))
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.VOID:
+            return
+        if self._stack:
+            self._stack.pop()
 
 
 def _hook_census() -> dict[str, dict[str, int]]:
@@ -178,6 +214,51 @@ def test_mockup_hook_counts_equal_the_resolved_expectation() -> None:
         assert hooks["bw-reading"] == resolved["reading-tile"], theme
         assert hooks["bw-plot"] == resolved["engineering-plot"], theme
         assert hooks["bw-data-table"] == resolved["data-table"], theme
+
+
+#: The placement contract (the refute fold's F1): each hook names its
+#: §E.1 component ROOT element, and the two container-scoped hooks sit in
+#: their mockup containers — `bw-reading` only inside the readings row,
+#: `bw-plot` only inside the lower grid. The mockup is the spec;
+#: placement is part of the spec.
+_PLACEMENT_TAG: dict[str, str] = {
+    "bw-reading": "article",
+    "bw-alert-bubble": "aside",
+    "bw-plot": "section",
+    "bw-data-table": "table",
+}
+_PLACEMENT_CONTAINER: dict[str, str] = {
+    "bw-reading": "readings",
+    "bw-plot": "lower",
+}
+
+
+def test_every_hook_sits_on_its_contract_root_and_container() -> None:
+    """F1's kill arm: the count census alone was placement-blind — the
+    reviewer moved `bw-reading` off a readings card onto the staged-output
+    card in both themes and every count conserved. The census now records
+    each occurrence's tag and ancestors: every hook is on its §E.1 root
+    element, the container-scoped hooks sit in their containers, and the
+    staged-control card (a cannot_derive surface) carries NO `bw-` hook —
+    a cannot-derive surface must never present as a reading."""
+    parser = _HookCensus()
+    parser.feed(MOCKUP.read_text(encoding="utf-8"))
+    assert parser.placements, "the census recorded no hook placements"
+    for theme, hook, tag, ancestors in parser.placements:
+        assert tag == _PLACEMENT_TAG[hook], (theme, hook, tag)
+        container = _PLACEMENT_CONTAINER.get(hook)
+        if container is not None:
+            # the stack at recording time holds ANCESTORS only (the
+            # current element is appended after the hook check)
+            assert any(
+                container in ancestor_classes
+                for _ancestor_tag, ancestor_classes in ancestors
+            ), (theme, hook, container)
+    # the staged-output card: one per theme, tag section, no hook carried
+    assert len(parser.control_hooks) == 2, parser.control_hooks
+    for theme, tag, carried in parser.control_hooks:
+        assert tag == "section", (theme, tag)
+        assert carried == (), (theme, carried)
 
 
 def test_both_themes_carry_the_identical_hook_census() -> None:

@@ -617,3 +617,44 @@ regeneration; the gateway's `compose_layout_sections` already renders
 (the design's §3 build-time verification — the arm is NOT missing; no
 gateway runtime motion rides this slice); the mockup's existing test arms
 all stay green through the hook pass (nothing weakened).
+
+
+### Refute fold (18 October 2026, post-review)
+
+The adversary pass returned no CRITICAL; the corpus motion and
+copy-never-move survived independent re-execution. Four findings folded:
+
+- **F1 — the A3 census was placement-blind.** The count arms conserved
+  under a structural lie: `bw-reading` moved off a readings card onto the
+  staged-control card (a `cannot_derive` surface that must never present
+  as a reading) kept every count and every test green. The census now
+  records each hook's tag and ancestors and asserts the placement
+  contract — every hook on its §E.1 root element (`bw-reading` article,
+  `bw-alert-bubble` aside, `bw-plot` section, `bw-data-table` table),
+  the container-scoped hooks in their mockup containers (readings row,
+  lower grid), and the staged-control card carrying NO `bw-` hook. The
+  reviewer's mutation now reds (`assert 'section' == 'article'`) while
+  the count arm stays green under it — the hole is closed, demonstrated.
+- **F2 — the body's "No ui-html motion" sentence, corrected here rather
+  than rewritten above.** The RENDERER claim is true (the §E.1 partials
+  pre-exist, `partials.py` untouched, no renderer change), but the arc
+  lands +204/+23 in `packages/ui-html` (the pattern-page composition
+  module and its PATTERNS entry), so the repo's benchweave-ui-html 0.3.0
+  exceeds the published 0.3.0. **RULING: cut benchweave-ui-html 0.3.1
+  with the batched promotion leg** (the SDK `[server]` extra's exact pin
+  moves with it); the divergence is bounded by that leg, never
+  indefinite.
+- **F3 — RULING (a convention for every later bump): a cross-constraints
+  row is RETAINED while its version stays served.** This bump ADDS the
+  0.3.0 row beside the 0.2.0 row instead of amending it away — the L5
+  in-place amendment left 0.2.0-pinned consumers with no plugin-ui
+  requirement (the loader skips rows whose version differs from the
+  resolved pin), and the loader admits both rows, so the safer direction
+  is free. A served pin never loses its constraint.
+- **F4 — named deferral: `series` is optional on `time_series` with
+  exactly one legal value, and its semantics live in the unbuilt SDK
+  expander — a series-less `time_series` document is schema-valid today
+  with undefined expansion behaviour.** Home: the L12 batched SDK
+  widening design, where the expander is built and the field is made
+  required or its absent-semantics pinned. Not changed in this bump (a
+  schema motion here would be a second bite at the widening).

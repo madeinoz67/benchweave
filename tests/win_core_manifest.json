@@ -658,7 +658,7 @@
     },
     "tests/ui_html/test_classref_dc_psu.py": {
       "core": 0,
-      "total": 14
+      "total": 15
     },
     "tests/ui_html/test_classref_page.py": {
       "core": 0,
