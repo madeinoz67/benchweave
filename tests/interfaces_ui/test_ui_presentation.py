@@ -871,10 +871,10 @@ def test_unknown_class_fails_open_to_the_pre_l4_absence_note(
     obligations the descriptor does not create."""
     descriptor = json.loads(_f1_descriptor_raw("f1"))
     descriptor["id"] = "dev.example.scalar"
-    # the unknown-class exemplar ROTATES with the sweep (function_generator
-    # is the L14 slot, unwritten — the fail-open arm's fixture must name a
+    # the unknown-class exemplar ROTATES with the sweep (electronic_load
+    # is the L15 slot, unwritten — the fail-open arm's fixture must name a
     # profile that still has no corpus reference)
-    descriptor["profiles"] = ["otdp.function_generator/1.0.0"]
+    descriptor["profiles"] = ["otdp.electronic_load/1.0.0"]
     descriptor["channels"] = []
     descriptor["actions"] = {}
     descriptor["contracts"] = []
