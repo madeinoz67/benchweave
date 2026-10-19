@@ -3,7 +3,6 @@
 	url = https://github.com/madeinoz67/benchweave-sdk.git
 	# The declared pin (gateway #408's checker reads this): the released
 	# tag whose bytes this branch's pointer names. A pointer move updates
-	# this line in the same commit. v0.13.0 = the class-reference family
-	# sync release (#152's landing, gateway #463), cut at the registration
-	# commit fa94501.
-	pin = v0.15.0
+	# this line in the same commit. v0.16.0 = the interface 0.1.1 sync and
+	# the capture_series rider (#450), cut at the registration commit 9e0449e.
+	pin = v0.16.0
