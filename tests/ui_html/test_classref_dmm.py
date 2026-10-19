@@ -39,7 +39,6 @@ from typing import Any
 
 import pytest
 from benchweave_ui_html import classref, patterns
-
 from classref_census import (
     HOOKS,
     PLACEMENT_CONTAINER,
@@ -61,7 +60,9 @@ def _dmm_census() -> dict[str, dict[str, int]]:
     return hook_census(MOCKUP)
 
 
-def _measure_channels(reference: dict[str, Any], descriptor: dict[str, Any]) -> list[dict[str, Any]]:
+def _measure_channels(
+    reference: dict[str, Any], descriptor: dict[str, Any]
+) -> list[dict[str, Any]]:
     """The channels the reference's channels slot resolves — the role the
     SLOT names (never a literal role string here), declaration order."""
     where_role = str(reference["slots"]["inputs"]["where_role"])

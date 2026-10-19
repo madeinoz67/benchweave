@@ -36,16 +36,12 @@ from typing import Any
 
 import pytest
 from benchweave_ui_html import classref, patterns
-
-from classref_census import (
-    HOOKS,
-    PLACEMENT_CONTAINER as _PLACEMENT_CONTAINER,
-    PLACEMENT_TAG as _PLACEMENT_TAG,
-    HookCensus as _HookCensus,
-    hook_census,
-    load_document as _load,
-    resolve_count as _resolve_count,
-)
+from classref_census import HOOKS, hook_census
+from classref_census import PLACEMENT_CONTAINER as _PLACEMENT_CONTAINER
+from classref_census import PLACEMENT_TAG as _PLACEMENT_TAG
+from classref_census import HookCensus as _HookCensus
+from classref_census import load_document as _load
+from classref_census import resolve_count as _resolve_count
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
