@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>BenchWeave mock — Digital multimeter (class-dmm)</title>
 <style>
-.mock-theme { min-height:100vh; padding:18px; margin-bottom:20px; background:var(--bw-canvas); color:var(--bw-text); }
+.mock-theme { padding:18px; margin-bottom:20px; background:var(--bw-canvas); color:var(--bw-text); }
 /* bw-shipped:tokens — embedded from packages/ui-html assets (drift-guarded) */
 :root {
   --bw-space-1: 0.25rem;
@@ -140,7 +140,7 @@ textarea {
 /* /bw-shipped:globals */
 
     * { box-sizing: border-box; }
-        body { margin: 0; padding: 32px; background: #111a20; color: #edf4f6; }
+        body { margin: 0; padding: 32px; background: var(--bw-canvas); color: var(--bw-text); }
     header { max-width: 1440px; margin: 0 auto 24px; }
     h1 { margin: 0 0 6px; font-size: clamp(1.5rem, 3vw, 2.25rem); }
     header p { margin: 0; color: #9badb6; }
