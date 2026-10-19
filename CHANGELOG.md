@@ -101,6 +101,8 @@ All notable changes to this project will be documented in this file.
 - Row-12 refute corrections addendum (F1, F2)
 - Issue #241 row 12 attempt 2 — deadline-timebase dilation via the F6 services-clock seam
 - Issue #450 fold addendum — owner row call, folded deferrals
+- Commit the F5 saturated-window design record
+- F5 fold addendum — the two-lane refute slate, six corrections
 
 ### Features
 
@@ -204,6 +206,8 @@ All notable changes to this project will be documented in this file.
 - Derive arm-1 contention deadline in-run, floored at 2000 ms
 - Row-12 arm-1 deadline on a dilated services timebase (attempt 2)
 - Fold refute F1 — mirror the arm-1 hang guard onto arm 2
+- F5 saturated window — re-cut the fixture's return margin at 200 ms
+- F5 fold F1 — a scenario-relative saturation gate on the slice
 
 ### Build
 
