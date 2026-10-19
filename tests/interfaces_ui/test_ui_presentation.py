@@ -66,12 +66,12 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Any:
     session = live_session(app)
     with TestClient(app, base_url="http://testserver:8125") as client:
         # The fixture bench's device (startup admission).
-        devices, _ = app.state.ui_operations.device_list(
+        devices = app.state.ui_operations.device_list(
             _identity_for("ui-shell", {"stg:observe"}), "sim-bench", limit=10, cursor=None
         )
         yield SimpleNamespace(
             app=app, client=client, session=session, content=content,
-            device=devices[0],
+            device=devices["items"][0],
         )
     store.close()
 

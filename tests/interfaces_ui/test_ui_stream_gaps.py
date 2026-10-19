@@ -61,11 +61,12 @@ from benchweave.interfaces.ui import _ENV
 from benchweave.interfaces.ui_stream import _bridge_events
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 BENCH_ID = "sim-bench"
 STREAM_ID = "bench.sim-bench"
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface" / "0.1.0"
+CORPUS = active_contract_family("interface")
 IDENT = Identity("p1", "stg", frozenset({"stg:observe"}), 2**31)
 PROBE_MARKER = 'data-bw-event-kind="run_changed"'
 

@@ -38,13 +38,12 @@ from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 VENDORED = json.loads(
-    (
-        Path(__file__).resolve().parents[2]
-        / "standards" / "interface/0.1.0" / "mcp-tools.json"
-    ).read_text(encoding="utf-8")
+    (CORPUS / "mcp-tools.json").read_text(encoding="utf-8")
 )
 VENDORED_TOOLS = {
     t["name"]: t
@@ -136,10 +135,7 @@ def test_served_tool_set_and_schemas_equal_vendored_corpus(seam_app: FastMCP) ->
 
 def test_tool_names_match_catalog_mcp_fields() -> None:
     catalog = json.loads(
-        (
-            Path(__file__).resolve().parents[2]
-            / "standards" / "interface/0.1.0" / "operation-catalog.json"
-        ).read_text(encoding="utf-8")
+        (CORPUS / "operation-catalog.json").read_text(encoding="utf-8")
     )
     with_mcp = {op["mcp_tool"] for op in catalog["operations"] if op["mcp_tool"]}
     assert with_mcp == set(EXPECTED_17)  # admin ops deliberately absent

@@ -11,6 +11,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -42,6 +43,7 @@ from benchweave.registry.authenticity import AuthenticityRejected
 from benchweave.registry.schemas import RegistryRejected
 from benchweave.standards.manifest import StandardsError
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
+from benchweave.vendoring import active_contract_family
 
 # D4 (interface-errata slice): operational context that left the event wire
 # lands here — the closed event def has no free-form channel, so reasons,
@@ -190,54 +192,265 @@ def _resolve_event_evidence(
     )
 
 
-def _log_device_conformance(
+# --- interface 0.1.1 emissions (issue #450: rows 3/5 + D2/F4) -------------------
+#
+# The revision's four wire additions all emit at ONE seam site per surface,
+# shared by both transports (A13): the paged limit echo, the content-origin
+# twin (document_get, run_check, device objects), and the OTDP conformance
+# object (device objects). All are additive-optional in the 0.1.1 corpus.
+
+#: Row 5's gateway kind (fold row 13, issue #450): derived from the
+#: approval document's CONTENT SHAPE — the four-key binding quartet
+#: ``verify_approval`` requires (Decision 7) — never from a writer's
+#: self-declared schema identity: production approvals arrive from
+#: operator tooling that names no schema, so the kind must not depend on
+#: a self-declaration. The retired ``_GATEWAY_SCHEMA_SUFFIXES`` shape
+#: (``urn:stg:approval`` / ``urn:stg:terminal-record``) had no production
+#: writers — approval was hand-crafted test rows only, and the
+#: terminal-record family has no content-store emitter (the run row
+#: carries terminal records).
+_APPROVAL_BINDING_KEYS = frozenset(
+    {"change_id", "expected_generation", "approver_principal", "policy_version"}
+)
+
+
+@lru_cache(maxsize=1)
+def _descriptor_required_keys() -> frozenset[str]:
+    """The ACTIVE descriptor schema's root required keys — the structural
+    mark of descriptor-shaped content (narrow-fold row B, manifest-derived
+    like the family sets, never a hand-listed shape rule). A document
+    carrying ALL of them is descriptor-shaped whatever its store age or
+    stored identity, so the gateway kind is structurally unreachable for
+    it — the laundering row 2 closed for stamped rows, extended to vintage
+    rows by shape. An unreadable corpus degrades to the empty set (the
+    guard becomes a no-op, never a false gateway refusal of its own)."""
+    root = active_contract_family("otdp")
+    try:
+        schema = json.loads(
+            (root / "otdp-device-descriptor.schema.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):  # pragma: no cover - a vanished corpus root
+        return frozenset()
+    required = schema.get("required", [])
+    keys = frozenset(str(key) for key in required if isinstance(key, str))
+    return keys or frozenset()
+
+
+def _is_approval_document(parsed: dict[str, Any]) -> bool:
+    """The approval binding shape: all four binding keys present (extra
+    keys allowed) AND the content is not descriptor-shaped — the exact set
+    ``verify_approval`` validates (final-fold row 3 aligned the two). The
+    shape conjunct is narrow-fold row B's structural closure: a
+    descriptor-shaped document can never wear the gateway kind, regardless
+    of store age or stored identity (row 2 closed the stamped lane; this
+    closes the vintage lane the refute reopened)."""
+    return _APPROVAL_BINDING_KEYS.issubset(parsed) and not (
+        _descriptor_required_keys().issubset(parsed)
+    )
+
+
+def _require_integer_page_limit(operation: str, limit: int) -> None:
+    """Fold row 15 (issue #450): refuse a non-integer page limit as typed
+    ``invalid_request`` BEFORE any slicing. Draft 2020-12's ``integer``
+    accepts an integral float, and ``rows[:2.0]`` then raised a raw
+    TypeError — the seam owns the refusal, not the store. What this guard
+    does not catch: out-of-bounds integers and the bool form — the corpus
+    schema's own bounds (minimum 1, maximum the published page cap)
+    refuse those at the same validate step (bool is not a JSON integer)."""
+    if not isinstance(limit, int) or isinstance(limit, bool):
+        raise errors.OperationFailure(
+            errors.failure(
+                "invalid_request",
+                f"{operation}: limit must be an integer, "
+                f"got {type(limit).__name__}",
+            )
+        ) from None
+
+
+@lru_cache(maxsize=1)
+def _family_schema_ids(standard_id: str, filename: str) -> frozenset[str]:
+    """One retained corpus family's schema ``$id`` set (manifest-derived —
+    the corpus root follows the manifest's active version, and every
+    retained version dir's schema names its own URN; never a version
+    literal). Cached per (standard, filename): the corpus moves only at
+    bumps, and a test's scratch corpus re-points ``_otdp_corpus`` rather
+    than this set. The OTDP set feeds the descriptor-schema-id basis —
+    reachable on schema-valid state since fold row 12 (the bootstrap
+    writer stamps the family identity at store time; the cache-only
+    census cell exercises it), not only through a legacy row's
+    self-declared URN."""
+    root = active_contract_family(standard_id).parent
+    try:
+        candidates = sorted(root.glob(f"*/{filename}"))
+    except OSError:  # pragma: no cover - a vanished corpus root
+        return frozenset()
+    ids: set[str] = set()
+    for path in candidates:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get("$id", "")
+        except (OSError, ValueError):
+            continue
+        if isinstance(value, str) and value:
+            ids.add(value)
+    return frozenset(ids)
+
+
+def _document_origin(
+    store: Store, doc: dict[str, Any], sha: str
+) -> dict[str, Any]:
+    """Row 5/D2 (interface 0.1.1): the content-origin twin — a pure
+    derivation over the stored row plus the admitted inventory (no store
+    migration; issue #450 §3.4's ordered rules, total over the served set).
+    Final-fold row 2 fixed the ORDER, not just the tuning, and narrow-fold
+    row B extended the closure from writer scope to content scope: STORE
+    EVIDENCE (the digest join and the writer-recorded family identities)
+    decides before any content-shape rule can, and DESCRIPTOR-SHAPED
+    content (the schema's own required keys all present) can never
+    classify gateway at all — whatever its store age or stored identity
+    (at the final-fold base a stamped cache-only descriptor carrying the
+    approval quartet served gateway; the narrow refute reopened the same
+    laundering through a VINTAGE unstamped row, and this closes both):
+
+    1. ``plugin`` — the row's sha256 equals an admitted device's descriptor
+       digest (the CON-10 projection join), or its schema_id names the
+       descriptor family: the bootstrap writer RECORDS that identity at
+       store time for descriptor-family members (fold row 12 — a FAMILY
+       claim, not a per-document validation claim; the stability arms pin
+       that vintage ``$id`` rows classify identically), and a legacy row
+       that itself declared a vendored descriptor URN matches the same set
+       (the disclosed over-marking direction). Plugin results carry the
+       descriptor ref triple when the descriptor declares a version
+       (final-fold row 4: a versionless descriptor serves no fabricated
+       version — the triple is omitted).
+    2. ``operator`` — the schema_id names the execution family (the lattice
+       writer records the family's schema identity at store time — fold
+       row 12; a legacy self-declared match reads the same set); anything
+       else falls to 3.
+    3. ``gateway`` — the document carries the approval binding shape (the
+       four-key quartet ``verify_approval`` validates) AND is not
+       descriptor-shaped; reached only when no store evidence named a
+       family, which is exactly the operator-tooling approval shape (no
+       in-tree writer exists — the fold's row-13 finding).
+    4. ``operator``/``unclassified-fallback`` — the honest residual (kind
+       still served — nothing serves unkinded).
+
+    The kind is the gateway's derivation, never the document author's
+    claim; over-marking (an operator document carrying a descriptor URN)
+    is the conservative direction, disclosed in the schema description."""
+    schema_id = str(doc["schema_id"])
+    parsed = doc["content"]
+    if sha in store.device_descriptor_digests():
+        origin: dict[str, Any] = {"kind": "plugin", "basis": "admitted-device-ref"}
+        triple = _descriptor_triple(parsed, sha)
+        if triple:
+            origin["document"] = triple
+        return origin
+    if schema_id in _family_schema_ids("otdp", "otdp-device-descriptor.schema.json"):
+        origin = {"kind": "plugin", "basis": "descriptor-schema-id"}
+        triple = _descriptor_triple(parsed, sha)
+        if triple:
+            origin["document"] = triple
+        return origin
+    if schema_id in _execution_schema_ids():
+        return {"kind": "operator", "basis": "execution-doc-schema-id"}
+    if _is_approval_document(parsed):
+        return {"kind": "gateway", "basis": "gateway-approval-binding"}
+    return {"kind": "operator", "basis": "unclassified-fallback"}
+
+
+def _declared_version(parsed: dict[str, Any]) -> str | None:
+    """The version a document declares for itself — legacy ``version``
+    first, ``descriptor_version`` for full-form, the one precedence every
+    serving site applies so they cannot disagree (narrow-fold row A). A
+    NON-STRING value declares no version (narrow-fold row E): host state
+    is never stringified into the wire — the version is omitted, per row
+    4's rule."""
+    for key in ("version", "descriptor_version"):
+        value = parsed.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _descriptor_triple(parsed: dict[str, Any], sha: str) -> dict[str, str]:
+    """The ``{id, version, sha256}`` ref triple for a plugin-classified
+    document — the same key precedence ``_device_projection`` applies,
+    through the one ``_declared_version`` helper. Final-fold row 4: a
+    versionless (or non-string-version) descriptor serves NO fabricated
+    version — the triple is empty and the origin omits ``document`` (the
+    ref requires a version; the schema description states the rule)."""
+    version = _declared_version(parsed)
+    if version is None:
+        return {}
+    return {
+        "id": str(parsed.get("id", sha)),
+        "version": version,
+        "sha256": sha,
+    }
+
+
+@lru_cache(maxsize=1)
+def _execution_schema_ids() -> frozenset[str]:
+    """The execution corpus's document schema ``$id`` set (the operator
+    basis's family identity; manifest-derived like the OTDP set)."""
+    root = active_contract_family("execution").parent
+    try:
+        candidates = sorted(root.glob("*/*.schema.json"))
+    except OSError:  # pragma: no cover - a vanished corpus root
+        return frozenset()
+    ids: set[str] = set()
+    for path in candidates:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get("$id", "")
+        except (OSError, ValueError):
+            continue
+        if isinstance(value, str) and value:
+            ids.add(value)
+    return frozenset(ids)
+
+
+def _device_conformance(
     device_id: Any,
     descriptor: dict[str, Any],
     *,
     acknowledged_pins: dict[str, str] | None = None,
-) -> None:
-    """VR-16's API-view channel for the conformance class (issue #217).
-
-    The wire's device object is contract-frozen (interface 0.1.0's closed
-    def — an interface bump this slice does not make), so a non-conforming
-    stored pin surfaces through the D4-sanctioned free-form channel: the
-    server-side log. The derivation itself is
-    :func:`benchweave.control.documents.classify_descriptor_pin` — total,
-    pure over the committed policy block, and the same classifier admission
-    enforces. A non-conforming pin whose EXACT version is carried in
-    ``acknowledged_pins`` (device_id -> acked pin, the admission record's
-    mapping) was operator-acknowledged at load and does not warn — the
-    warning is for the unacknowledged state; an ack naming a different pin
-    does not apply (review fold R4). Production threading is the device
-    row's persisted ``acknowledgement_json`` (issue #219, D11): the
-    admission record's own copy of the acknowledgement this load ran
-    behind, read back by ``Operations._device_projection``."""
+) -> dict[str, Any] | None:
+    """F4 (interface 0.1.1; CON-10's promised wire field): classify the
+    stored OTDP pin ONCE and serve both consumers — the wire ``conformance``
+    object (closed enums only; the VR-37 ``note`` stays server-side) and
+    the VR-16 unacknowledged-mismatch warning. Presence rule: the field is
+    served exactly when the descriptor row carries an ``otdp_version``
+    pin — legacy pre-dialect rows omit it (R10), and malformed governance
+    bytes omit it with the existing named log line (the read path never
+    crashes on governance bytes; fail-closed belongs at admission)."""
     pin_value = descriptor.get("otdp_version")
     if not isinstance(pin_value, str) or not pin_value:
-        # A legacy pre-full-form row carries no pin: nothing to classify
-        # (review fold R10 — no "pins None" spam for pre-dialect rows).
-        return
+        return None
     try:
         pin = classify_descriptor_pin(pin_value)
     except StandardsError as exc:
-        # Malformed governance bytes must not take the devices surface down
-        # (R10): fail-closed belongs at admission, not on the read path —
-        # the derivation degrades to a named log line, the D4 channel.
         _LOG.error(
             "device_conformance_unavailable: device %s — %s", device_id, exc
         )
-        return
-    if pin.conformance != "non-conforming":
-        return
+        return None
+    wire: dict[str, Any] = {
+        "otdp_version": pin.otdp_version,
+        "status": pin.status,
+        "conformance": pin.conformance,
+        "deprecated": bool(pin.deprecated),
+    }
     acked = (acknowledged_pins or {}).get(str(device_id))
-    if acked == pin.otdp_version:
-        return
-    _LOG.warning(
-        "device_conformance_mismatch: device %s pins %s — %s",
-        device_id,
-        pin.otdp_version,
-        pin.note,
-    )
+    wire["acknowledged"] = acked == pin.otdp_version
+    if pin.conformance == "non-conforming" and wire["acknowledged"] is False:
+        # The VR-16 warning channel, unchanged in semantics (R4: an ack
+        # naming a different pin does not suppress the warning).
+        _LOG.warning(
+            "device_conformance_mismatch: device %s pins %s — %s",
+            device_id,
+            pin.otdp_version,
+            pin.note,
+        )
+    return wire
 
 
 def append_bench_event(
@@ -373,9 +586,14 @@ class Operations:
 
     def bench_list(
         self, identity: Identity, *, limit: int, cursor: str | None
-    ) -> tuple[list[dict[str, Any]], str | None]:
+    ) -> dict[str, Any]:
+        """One bench page as the contract ``data`` object (interface 0.1.1
+        row 3): the seam emits the effective ``limit`` beside the page —
+        one emission site shared by both adapters, which stop constructing
+        the page object and pass this dict through (A13)."""
         require_permission(identity, "observe")
         self._validator.validate("bench_list", {"limit": limit, "cursor": cursor})
+        _require_integer_page_limit("bench_list", limit)
         offset = self._cursor_offset(identity.principal, cursor, "benches")
         rows, has_more = self._store.list_benches(limit=limit, offset=offset)
         items = [self._bench_projection(row) for row in rows]
@@ -384,7 +602,7 @@ class Operations:
             if has_more
             else None
         )
-        return items, next_cursor
+        return {"items": items, "next_cursor": next_cursor, "limit": limit}
 
     def bench_get(self, identity: Identity, bench_id: str) -> dict[str, Any]:
         require_permission(identity, "observe")
@@ -396,11 +614,14 @@ class Operations:
 
     def device_list(
         self, identity: Identity, bench_id: str, *, limit: int, cursor: str | None
-    ) -> tuple[list[dict[str, Any]], str | None]:
+    ) -> dict[str, Any]:
+        """One device page as the contract ``data`` object, with the
+        effective-limit echo (interface 0.1.1 row 3; one seam site)."""
         require_permission(identity, "observe")
         self._validator.validate("device_list", {
             "bench_id": bench_id, "limit": limit, "cursor": cursor,
         })
+        _require_integer_page_limit("device_list", limit)
         stream = f"devices:{bench_id}"
         offset = self._cursor_offset(identity.principal, cursor, stream)
         rows, has_more = self._store.list_devices(bench_id, limit=limit, offset=offset)
@@ -412,7 +633,7 @@ class Operations:
             if has_more
             else None
         )
-        return items, next_cursor
+        return {"items": items, "next_cursor": next_cursor, "limit": limit}
 
     def device_get(self, identity: Identity, bench_id: str, device_id: str) -> dict[str, Any]:
         require_permission(identity, "observe")
@@ -433,12 +654,26 @@ class Operations:
         if doc is None:
             raise errors.OperationFailure(errors.failure("not_found", f"document {sha256}"))
         return {
-            "document": {"id": doc["content"].get("id", sha256),
-                         "version": str(doc["content"].get("version", "1")),
-                         "sha256": sha256},
+            # Narrow-fold row A: the top-level ref and the origin triple
+            # read ONE declared version (the shared precedence helper) —
+            # the two sites cannot disagree, and a versionless descriptor
+            # omits the key here too instead of fabricating "1".
+            "document": {
+                "id": str(doc["content"].get("id", sha256)),
+                **(
+                    {"version": version}
+                    if (version := _declared_version(doc["content"])) is not None
+                    else {}
+                ),
+                "sha256": sha256,
+            },
             "schema_id": doc["schema_id"],
             "content": doc["content"],
             "original_utf8_base64": base64.b64encode(doc["raw_bytes"]).decode(),
+            # Row 5 (interface 0.1.1): the content-origin twin, built
+            # unconditionally by this one emission site — there is no
+            # silent marker-less success path.
+            "origin": _document_origin(self._store, doc, sha256),
         }
 
     def artifact_read(
@@ -505,6 +740,7 @@ class Operations:
         self._validator.validate("events_get", {
             "bench_id": bench_id, "after": after, "limit": limit,
         })
+        _require_integer_page_limit("events_get", limit)
         stream = f"bench.{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
         if oldest is None and self._store.get_bench(bench_id) is None:
@@ -548,6 +784,10 @@ class Operations:
             "stream_id": stream,
             "oldest_sequence": oldest or "0",
             "current_sequence": current or "0",
+            # Interface 0.1.1 row 3: the effective-limit echo, emitted at
+            # the seam (the adapter clamp already happened; ``limit`` here
+            # IS the effective value).
+            "limit": limit,
         }
 
     # --- control: runs ---------------------------------------------------------
@@ -555,7 +795,7 @@ class Operations:
     def run_check(
         self, identity: Identity, bench_id: str, binding_ref: dict[str, Any]
     ) -> dict[str, Any]:
-        """Advisory preflight (interface/0.1.0 run_check): does the stored
+        """Advisory preflight (interface/0.1.1 run_check): does the stored
         binding document name this bench, and are its pinned documents
         present? No reservation, no device I/O; never an admission token."""
         require_permission(identity, "control")
@@ -603,12 +843,20 @@ class Operations:
                             "reason": f"pinned document {pin_sha} is not stored",
                         }
                     )
-        return {
+        result: dict[str, Any] = {
             "valid": not findings,
             # Report the same canonical authority the run_start fence reads.
             "generation": self._store.current_generation(bench_id),
             "findings": findings,
         }
+        if document is not None:
+            # D2 leg 2 (interface 0.1.1): the origin twin of the checked
+            # binding document — the same pure derivation as document_get,
+            # applied to the row this body already fetched. An unstored
+            # binding has no row to derive from; the optional field is
+            # absent, never fabricated.
+            result["origin"] = _document_origin(self._store, document, sha)
+        return result
 
     def run_start(
         self,
@@ -1284,6 +1532,18 @@ class Operations:
             raise errors.OperationFailure(
                 errors.failure("forbidden", "approval does not bind this change+generation")
             )
+        if not str(body.get("policy_version", "")).strip():
+            # Final-fold row 3 (issue #450): the binding set this method
+            # documents is four keys, and the origin derivation's quartet
+            # matches it — a minted-token approval missing policy_version
+            # was accepted while the derivation refused it the gateway
+            # kind (accepted-but-unmarked). The validation and the
+            # derivation now agree on all four.
+            raise errors.OperationFailure(
+                errors.failure(
+                    "forbidden", "approval does not bind its policy version"
+                )
+            )
         if approver_token is None:
             raise errors.OperationFailure(
                 errors.failure("forbidden", "approval token rejected: missing_token")
@@ -1611,17 +1871,14 @@ class Operations:
         # ``version``. The "1" tail is the pre-dialect fallback for rows
         # predating both — never fabricated for a full-form row.
         version = descriptor.get("version") or descriptor.get("descriptor_version")
-        # VR-16's API-view surface (issue #217): the device's conformance
-        # class derives from the stored pin against the committed policy
-        # block (total — a pin a later policy motion retired READS here,
-        # never crashes). The wire object is contract-frozen (interface
-        # 0.1.0's closed device def — an interface bump this slice does not
-        # make), so a non-conforming derivation surfaces through D4's
-        # sanctioned free-form channel: the server-side log. The wire field
-        # lands with the interface lane. The acknowledged-pin map comes
-        # from the ROW (issue #219, D11): the admission record's persisted
-        # acknowledgement — pure over the row, and a corrupt record reads
-        # as unacknowledged (the conservative warning direction).
+        # VR-16's API-view surface (issue #217), carried to the wire with
+        # interface 0.1.1 (issue #450 F4 — the CON-10 amendment's promised
+        # field): the conformance object is the Q6 classification of the
+        # stored pin, present iff the descriptor pins an otdp_version.
+        # The acknowledged-pin map comes from the ROW (issue #219, D11):
+        # the admission record's persisted acknowledgement — pure over the
+        # row, and a corrupt record reads as unacknowledged (the
+        # conservative warning direction).
         acknowledged: dict[str, str] | None = None
         record_text = row.get("acknowledgement_json")
         if record_text:
@@ -1630,8 +1887,10 @@ class Operations:
                 acknowledged = {str(row["device_id"]): str(record["otdp_version"])}
             except (KeyError, TypeError, ValueError):
                 acknowledged = None
-        _log_device_conformance(row.get("device_id"), descriptor, acknowledged_pins=acknowledged)
-        return {
+        conformance = _device_conformance(
+            row.get("device_id"), descriptor, acknowledged_pins=acknowledged
+        )
+        device: dict[str, Any] = {
             "device_id": row["device_id"],
             "generation": row["generation"],
             "profiles": json.loads(row["profiles_json"]),
@@ -1641,7 +1900,15 @@ class Operations:
                 "sha256": hashlib.sha256(descriptor_text.encode()).hexdigest(),
             },
             "identity_state": row["identity_state"],
+            # D2 leg 1 (interface 0.1.1): the constant content-origin twin.
+            # Every device row IS an admitted descriptor, so the derivation
+            # is a constant — and the document sub-object is OMITTED here
+            # (the adjacent descriptor field already carries the triple).
+            "origin": {"kind": "plugin", "basis": "admitted-device-ref"},
         }
+        if conformance is not None:
+            device["conformance"] = conformance
+        return device
 
     def _cursor_offset(self, principal: str, cursor: str | None, stream: str) -> int:
         if cursor is None:

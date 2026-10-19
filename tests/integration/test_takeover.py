@@ -48,9 +48,11 @@ from benchweave.content.store import ContentStore
 from benchweave.interfaces import errors
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import scoped_request_key
+from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 NOW = "2026-09-12T00:00:00Z"  # seam_control's frozen clock
 OTHER_BENCH = "sim-bench-two"  # a wrong-bench lease target (store-seeded)
 

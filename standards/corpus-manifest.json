@@ -4,7 +4,7 @@
     "otdp": "0.2.3",
     "registry": "0.1.3",
     "execution": "0.2.0",
-    "interface": "0.1.0",
+    "interface": "0.1.1",
     "mcp": "2026-07-28",
     "adapter_api": "1.1",
     "note": "Standards reset to 0.1.0 on 2026-09-16 as the governance starting point; prior ad-hoc versions live in git history."
@@ -171,6 +171,36 @@
       "path": "interface/0.1.0/operation-catalog.json",
       "source": "docs/interface-v1.1.1/operation-catalog.json",
       "sha256": "1ca993619658e45d0450b0f9862e86a80832a7b684ebebf6fd3c6c8cfdefe18f"
+    },
+    {
+      "path": "interface/0.1.1/examples/mcp-start-exchange.json",
+      "source": "standards/interface/0.1.0/examples/mcp-start-exchange.json",
+      "sha256": "13a2d04b7969444ba0034c5ae38299bedfcd759213cf0cca37205ef2c0eac893"
+    },
+    {
+      "path": "interface/0.1.1/examples/operation-vectors.json",
+      "source": "standards/interface/0.1.0/examples/operation-vectors.json",
+      "sha256": "eb63237b3ffa9e1fc3a50959b14aea9fa7efff7fbc82d94472b79a4200588009"
+    },
+    {
+      "path": "interface/0.1.1/interface.schema.json",
+      "source": "standards/interface/0.1.0/interface.schema.json",
+      "sha256": "58e443cb9aa2b5a1d12ee74acb37f91994ccf65947d9a11b87ea770274b1a001"
+    },
+    {
+      "path": "interface/0.1.1/mcp-tools.json",
+      "source": "standards/interface/0.1.0/mcp-tools.json",
+      "sha256": "5e3de1b0cc2faf4de5c3f08b6e06558c7b9980dc91a21b8ba3a89cdb1a18996a"
+    },
+    {
+      "path": "interface/0.1.1/openapi.json",
+      "source": "standards/interface/0.1.0/openapi.json",
+      "sha256": "cc168f1bbc0007431e372076d9dd3e6f59cfba16ed24ad4bb05ff1b631711663"
+    },
+    {
+      "path": "interface/0.1.1/operation-catalog.json",
+      "source": "standards/interface/0.1.0/operation-catalog.json",
+      "sha256": "05bfeec996b0d23f99d8f4696f60d5073e21367aecd704c2dccaf7fd004d5df4"
     },
     {
       "path": "otdp/0.1.0/device-profile-catalog.json",

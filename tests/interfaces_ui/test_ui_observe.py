@@ -90,7 +90,7 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Any:
         )
     )
     with TestClient(app, base_url="http://testserver:8125") as client:
-        devices, _ = app.state.ui_operations.device_list(
+        devices = app.state.ui_operations.device_list(
             Identity(
                 principal="ui-shell",
                 audience="stg",
@@ -125,7 +125,7 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Any:
             session=session,
             control=control,
             content=content,
-            device=devices[0],
+            device=devices["items"][0],
         )
     store.close()
 

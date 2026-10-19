@@ -320,17 +320,17 @@ See the [architecture closure register](architecture-closure.md) for review disp
 
 ## 20. REST and MCP interface baseline
 
-The [interface contract 0.1.0](../standards/interface/0.1.0/interface-contract.md) specifies 20 REST operations and 17 MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
+The [interface contract 0.1.1](../standards/interface/0.1.1/interface-contract.md) specifies 20 REST operations and 17 MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
 
 Discovery and observation read retained metadata and evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
 
 Administrative changes are REST-only, independently authorised and constrained to a safe boundary. The control interface cannot fabricate its own approval or directly bypass policy with raw instrument commands. Authentication tokens, protocol request IDs and bench authority remain distinct concepts.
 
-The [interface review scenarios](../standards/interface/0.1.0/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
+The [interface review scenarios](../standards/interface/0.1.1/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.2.3, adapter API 1.1, registry 0.1.3, execution 0.2.0 and interface 0.1.0. The MCP transport is pinned to 2026-07-28. The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.2.3, adapter API 1.1, registry 0.1.3, execution 0.2.0 and interface 0.1.1. The MCP transport is pinned to 2026-07-28. The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
 The [registry composition review](acceptance/registry-composition-review.md) resolves 16 reuse and dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces 26 normal and failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 

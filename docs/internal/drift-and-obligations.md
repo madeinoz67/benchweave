@@ -14,13 +14,13 @@ and remain the reviewer's job.
 ## "If a PR touches X, it must also do Y"
 
 1. **An MCP tool change** (tool set, parameters, output schema) 🪝 → the vendored corpus is
-   the authority: `standards/interface/0.1.0/mcp-tools.json` plus any schema it references.
+   the authority: `standards/interface/0.1.1/mcp-tools.json` plus any schema it references.
    The gateway pins tool schemas verbatim to the corpus (invariants CON-3), so a gateway
    change and a corpus change cannot land separately — normative standards changes start
    in this repository and sync out to the SDK. If the operation surface moved,
    `operation-catalog.json` moves too.
 
-2. **An API-visible change** 🪝 → `standards/interface/0.1.0/openapi.json` (and
+2. **An API-visible change** 🪝 → `standards/interface/0.1.1/openapi.json` (and
    `interface.schema.json` when the envelope changes). There is no spec linter in CI —
    field-level drift is the reviewer's eye, not a gate.
 
@@ -306,7 +306,7 @@ and remain the reviewer's job.
     DESCRIPTOR declarations are inside the gated plugins scope as
     registered authored data (the register row names them);
     (h) live authority pointers that name one versioned path as THE
-    authority — obligations 1-2 above (`standards/interface/0.1.0/…`) and
+    authority — obligations 1-2 above (`standards/interface/0.1.1/…`) and
     the `drift-guard.mjs` hook advice text that repeats them; motion: those
     obligations' in-arc sweeps (an interface bump re-points them); these
     are PROSE pointers in this doc, inside the docs scope's excluded

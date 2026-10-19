@@ -28,18 +28,15 @@ import json
 import threading
 import time
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from mcp_types.version import LATEST_HANDSHAKE_VERSION
 
+from benchweave.vendoring import active_contract_family
+
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
 vendored: dict[str, Any] = json.loads(
-    (
-        Path(__file__).resolve().parents[2]
-        / "standards"
-        / "interface/0.1.0"
-        / "mcp-tools.json"
-    ).read_text(encoding="utf-8")
+    (active_contract_family("interface") / "mcp-tools.json").read_text(encoding="utf-8")
 )
 
 

@@ -4,7 +4,7 @@ BenchWeave is the project name for the Smart Test Gateway architecture work.
 
 This repository carries the BenchWeave implementation for packages WP01 to WP07. It also carries the frozen architecture and PoC and MVP planning documents. Implementation flows from the PRD and delivery plan in this folder, with architecture documents treated as contracts rather than informal notes.
 
-**Current status (updated 2026-09-14):** interface 0.1.0 is live on the gateway side. It has 20 REST routes and 17 MCP tools over FastAPI and FastMCP on one core-operations seam. Parity between REST and MCP is proven. SIGKILL event recovery is proven. The change kinds for registry admission and activation are not reachable without a registry session. OAuth and TLS are out of PoC scope. Both limits are disclosed in the [compatibility record](compatibility.md). The `feature/ui` line adds the workbench style guide for Layered Precision. It also adds the SDK's simulation-only plugin UI preview workflow. The workflow has a bundled renderer, a preview server and a Click, Rich and Textual CLI.
+**Current status (updated 2026-10-18):** interface 0.1.1 is live on the gateway side. It has 20 REST routes and 17 MCP tools over FastAPI and FastMCP on one core-operations seam. Parity between REST and MCP is proven. SIGKILL event recovery is proven. The change kinds for registry admission and activation are not reachable without a registry session. OAuth and TLS are out of PoC scope. Both limits are disclosed in the [compatibility record](compatibility.md). The `feature/ui` line adds the workbench style guide for Layered Precision. It also adds the SDK's simulation-only plugin UI preview workflow. The workflow has a bundled renderer, a preview server and a Click, Rich and Textual CLI.
 
 ## Start Here
 
@@ -20,7 +20,7 @@ This repository carries the BenchWeave implementation for packages WP01 to WP07.
 - [Contributor publishing design record](implementation-planning/10-contributor-publishing-design.md)
 - [Publishing guide](publishing-guide.md)
 - [Execution v0.2.0](../standards/execution/0.2.0/execution-contract.md)
-- [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)
+- [Interface v0.1.1](../standards/interface/0.1.1/interface-contract.md)
 - [Plugin UI v0.4.0](../standards/plugin-ui/0.4.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.2.0/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
 - [Acceptance closure](acceptance/end-to-end-review.md)
 

@@ -118,7 +118,10 @@ from benchweave.state.store import Store
 from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CONTRACTS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): the corpus family resolves through the vendoring
+# helper (manifest-active), never a version literal — the bump moves zero
+# test literals here (#455's _validate_output_def precedent, made the rule).
+CONTRACTS = active_contract_family("interface")
 CATALOG = json.loads((CONTRACTS / "operation-catalog.json").read_text(encoding="utf-8"))
 VENDORED_TOOLS = {
     t["name"]: t
@@ -147,8 +150,9 @@ def _validate_output_def(op_name: str, envelope: dict[str, Any]) -> None:
     ``_validate_event_def``; the schema dir is ``active_contract_family``
     (derived from the corpus manifest, never a version literal) so the arm
     survives the interface bump unedited and cannot lag the active corpus.
-    What it does NOT cover: the paged ``*_list``/``events_get`` output defs
-    (row 4's named surface is the run/lease family; pages are D5)."""
+    D5 (issue #450 §3-D5) closed the named gap: the paged ``*_list``/
+    ``events_get`` output defs validate through this same helper — the
+    corpus anchors every captured success envelope this suite reads."""
     from jsonschema import Draft202012Validator
 
     family = active_contract_family("interface")
@@ -659,8 +663,17 @@ assert set(EXACT_CASES) == {op["name"] for op in SHARED_OPS} - WRITE_LIFECYCLE_O
 )
 # Row 4 (issue #450): the run/lease ops whose served envelopes anchor to the
 # corpus output defs inside the EXACT_CASES matrix. The write-lifecycle ops'
-# dedicated tests carry their own arms; the paged pages are D5's deferral.
-_CORPUS_OUTPUT_OPS = {"run_cancel", "run_check", "run_find", "run_get"}
+# dedicated tests carry their own arms. D5 (§3-D5) folded the paged pages
+# in: bench_list/device_list/events_get validate through the same helper.
+_CORPUS_OUTPUT_OPS = {
+    "bench_list",
+    "device_list",
+    "events_get",
+    "run_cancel",
+    "run_check",
+    "run_find",
+    "run_get",
+}
 
 
 @pytest.mark.parametrize("op_name", sorted(EXACT_CASES))
@@ -689,10 +702,20 @@ def test_rest_and_mcp_agree_per_operation(
     # Contract §2: MCP structuredContent carries the same STG result — the
     # FULL data envelope, field for field, not a shape sample.
     assert mcp_json == rest_json, op_name
-    # Row 4 (issue #450): the run-family envelopes anchor to the corpus
-    # output defs, not only to each other (paged pages are D5's deferral).
+    # Row 4 + D5 (issue #450): the captured envelopes anchor to the corpus
+    # output defs, not only to each other (CON-5/A13: the WP07 lesson).
     if op_name in _CORPUS_OUTPUT_OPS:
         _validate_corpus_output(op_name, rest_json)
+    # Row 3 (issue #450 §3.3): the echo's teeth. ``limit`` is schema-optional
+    # (the PATCH pattern), so schema validity alone cannot prove the echo —
+    # presence and integer type are asserted per page, on the REST side; the
+    # full-envelope equality above carries the same field to MCP (one seam).
+    if op_name in {"bench_list", "device_list", "events_get"}:
+        limit = rest_json["data"]["limit"]
+        assert isinstance(limit, int) and not isinstance(limit, bool), (
+            op_name,
+            limit,
+        )
 
 
 # --- D1: run_get tier pinned at observe (catalog authority) ------------------
@@ -955,6 +978,410 @@ def test_corpus_output_mirror_catches_seam_shape_fault(
         str(sub) for sub in (caught.value.context or ())
     )
     assert "revision" in detail, caught.value
+
+
+# --- rows 1b/2/3/5 + D2/D4/F4 (issue #450 §3, the folded revision) ------------
+
+
+def test_paged_limit_echo_is_the_clamped_value_on_both_transports(
+    gateway: SimpleNamespace,
+) -> None:
+    """Row 3 (issue #450 §3.3): the effective-limit echo. A request above
+    ``max_page_size`` clamps at the adapter, and BOTH transports serve the
+    clamped value beside the page — one seam emission (A13), so the two
+    envelopes agree; the clamp itself is the arm's oracle (5000 -> 1000)."""
+    for tool, rest_path, arguments in (
+        ("stg_v1_bench_list", "/v1/benches?limit=5000&cursor=", {"limit": 5000}),
+        (
+            "stg_v1_device_list",
+            f"/v1/benches/{BENCH}/devices?limit=5000&cursor=",
+            {"bench_id": BENCH, "limit": 5000},
+        ),
+        (
+            "stg_v1_events_get",
+            f"/v1/benches/{BENCH}/events?after=&limit=5000",
+            {"bench_id": BENCH, "after": None, "limit": 5000},
+        ),
+    ):
+        _, rest_json = _rest(gateway, "get", rest_path, None, OBSERVE)
+        mcp_json = _call(gateway.port, tool, arguments, OBSERVE)
+        assert rest_json["ok"] and mcp_json["ok"], (tool, rest_json, mcp_json)
+        assert rest_json["data"]["limit"] == LIMITS["max_page_size"], tool
+        assert mcp_json == rest_json, tool
+        _validate_corpus_output(
+            {
+                "stg_v1_bench_list": "bench_list",
+                "stg_v1_device_list": "device_list",
+                "stg_v1_events_get": "events_get",
+            }[tool],
+            rest_json,
+        )
+
+
+def test_paged_corpus_arms_catch_planted_page_faults(
+    gateway: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D5's teeth (issue #450 §3-D5): the paged corpus arms refuse, by name,
+    the three planted page faults — a dropped ``next_cursor``, a string
+    ``limit``, and a page served without the echo at all. An arm that passes
+    its planted fault reads the wrong def or lacks the presence assert —
+    that state reds here, not in review."""
+    from jsonschema.exceptions import ValidationError
+
+    import benchweave.interfaces.operations as operations_module
+
+    original = operations_module.Operations.bench_list
+
+    def without_cursor(
+        self: Operations, identity: Any, *, limit: int, cursor: str | None
+    ) -> dict[str, Any]:
+        """Fault 1: the page minus ``next_cursor``."""
+        page = dict(original(self, identity, limit=limit, cursor=cursor))
+        assert "next_cursor" in page, "fault target absent — arm mis-aimed"
+        del page["next_cursor"]
+        return page
+
+    monkeypatch.setattr(operations_module.Operations, "bench_list", without_cursor)
+    status, rest_json = _rest(
+        gateway, "get", "/v1/benches?limit=10&cursor=", None, OBSERVE
+    )
+    assert status == 200 and rest_json["ok"], rest_json
+    with pytest.raises(ValidationError) as caught:
+        _validate_corpus_output("bench_list", rest_json)
+    assert "next_cursor" in str(caught.value) + str(
+        [str(sub) for sub in (caught.value.context or ())]
+    ), caught.value
+    monkeypatch.undo()
+
+    def string_limit(
+        self: Operations, identity: Any, *, limit: int, cursor: str | None
+    ) -> dict[str, Any]:
+        """Fault 2: the echo served as a string."""
+        page = dict(original(self, identity, limit=limit, cursor=cursor))
+        page["limit"] = str(page["limit"])
+        return page
+
+    monkeypatch.setattr(operations_module.Operations, "bench_list", string_limit)
+    status, rest_json = _rest(
+        gateway, "get", "/v1/benches?limit=10&cursor=", None, OBSERVE
+    )
+    assert status == 200 and rest_json["ok"], rest_json
+    with pytest.raises(ValidationError):
+        _validate_corpus_output("bench_list", rest_json)
+    monkeypatch.undo()
+
+    def echoless(
+        self: Operations, identity: Any, *, limit: int, cursor: str | None
+    ) -> dict[str, Any]:
+        """Fault 3: a schema-VALID page with no echo — schema validity alone
+        cannot prove the echo (limit is optional); the presence assert is
+        the only tooth that catches this fault."""
+        page = dict(original(self, identity, limit=limit, cursor=cursor))
+        del page["limit"]
+        return page
+
+    monkeypatch.setattr(operations_module.Operations, "bench_list", echoless)
+    status, rest_json = _rest(
+        gateway, "get", "/v1/benches?limit=10&cursor=", None, OBSERVE
+    )
+    assert status == 200 and rest_json["ok"], rest_json
+    _validate_corpus_output("bench_list", rest_json)  # optional field: schema-clean
+    # Fold row 17 (issue #450): the third leg invokes the REAL echo arm —
+    # the clamp oracle above, with its own REST and MCP calls — instead of
+    # a copy of its assert; under the fault the arm itself must red (its
+    # subscript on the omitted key), so this leg cannot stay green while
+    # the real arm rots.
+    with pytest.raises((KeyError, AssertionError)):
+        test_paged_limit_echo_is_the_clamped_value_on_both_transports(gateway)
+
+
+def test_document_get_serves_origin_per_document_family(
+    gateway: SimpleNamespace,
+) -> None:
+    """Row 5 (issue #450 §3.4): the provenance twin on every document_get
+    success, census over the three kinds the derivation names. Denominator:
+    the module lattice's served families — a pinned descriptor (plugin via
+    the admitted-device-ref join), the binding document (operator — the
+    writer-side family identity fold row 12 records at store time, so the
+    execution-doc-schema-id basis is the honest answer the dead basis
+    needed), and a stored approval (gateway). Terminal records have no
+    content-store emitter (the run row carries them), so the gateway kind's
+    served specimen here is the approval family."""
+    # plugin: the controller descriptor is an admitted device's descriptor.
+    descriptor_sha = hashlib.sha256(
+        (FIXTURES / "descriptor-sim-controller.json").read_bytes()
+    ).hexdigest()
+    _, rest_json = _rest(
+        gateway, "get", f"/v1/documents/{descriptor_sha}", None, OBSERVE
+    )
+    origin = rest_json["data"]["origin"]
+    assert origin["kind"] == "plugin", origin
+    assert origin["basis"] == "admitted-device-ref", origin
+    assert origin["document"]["sha256"] == descriptor_sha, origin
+    assert set(origin) == {"kind", "basis", "document"}, origin
+    mcp_json = _call(
+        gateway.port, "stg_v1_document_get", {"sha256": descriptor_sha}, OBSERVE
+    )
+    assert mcp_json == rest_json
+    _validate_corpus_output("document_get", rest_json)
+
+    # operator: the binding document (the lattice family; fold row 12 —
+    # bootstrap records the validating execution schema's $id at store
+    # time, so the execution-doc-schema-id basis fires; a document the
+    # writer could not classify keeps the honest fallback).
+    _, binding_json = _rest(
+        gateway, "get", f"/v1/documents/{BINDING_SHA}", None, OBSERVE
+    )
+    assert binding_json["data"]["origin"]["kind"] == "operator", binding_json
+    assert binding_json["data"]["origin"]["basis"] == "execution-doc-schema-id"
+    assert "document" not in binding_json["data"]["origin"]
+    _validate_corpus_output("document_get", binding_json)
+
+    # gateway: a stored approval record, stored the way production
+    # approvals arrive — operator tooling, no schema identity declared
+    # (fold row 13: the gateway kind derives from the approval binding
+    # shape verify_approval requires, never a hand-written schema_id; the
+    # urn:stg:approval self-declaration lane is gone with the suffix).
+    # Not the fixture-of-the-bypass pattern (the row-12 clarification's
+    # rule): there is no in-tree approval writer to route through (row
+    # 13's tree-wide search — a measured fact, not test convenience), and
+    # the arm's PASS CONDITION never reads the stored schema_id — delete
+    # _is_approval_document and this arm reds on these same stored bytes
+    # (the fold's captured RED); a bypass fixture would stay green.
+    approval_body = {
+        "change_id": "chg-origin-census",
+        "expected_generation": 1,
+        "approver_principal": "approver-10",
+        "policy_version": "1",
+    }
+    raw = json.dumps(approval_body, sort_keys=True).encode()
+    approval_sha = hashlib.sha256(raw).hexdigest()
+    gateway.content.put_document(
+        raw, approval_sha, approval_body, "urn:stg:admitted", NOW_ISO
+    )
+    _, approval_json = _rest(
+        gateway, "get", f"/v1/documents/{approval_sha}", None, OBSERVE
+    )
+    assert approval_json["data"]["origin"]["kind"] == "gateway", approval_json
+    assert approval_json["data"]["origin"]["basis"] == "gateway-approval-binding"
+    assert "document" not in approval_json["data"]["origin"]
+    _validate_corpus_output("document_get", approval_json)
+
+
+def test_device_envelopes_carry_origin_and_conformance(
+    gateway: SimpleNamespace,
+) -> None:
+    """D2 leg 1 + F4 (issue #450 §3): the device twin and the CON-10 wire
+    field, on both envelopes (list and get) and both transports. The twin is
+    the constant derivation — every device row IS an admitted descriptor —
+    with the ``document`` sub-object omitted (the adjacent ``descriptor``
+    field already carries the triple). The conformance object is the Q6
+    classification of the stored pin; the parity lattice's devices pin
+    0.2.2 (served, conforming) — the non-served classes are pinned at the
+    unit seam (test_seam_observe)."""
+    expected_origin = {"kind": "plugin", "basis": "admitted-device-ref"}
+    expected_conformance = {
+        "otdp_version": "0.2.2",
+        "status": "served",
+        "conformance": "conforming",
+        "deprecated": False,
+        "acknowledged": False,
+    }
+    _, rest_json = _rest(
+        gateway, "get", f"/v1/benches/{BENCH}/devices?limit=10&cursor=", None, OBSERVE
+    )
+    devices = rest_json["data"]["items"]
+    assert devices, "the lattice must serve devices before this read"
+    for device in devices:
+        assert device["origin"] == expected_origin, device
+        assert device["conformance"] == expected_conformance, device
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_device_list",
+        {"bench_id": BENCH, "limit": 10, "cursor": None},
+        OBSERVE,
+    )
+    assert mcp_json == rest_json
+    _validate_corpus_output("device_list", rest_json)
+
+    _, single = _rest(
+        gateway, "get", f"/v1/benches/{BENCH}/devices/{DEVICE}", None, OBSERVE
+    )
+    assert single["data"]["origin"] == expected_origin, single
+    assert single["data"]["conformance"] == expected_conformance, single
+    single_mcp = _call(
+        gateway.port,
+        "stg_v1_device_get",
+        {"bench_id": BENCH, "device_id": DEVICE},
+        OBSERVE,
+    )
+    assert single_mcp == single
+    _validate_corpus_output("device_get", single)
+
+
+def test_run_check_serves_the_binding_document_origin(
+    gateway: SimpleNamespace,
+) -> None:
+    """D2 leg 2 (issue #450 §3-D2): run_check's data carries the origin twin
+    of the checked binding document — the same pure derivation as
+    document_get, applied to the row the body already fetched. An unstored
+    binding has no row to derive from: the optional field is absent (never
+    fabricated)."""
+    _, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/benches/{BENCH}/run-checks",
+        {"binding_ref": BINDING_REF},
+        CONTROL,
+    )
+    assert rest_json["ok"], rest_json
+    assert rest_json["data"]["origin"] == {
+        "kind": "operator",
+        "basis": "execution-doc-schema-id",
+    }, rest_json
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_run_check",
+        {"bench_id": BENCH, "binding_ref": BINDING_REF},
+        CONTROL,
+    )
+    assert mcp_json == rest_json
+    _validate_corpus_output("run_check", rest_json)
+
+    _, missing = _rest(
+        gateway,
+        "post",
+        f"/v1/benches/{BENCH}/run-checks",
+        {"binding_ref": {"id": "nope", "version": "1", "sha256": "0" * 64}},
+        CONTROL,
+    )
+    assert missing["ok"], missing
+    assert "origin" not in missing["data"], missing
+
+
+def test_wire_annotations_carry_the_corrected_values(
+    gateway: SimpleNamespace,
+) -> None:
+    """Rows 2 + D4 (issue #450): the served annotation family. Every tool
+    carries the closed four-key shape; run_find's contradiction is gone
+    (read-only tools never declare destructive); run_check reads; the
+    contract-stated idempotent pair (run_cancel, lease_release — §6 prose)
+    serves idempotentHint true. Denominator: all 17 served tools."""
+    headers = _bearer(OBSERVE)
+    status, session = _initialize(gateway.port, headers)
+    assert status == 200 and session is not None
+    status, body = _post(
+        gateway.port,
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert status == 200 and body is not None, body
+    served = {tool["name"]: tool.get("annotations") for tool in body["result"]["tools"]}
+    assert len(served) == 17
+    closed_shape = {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
+    for name, tool_annotations in served.items():
+        assert set(tool_annotations) == closed_shape, (name, tool_annotations)
+        if tool_annotations["readOnlyHint"] is True:
+            assert tool_annotations["destructiveHint"] is not True, name
+    assert served["stg_v1_run_find"] == {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    assert served["stg_v1_run_check"] == {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    for name in ("stg_v1_run_cancel", "stg_v1_lease_release"):
+        assert served[name]["idempotentHint"] is True, (name, served[name])
+    # D4's stated boundary: creation is not idempotent, and renew's replay
+    # safety is §9 request-layer duplicate suppression, not a tool-effect
+    # claim — both stay idempotentHint false.
+    for name in ("stg_v1_lease_create", "stg_v1_lease_renew", "stg_v1_run_start"):
+        assert served[name]["idempotentHint"] is False, (name, served[name])
+
+
+def test_wire_descriptions_carry_the_template_family(
+    gateway: SimpleNamespace,
+) -> None:
+    """Row 1b (issue #450 §3.1): the 17 descriptions are the template
+    family — every one carries the version-stamped posture sentence naming
+    interface 0.1.1, the run family carries acceptance-vs-completion, the
+    lease family carries the §6 synchronous-reservation rule (fold row 8:
+    leases are synchronous reservations, not runs to poll — the
+    acceptance sentence was false guidance there), run_start/run_cancel
+    carry the outcome_unknown sentence, and the read family carries the
+    observation sentence. The served-vs-vendored equality pin lives in the
+    tools/list test above; this arm pins the family itself, so a revert to
+    one-liners reds here and in the checker."""
+    headers = _bearer(OBSERVE)
+    status, session = _initialize(gateway.port, headers)
+    assert status == 200 and session is not None
+    status, body = _post(
+        gateway.port,
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert status == 200 and body is not None, body
+    descriptions = {
+        tool["name"]: tool["description"] for tool in body["result"]["tools"]
+    }
+    assert len(descriptions) == 17
+    posture = "Apply interface 0.1.1 authorisation and lifecycle rules."
+    for name, description in descriptions.items():
+        assert description.endswith(posture), (name, description)
+    accept = (
+        "Acceptance is not completion; poll run_get (or resolve run_find) to a "
+        "terminal state before asserting the result."
+    )
+    for name in (
+        "stg_v1_run_start",
+        "stg_v1_run_cancel",
+    ):
+        assert accept in descriptions[name], name
+    for name in (
+        "stg_v1_lease_create",
+        "stg_v1_lease_renew",
+        "stg_v1_lease_release",
+    ):
+        assert accept not in descriptions[name], name
+    assert "synchronous reservation of manual bench authority" in descriptions[
+        "stg_v1_lease_create"
+    ], descriptions["stg_v1_lease_create"]
+    assert "synchronous, and requires the same authenticated owner" in descriptions[
+        "stg_v1_lease_renew"
+    ], descriptions["stg_v1_lease_renew"]
+    assert "synchronous and idempotent" in descriptions[
+        "stg_v1_lease_release"
+    ], descriptions["stg_v1_lease_release"]
+    outcome = (
+        "A terminal run may carry outcome_unknown: the final record is "
+        "missing; wait for terminal evidence, never assume passed."
+    )
+    for name in ("stg_v1_run_start", "stg_v1_run_cancel"):
+        assert outcome in descriptions[name], name
+    observation = (
+        "Observation only: this read never triggers an instrument action or "
+        "takes ownership."
+    )
+    for name in (
+        "stg_v1_gateway_info",
+        "stg_v1_bench_list",
+        "stg_v1_bench_get",
+        "stg_v1_device_list",
+        "stg_v1_device_get",
+        "stg_v1_document_get",
+        "stg_v1_run_check",
+        "stg_v1_run_get",
+        "stg_v1_run_find",
+        "stg_v1_events_get",
+        "stg_v1_evidence_get",
+        "stg_v1_artifact_read",
+    ):
+        assert observation in descriptions[name], name
 
 
 # --- failure-class parity ------------------------------------------------------

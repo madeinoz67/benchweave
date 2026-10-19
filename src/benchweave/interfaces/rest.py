@@ -198,10 +198,14 @@ def build_router(
         [1, max_page_size]."""
         identity = _identity(request)
         limit = max(1, min(_int_param(request, "limit"), max_page_size))
-        items, next_cursor = operations.bench_list(
-            identity, limit=limit, cursor=_nullable_param(request, "cursor")
+        # Interface 0.1.1 (issue #450 row 3): the seam returns the page
+        # object (items/next_cursor/limit); the adapter passes it through.
+        return _reply(
+            operations.bench_list(
+                identity, limit=limit, cursor=_nullable_param(request, "cursor")
+            ),
+            200,
         )
-        return _reply({"items": items, "next_cursor": next_cursor}, 200)
 
     @router.get("/v1/benches/{bench_id}")
     @_guard
@@ -216,10 +220,14 @@ def build_router(
         [1, max_page_size]."""
         identity = _identity(request)
         limit = max(1, min(_int_param(request, "limit"), max_page_size))
-        items, next_cursor = operations.device_list(
-            identity, bench_id, limit=limit, cursor=_nullable_param(request, "cursor")
+        # Interface 0.1.1 (issue #450 row 3): the seam's page dict passes
+        # through — the echo has exactly one emission site.
+        return _reply(
+            operations.device_list(
+                identity, bench_id, limit=limit, cursor=_nullable_param(request, "cursor")
+            ),
+            200,
         )
-        return _reply({"items": items, "next_cursor": next_cursor}, 200)
 
     @router.get("/v1/benches/{bench_id}/devices/{device_id}")
     @_guard

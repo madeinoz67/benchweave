@@ -204,9 +204,9 @@ def test_the_api_view_logs_a_nonconforming_stored_device(
 ) -> None:
     """VR-16's API-view arm: a STORED device whose raw descriptor pins a
     non-conforming version surfaces through the projection's server-side
-    log (the wire's device object is contract-frozen — interface 0.1.0's
-    closed def; the wire field lands with the interface lane, disclosed).
-    The wire object itself stays exactly the contract shape."""
+    log — and, since interface 0.1.1 (issue #450 F4), ON THE WIRE as the
+    conformance object. The wire object itself stays exactly the contract
+    shape (0.1.1's closed device def)."""
     import logging
 
     from benchweave.interfaces.operations import Operations
@@ -229,15 +229,21 @@ def test_the_api_view_logs_a_nonconforming_stored_device(
         "device_conformance_mismatch" in record.message and "0.1.2" in record.message
         for record in caplog.records
     ), [record.message for record in caplog.records]
-    # The wire object stays exactly the contract's closed device shape.
+    # The wire object stays exactly the contract's closed device shape —
+    # interface 0.1.1's (issue #450): origin always, conformance when the
+    # pin classifies (this row pins 0.1.2: nonconforming, on the wire now).
     assert set(view) == {
         "device_id",
         "generation",
         "profiles",
         "descriptor",
         "identity_state",
+        "origin",
+        "conformance",
     }
     assert set(view["descriptor"]) == {"id", "version", "sha256"}
+    assert view["origin"] == {"kind": "plugin", "basis": "admitted-device-ref"}
+    assert view["conformance"]["status"] == "nonconforming"
 
 
 def test_a_conforming_stored_device_logs_nothing(
@@ -276,13 +282,16 @@ def test_r4_an_acked_nonconforming_pin_does_not_warn(caplog: pytest.LogCaptureFi
     naming a different pin does not silence the warning)."""
     import logging
 
-    from benchweave.interfaces.operations import _log_device_conformance
+    # interface 0.1.1 (issue #450 F4): the one-classify helper serves both
+    # the wire conformance object and the VR-16 warning channel.
+    from benchweave.interfaces.operations import _device_conformance
 
     raw = _psu_document()
     raw["otdp_version"] = "0.1.2"
 
     with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
-        _log_device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.2"})
+        acked = _device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.2"})
+    assert acked is not None and acked["acknowledged"] is True, acked
     assert not [
         record
         for record in caplog.records
@@ -290,14 +299,16 @@ def test_r4_an_acked_nonconforming_pin_does_not_warn(caplog: pytest.LogCaptureFi
     ], [record.message for record in caplog.records]
 
     with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
-        _log_device_conformance("psu", raw, acknowledged_pins=None)
+        unacked = _device_conformance("psu", raw, acknowledged_pins=None)
+    assert unacked is not None and unacked["acknowledged"] is False, unacked
     assert any(
         "device_conformance_mismatch" in record.message for record in caplog.records
     )
 
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
-        _log_device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.1"})
+        other = _device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.1"})
+    assert other is not None and other["acknowledged"] is False, other
     assert any(
         "device_conformance_mismatch" in record.message for record in caplog.records
     ), "an ack naming a different pin must not silence the warning"
@@ -358,6 +369,7 @@ def test_r10_malformed_governance_bytes_do_not_500_the_devices_surface(
         "profiles",
         "descriptor",
         "identity_state",
+        "origin",  # the twin is pure over the row — governance-free
     }
     assert any(
         "device_conformance_unavailable" in record.message for record in caplog.records
@@ -372,11 +384,12 @@ def test_r10_a_legacy_row_without_a_pin_classifies_nothing(
     predate the dialect."""
     import logging
 
-    from benchweave.interfaces.operations import _log_device_conformance
+    from benchweave.interfaces.operations import _device_conformance
 
     legacy: dict[str, Any] = {"id": "legacy-device", "version": "1"}
     with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
-        _log_device_conformance("legacy", legacy)
+        served = _device_conformance("legacy", legacy)
+    assert served is None  # F4 presence rule: no pin, no field
     assert not [
         record
         for record in caplog.records

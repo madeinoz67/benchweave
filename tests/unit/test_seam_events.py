@@ -14,9 +14,11 @@ from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 NOW = "2026-09-12T00:00:00Z"
 Seam = tuple[Operations, Store]
 

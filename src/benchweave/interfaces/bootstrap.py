@@ -40,6 +40,7 @@ from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.manifests import Key
 from benchweave.registry.resolver import LocalDirectorySource, OriginConfig, Resolver
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 # The fixture lattice as it exists under fixtures/execution/ (verified
 # 2026-09-12): singular documents are exact names, only the device
@@ -191,8 +192,20 @@ def admit_startup_bench(
         now,
     )
     stored: list[str] = [
-        content_sha(content, bench_raw, bench, now),
-        content_sha(content, commissioning_raw, commissioning, now),
+        content_sha(
+            content,
+            bench_raw,
+            bench,
+            now,
+            family_schema_id=_family_or_legacy(contracts, "bench.schema.json"),
+        ),
+        content_sha(
+            content,
+            commissioning_raw,
+            commissioning,
+            now,
+            family_schema_id=_family_or_legacy(contracts, "commissioning.schema.json"),
+        ),
     ]
 
     by_sha = _descriptor_paths_by_sha(fixtures_dir)
@@ -231,34 +244,115 @@ def admit_startup_bench(
             ),
         )
 
+    # Fold row 12 (issue #450): the descriptor family identity the cache
+    # loop records at store time — the ACTIVE corpus's descriptor schema
+    # ``$id``. A FAMILY claim, not a validation claim (final-fold row 9):
+    # a cache-only member is not schema-validated, so no validating
+    # identity exists to record, and classification is by family across
+    # every retained version (the stability arms pin that vintage ``$id``
+    # rows classify identically); the pinned twins hit the digest-join
+    # rule first.
+    descriptor_family_id = _family_or_legacy(
+        active_contract_family("otdp"), "otdp-device-descriptor.schema.json"
+    )
     for descriptor_path in sorted(fixtures_dir.glob("descriptor-*.json")):
         # The whole descriptor family still lands in the content store
         # (cache-by-digest; run spool resolves from it). Unpinned family
         # members stay cache-only and meet the gate when a binding pins
         # them (D5: run admission is the backstop).
         raw = descriptor_path.read_bytes()
-        stored.append(content_sha(content, raw, json.loads(raw), now))
+        stored.append(
+            content_sha(
+                content, raw, json.loads(raw), now, family_schema_id=descriptor_family_id
+            )
+        )
 
-    for name in _EXTRA_DOC_PATHS:
+    for name, schema_name in (
+        ("safety-policy.json", "safety-policy.schema.json"),
+        ("run-binding.json", "run-binding.schema.json"),
+    ):
         path = fixtures_dir / name
         if not path.is_file():
             raise FileNotFoundError(f"lattice document {name} missing under {fixtures_dir}")
         raw = path.read_bytes()
-        stored.append(content_sha(content, raw, json.loads(raw), now))
-    for pattern in _EXTRA_DOC_GLOBS:
+        stored.append(
+            content_sha(
+                content,
+                raw,
+                json.loads(raw),
+                now,
+                family_schema_id=_family_or_legacy(contracts, schema_name),
+            )
+        )
+    for pattern, schema_name in (
+        ("procedure-*.json", "procedure.schema.json"),
+    ):
+        family_schema_id = _family_or_legacy(contracts, schema_name)
         for path in sorted(fixtures_dir.glob(pattern)):
             raw = path.read_bytes()
-            stored.append(content_sha(content, raw, json.loads(raw), now))
+            stored.append(
+                content_sha(
+                    content, raw, json.loads(raw), now, family_schema_id=family_schema_id
+                )
+            )
     return {"bench_id": bench_id, "documents": stored}
 
 
 def content_sha(
-    content: ContentStore, raw: bytes, parsed: dict[str, Any], now: str
+    content: ContentStore,
+    raw: bytes,
+    parsed: dict[str, Any],
+    now: str,
+    *,
+    family_schema_id: str | None = None,
 ) -> str:
+    """Store one document keyed by content digest. ``schema_id`` records
+    the identity the WRITER can vouch for — and only the writer (final-fold
+    row 1, issue #450: the document's own declared ``$schema``/``schema_id``
+    must never steer the stored identity; an adversary-authored cache-only
+    descriptor declaring an execution urn served operator, and one
+    declaring a foreign URL escaped to the fallback — the contract forbids
+    both, the marker is the gateway's derivation, never the author's
+    claim). Precedence: the family identity the writer knows (fold row 12 —
+    a FAMILY claim, not a per-document validation claim: classification is
+    by family across every retained version, and a cache-only member is
+    not schema-validated, so no validating identity exists to record); else
+    the legacy admission urn. The document's declared identity is read only
+    by callers that know no family — every PRODUCTION caller passes one
+    (the gateway source's five sites and the evidence CLI); the test tree
+    exercises the declared branch directly, and no production path reaches
+    it. First admission
+    wins (``put_document``), so rows stored before these changes keep their
+    stored identity — no migration (the vintage divergence is disclosed in
+    the corpus basis description)."""
     sha = hashlib.sha256(raw).hexdigest()
-    schema_id = str(parsed.get("$schema", parsed.get("schema_id", "urn:stg:admitted")))
+    if family_schema_id is not None:
+        schema_id = family_schema_id
+    else:
+        declared = parsed.get("$schema") or parsed.get("schema_id")
+        schema_id = str(declared if declared else "urn:stg:admitted")
     content.put_document(raw, sha, parsed, schema_id, now)
     return sha
+
+
+def _corpus_schema_id(directory: Path, filename: str) -> str | None:
+    """One corpus schema's ``$id`` — the family identity ``content_sha``
+    records for documents of that family (``None`` when the schema is
+    unreadable or carries no ``$id``: the legacy fallback applies, never a
+    fabricated identity)."""
+    try:
+        value = json.loads((directory / filename).read_text(encoding="utf-8")).get("$id")
+    except (OSError, ValueError):
+        return None
+    return str(value) if value else None
+
+
+def _family_or_legacy(directory: Path, filename: str) -> str:
+    """The writer's family identity for one document family — never
+    ``None``, so ``content_sha``'s declared-identity branch (final-fold
+    row 1) is unreachable from bootstrap: an unreadable corpus schema
+    degrades to the legacy admission urn, not to the author's claim."""
+    return _corpus_schema_id(directory, filename) or "urn:stg:admitted"
 
 
 # --- WP08 Task 7: the fixture resolver session --------------------------------

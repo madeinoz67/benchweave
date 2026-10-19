@@ -266,12 +266,16 @@ def test_the_projection_stays_silent_for_an_acked_stored_pin(
         seam = object.__new__(Operations)
         with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
             view = seam._device_projection(row)
+        # Interface 0.1.1's closed device shape (issue #450): origin always;
+        # conformance when the row pins (this helper's rows pin a version).
         assert set(view) == {
             "device_id",
             "generation",
             "profiles",
             "descriptor",
             "identity_state",
+            "origin",
+            "conformance",
         }
         return [
             record.message
@@ -333,12 +337,16 @@ def test_a_corrupt_ack_record_reads_as_unacknowledged(
     seam = object.__new__(Operations)
     with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
         view = seam._device_projection(row)
+    # Interface 0.1.1's closed device shape (issue #450): origin always,
+    # conformance when the row pins (these rows pin 0.1.2).
     assert set(view) == {
         "device_id",
         "generation",
         "profiles",
         "descriptor",
         "identity_state",
+        "origin",
+        "conformance",
     }
     assert any(
         "device_conformance_mismatch" in record.message and "0.1.2" in record.message

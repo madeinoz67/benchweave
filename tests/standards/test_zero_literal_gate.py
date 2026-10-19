@@ -9,8 +9,10 @@ committed counter refuses anything else (SM-2 = 0 outside the register).
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -83,7 +85,15 @@ class TestActiveVersionFromCorpus:
         )
         assert active_version_from_corpus(corpus, "registry") == expected_registry
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
-        assert active_version_from_corpus(corpus, "interface") == "0.1.0"
+        expected_interface = next(
+            entry["version"]
+            for entry in committed["standards"]
+            if entry["id"] == "interface"
+        )
+        # Interface joined the derived form at the 0.1.1 bump (issue #450)
+        # — the otdp precedent: the literal form retires at the bump that
+        # moves it.
+        assert active_version_from_corpus(corpus, "interface") == expected_interface
         assert active_version_from_corpus(corpus, "plugin-ui") == "0.4.0"
         assert active_version_from_corpus(corpus, "plugin-ui-preview") == "0.2.0"
 
@@ -176,14 +186,610 @@ class TestVendoringHelpers:
     def test_active_contract_family_matches_the_literal_family(self) -> None:
         """Same value as the literal call each site makes today — the
         derivation is byte-identical in behavior wherever the literal
-        validated, by construction."""
+        validated, by construction. The interface pin moved to 0.1.1 with
+        the issue #450 revision bump (a hand edit, one line: a derived pin
+        would be vacuous — this tripwire's subject IS the active version)."""
         assert active_contract_family("execution") == contract_family("execution/0.2.0")
-        assert active_contract_family("interface") == contract_family("interface/0.1.0")
+        assert active_contract_family("interface") == contract_family("interface/0.1.1")
         assert active_contract_family("registry") == contract_family("registry/0.1.3")
 
     def test_active_contract_family_refuses_an_unknown_standard(self) -> None:
         with pytest.raises(StandardsError, match="standards_entry_absent: nosuch"):
             active_contract_family("nosuch")
+
+
+#: D1's registered exemptions (issue #450 §3-D1): the test files permitted
+#: to carry an ``interface/<version>`` literal OUTSIDE a docstring, each
+#: with its reason. The registered-exemption shape is the counter's
+#: REGISTER idiom — a file joins by a visible editorial diff, never by
+#: silence.
+_INTERFACE_LITERAL_REGISTER: dict[str, str] = {
+    "tests/unit/test_vendoring.py": (
+        "fake-tree fixtures — the literal is the test's own subject (the "
+        "packaged-first resolution keys on the literal family path)"
+    ),
+    "tests/standards/test_train_window.py": (
+        "synthetic scratch-tree paths — no real corpus load"
+    ),
+    "tests/standards/test_zero_literal_gate.py": (
+        "the active-version equality pin — a tripwire whose subject IS the "
+        "active version; a derived pin would be vacuous"
+    ),
+    "tests/contract/test_baseline.py": (
+        "the obsolete-identifier absence probe — names interface 1.0.0 "
+        "deliberately (a negative probe, never an active-version load; "
+        "1.0.0 is an obsolete pre-line identifier, not a retired one)"
+    ),
+}
+
+_INTERFACE_LITERAL = re.compile(r"interface/\d+\.\d+\.\d+")
+
+#: The dynamic-piece marker for the folded-path detector (issue #450 fold
+#: row 6): any subexpression the bounded fold cannot evaluate — a name, a
+#: call, a comprehension — folds to this single character, so a template
+#: whose LITERAL context spells ``interface/`` with a dynamic version is
+#: still nameable (the evasion the plain-literal walk misses by design).
+_DYNAMIC_MARKER = "\x00"
+
+#: The folded-path pattern: ``interface/`` followed by a concrete version
+#: OR the dynamic marker.
+_FOLDED_INTERFACE_LITERAL = re.compile(r"interface/(?:\d+\.\d+\.\d+|\x00)")
+
+
+def _name_environment(tree: ast.AST) -> dict[str, str]:
+    """One pass over the tree collecting NAME bindings the fold can use
+    (final-fold row 8: the inter-statement and named-separator shapes).
+    Conservative by construction: a name bound anywhere to a foldable
+    string folds; a name that is ever a function parameter, bound by
+    ``augassign``/``annassign``, or bound to a non-foldable value becomes
+    the dynamic marker (present-but-unknown — its literal context stays
+    nameable); a name never bound in the file (imports, builtins) is
+    absent, so reading it contributes nothing. Last binding wins, matching
+    sequential test-file style; loop-variable rebinding is out of scope
+    (the marker covers it)."""
+    names: dict[str, str] = {}
+    dynamic_names: set[str] = set()
+
+    def bind(target: ast.expr, value: ast.expr | None) -> None:
+        if isinstance(target, ast.Name):
+            if value is None:
+                dynamic_names.add(target.id)
+                return
+            folded = _folded_string(value, {}, names)
+            names[target.id] = folded if folded is not None else _DYNAMIC_MARKER
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            # Tuple destructuring: without knowing shapes, every bound name
+            # is dynamic-but-present.
+            for element in target.elts:
+                bind(element, None)
+        # Attribute/Subscript targets: not names — out of scope.
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                bind(target, node.value)
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            if isinstance(node.target, ast.Name):
+                dynamic_names.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for argument in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                dynamic_names.add(argument.arg)
+            if node.args.vararg:
+                dynamic_names.add(node.args.vararg.arg)
+            if node.args.kwarg:
+                dynamic_names.add(node.args.kwarg.arg)
+        elif isinstance(node, ast.Lambda):
+            for argument in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                dynamic_names.add(argument.arg)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            bind(node.target, None)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars is not None:
+                    bind(item.optional_vars, None)
+        elif isinstance(node, ast.comprehension):
+            bind(node.target, None)
+    for name in dynamic_names:
+        names[name] = _DYNAMIC_MARKER
+    return names
+
+#: One evasion form per shape (issue #450 fold row 6): each builds a
+#: corpus-load path the plain-literal walk cannot see; the folded detector
+#: must name each planted loader by file and line.
+_EVASION_FORMS: dict[str, str] = {
+    "concatenation": (
+        "ROOT = None\n"
+        "CORPUS = str(ROOT) + \"/standards/interface/\" + \"0.1.0\"\n"
+    ),
+    "percent-format": (
+        "CORPUS = \"standards/interface/%s/mcp-tools.json\" % \"0.1.0\"\n"
+    ),
+    "dot-format": (
+        "CORPUS = \"standards/interface/{}/mcp-tools.json\".format(\"0.1.0\")\n"
+    ),
+    "slash-join": (
+        "CORPUS = \"/\".join([\"standards\", \"interface\", \"0.1.0\"])\n"
+    ),
+    "dynamic-fstring": (
+        "version = \"0.1.0\"\n"
+        "CORPUS = f\"standards/interface/{version}/mcp-tools.json\"\n"
+    ),
+    "path-segments": (
+        "from pathlib import Path\n"
+        "CORPUS = (\n"
+        "    Path(__file__).resolve().parents[2]\n"
+        "    / \"standards\"\n"
+        "    / \"interface\"\n"
+        "    / \"0.1.0\"\n"
+        ")\n"
+    ),
+    # Final-fold row 8: the inter-statement, named-separator and decode
+    # shapes (the refute lanes' misses).
+    "inter-statement": (
+        "ROOT = None\n"
+        "VER = \"0.1.0\"\n"
+        "mid = str(ROOT) + \"/standards/interface/\"\n"
+        "CORPUS = mid + VER\n"
+    ),
+    "named-separator-join": (
+        "SEP = \"/\"\n"
+        "CORPUS = SEP.join([\"standards\", \"interface\", \"0.1.0\"])\n"
+    ),
+    "bytes-decode": (
+        "CORPUS = b\"standards/interface/0.1.0/mcp-tools.json\".decode()\n"
+    ),
+}
+
+
+def _folded_string(
+    node: ast.AST, memo: dict[int, str | None], names: dict[str, str] | None = None
+) -> str | None:
+    """Bounded constant-expression fold over one AST node (issue #450 fold
+    row 6; the counter's assembly allowlist — obligation 20 — is the shape;
+    final-fold row 8 added name binding, ``str``/``chr`` one-argument
+    calls, bytes-``.decode()`` and folded join separators).
+
+    Returns the folded string with dynamic pieces as ``_DYNAMIC_MARKER``,
+    or ``None`` when the expression is outside the fold's allowlist. The
+    caught shapes: ``Constant`` str; ``Name`` (through the tree's name
+    environment — foldable bindings fold, parameter/loop/unfoldable
+    bindings are the marker); ``JoinedStr`` (f-string templates — each
+    ``FormattedValue`` becomes the marker, so the template's literal
+    context stays visible); ``+`` concatenation; ``%`` substitution of
+    positional ``%s``/``%d``/``%r``; ``str.format`` over positional
+    auto/numeric fields; ``<sep>.join`` over a literal list/tuple (the
+    separator itself may be a folded name — the named-separator shape);
+    ``str(x)``/``chr(i)`` with one unshadowed argument; a no-argument
+    ``.decode()`` over a bytes constant; and pathlib ``/`` chains (either
+    side may be dynamic — the marker takes its place). Every other input
+    class folds to ``None`` — the named misses live in the guard class's
+    docstring below.
+    """
+    names = names if names is not None else {}
+    key = id(node)
+    if key in memo:
+        return memo[key]
+    memo[key] = None  # cycle guard; overwritten with the real result below
+
+    def dynamic(node: ast.AST) -> str | None:
+        # A dynamic-but-present expression contributes the marker; a
+        # non-string Constant contributes nothing (the expression is not
+        # a string expression at all — bail, never fabricate).
+        if isinstance(node, ast.Constant):
+            return None
+        return _DYNAMIC_MARKER
+
+    def fold(node: ast.AST) -> str | None:
+        return _folded_string(node, memo, names)
+
+    result: str | None = None
+    if isinstance(node, ast.Constant):
+        result = node.value if isinstance(node.value, str) else None
+    elif isinstance(node, ast.Name):
+        # Only names the environment KNOWS: an unbound name (an import, a
+        # builtin) contributes nothing — never a fabricated value.
+        result = names.get(node.id)
+    elif isinstance(node, ast.JoinedStr):
+        parts: list[str] = []
+        for value in node.values:
+            if isinstance(value, ast.FormattedValue):
+                parts.append(_DYNAMIC_MARKER)
+            elif isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            else:
+                parts = []
+                break
+        result = "".join(parts) if parts else None
+    elif isinstance(node, ast.BinOp):
+        left = fold(node.left)
+        right = fold(node.right)
+        op = type(node.op)
+        if op is ast.Add:
+            left_part = left if left is not None else dynamic(node.left)
+            right_part = right if right is not None else dynamic(node.right)
+            if left_part is not None and right_part is not None:
+                result = left_part + right_part
+        elif op is ast.Div:
+            # pathlib truediv: ``base / "interface" / "0.1.0"``.
+            left_part = left if left is not None else dynamic(node.left)
+            right_part = right if right is not None else dynamic(node.right)
+            if left_part is not None and right_part is not None:
+                result = left_part + "/" + right_part
+        elif op is ast.Mod and isinstance(left, str):
+            values: list[str | None]
+            if isinstance(node.right, ast.Tuple):
+                values = [fold(e) for e in node.right.elts]
+            else:
+                values = [fold(node.right)]
+            out: list[str] = []
+            index = 0
+            position = 0
+            while position < len(left):
+                conversion = (
+                    left[position] == "%"
+                    and position + 1 < len(left)
+                    and left[position + 1] in "sdr"
+                )
+                if conversion:
+                    piece = values[index] if index < len(values) else None
+                    out.append(piece if piece is not None else _DYNAMIC_MARKER)
+                    index += 1
+                    position += 2
+                else:
+                    out.append(left[position])
+                    position += 1
+            result = "".join(out)
+    elif isinstance(node, ast.Call):
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "join"
+            and node.args
+            and isinstance(node.args[0], (ast.List, ast.Tuple))
+            and node.args[0].elts
+        ):
+            # "<sep>".join([...]) — the separator itself may be a folded
+            # name (final-fold row 8's named-separator shape). A literal
+            # iterable folds elementwise; a non-literal argument (a
+            # comprehension, a generator, map) is a named miss — None,
+            # never a fabricated join.
+            separator = fold(func.value)
+            if separator is not None:
+                pieces: list[str] = []
+                for element in node.args[0].elts:
+                    folded = fold(element)
+                    pieces.append(folded if folded is not None else _DYNAMIC_MARKER)
+                result = separator.join(pieces)
+        elif (
+            isinstance(func, ast.Attribute)
+            and func.attr == "decode"
+            and not node.args
+            and isinstance(func.value, ast.Constant)
+            and isinstance(func.value.value, bytes)
+        ):
+            # b"...".decode() with no arguments (final-fold row 8); a
+            # decode WITH arguments is a named miss.
+            try:
+                result = func.value.value.decode("utf-8")
+            except UnicodeDecodeError:
+                result = None
+        elif (
+            isinstance(func, ast.Name)
+            and func.id in {"str", "chr"}
+            and len(node.args) == 1
+            and not node.keywords
+            and func.id not in names  # unshadowed at module level
+        ):
+            # str(x)/chr(i) with one unshadowed argument — the counter's
+            # own allowlist shape (final-fold row 8).
+            argument = fold(node.args[0])
+            result = argument if argument is not None else _DYNAMIC_MARKER
+        elif (
+            isinstance(func, ast.Attribute)
+            and func.attr == "format"
+            and isinstance(func.value, ast.Constant)
+            and isinstance(func.value.value, str)
+        ):
+            template = func.value.value
+            if not re.search(r"\{[^{}]*[:!]", template):
+                args = [fold(a) for a in node.args]
+                out = []
+                auto = 0
+                position = 0
+                while position < len(template):
+                    if template[position] == "{":
+                        end = template.find("}", position)
+                        field = template[position + 1 : end]
+                        if field and not field.isdigit():
+                            return None  # keyword argument — a named miss
+                        slot = int(field) if field else auto
+                        if not field:
+                            auto += 1
+                        piece = args[slot] if slot < len(args) else None
+                        out.append(piece if piece is not None else _DYNAMIC_MARKER)
+                        position = end + 1
+                        continue
+                    out.append(template[position])
+                    position += 1
+                result = "".join(out)
+    memo[key] = result
+    return result
+
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    """Ids of docstring Constant nodes (first-statement position)."""
+    nodes: set[int] = set()
+
+    def visit_body(body: list[ast.stmt]) -> None:
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            nodes.add(id(body[0].value))
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            visit_body(node.body)
+
+    return nodes
+
+
+class TestInterfaceLoaderLiteralGuard:
+    """D1's held property (issue #450 §3-D1, extended by fold row 6): no
+    test under ``tests/`` builds a corpus-load path from an
+    ``interface/<version>`` literal — plain, assembled, or
+    dynamic-templated — except the registered exemptions; the sweep
+    cannot rot back. The detector folds the bounded constant-expression
+    shapes (``+`` concatenation, ``%`` substitution, positional
+    ``str.format``, ``<sep>.join`` over a literal iterable, pathlib ``/``
+    chains, f-string templates) with dynamic pieces marked, so a template
+    whose LITERAL context spells ``interface/`` with a dynamic version is
+    nameable.
+
+    What the guard does NOT catch (the bounded fold's named residuals,
+    mirroring the counter's assembly allowlist — obligation 20):
+    ``os.path.join`` and every other stdlib string constructor;
+    ``.format`` keyword arguments and format-specs/conversions;
+    ``%``-with-dict (``%(name)s``); ``<sep>.join`` over a non-literal
+    iterable (a comprehension, a generator, ``map``); a path built with
+    NO literal ``interface/`` context (every segment dynamic); a version
+    piece assembled from several dynamic parts (each folds to the
+    marker — only the surrounding literal context is reported);
+    conditional-expression arms; starred call arguments (``Path(*[...])``
+    — final-fold row 8); ``string.Template.substitute``;
+    ``str.format_map``; ``.decode()`` WITH arguments; literals
+    inside docstrings (AST-exempt by position); and the registered files
+    above (their literals are their own subject)."""
+
+    def _violations(self) -> list[str]:
+        violations: list[str] = []
+        for path in sorted((ROOT / "tests").rglob("*.py")):
+            relative = path.relative_to(ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docstrings = _docstring_nodes(tree)
+            names = _name_environment(tree)
+            memo: dict[int, str | None] = {}
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and id(node) not in docstrings
+                    and _INTERFACE_LITERAL.search(node.value)
+                ):
+                    violations.append(f"{relative}:{node.lineno}")
+                    continue
+                if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+                    folded = _folded_string(node, memo, names)
+                    if folded is not None and _FOLDED_INTERFACE_LITERAL.search(folded):
+                        violations.append(f"{relative}:{node.lineno}")
+        return violations
+
+    def test_no_interface_version_literal_loads_outside_the_register(self) -> None:
+        """GREEN: exactly the registered exemptions carry the literal, in
+        any buildable form. A planted literal in a swept file reds by name
+        (the arms below)."""
+        violations = [
+            row
+            for row in self._violations()
+            if row.split(":")[0] not in _INTERFACE_LITERAL_REGISTER
+        ]
+        assert not violations, (
+            "interface/<version> corpus-load literals outside the D1 register "
+            f"(adopt active_contract_family or register with a reason): {violations}"
+        )
+
+    def test_the_registered_files_still_exist_and_carry_the_literal(self) -> None:
+        """The register cannot silently rot either: a registered file that
+        no longer carries the literal is a stale row (remove it)."""
+        carriers = {row.split(":")[0] for row in self._violations()}
+        for registered in _INTERFACE_LITERAL_REGISTER:
+            assert (ROOT / registered).is_file(), registered
+            assert registered in carriers, (
+                f"{registered} is registered but carries no interface literal — "
+                "retire the register row"
+            )
+
+    def test_a_planted_literal_load_reds_by_name(self, tmp_path: Path) -> None:
+        """The guard's RED proof (issue #450 §6, D1 row): a planted
+        ``interface/<version>`` corpus-load path in a swept file is named.
+        The plant runs against a SCRATCH tests/ tree — the working tree is
+        never dirtied."""
+        scratch = tmp_path / "planted"
+        (scratch / "tests").mkdir(parents=True)
+        (scratch / "tests" / "test_planted_loader.py").write_text(
+            "from pathlib import Path\n"
+            "CORPUS = Path(__file__) / \"standards\" / \"interface/0.1.0\"\n",
+            encoding="utf-8",
+        )
+        tree = ast.parse((scratch / "tests" / "test_planted_loader.py").read_text())
+        docstrings = _docstring_nodes(tree)
+        hits = [
+            f"tests/test_planted_loader.py:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+            and _INTERFACE_LITERAL.search(node.value)
+        ]
+        assert hits == ["tests/test_planted_loader.py:2"], hits
+
+    #: One evasion form per shape (fold row 6): the module-level
+    #: ``_EVASION_FORMS`` table, one planted loader arm per form.
+    @pytest.mark.parametrize("form", sorted(_EVASION_FORMS))
+    def test_each_evasion_form_is_named(self, tmp_path: Path, form: str) -> None:
+        """Fold row 6's teeth, per form: the planted loader is named
+        (file:line) whatever shape builds the corpus path — the forms the
+        plain-literal walk missed by design (the refute-B finding). The
+        path-segments form is the real-world evasion this row came from
+        (tests/interfaces_ui/test_ui_stream_gaps.py at the fold base)."""
+        source = _EVASION_FORMS[form]
+        scratch = tmp_path / "planted" / "tests"
+        scratch.mkdir(parents=True)
+        planted = scratch / "test_planted_loader.py"
+        planted.write_text(source, encoding="utf-8")
+        tree = ast.parse(planted.read_text())
+        assign = next(
+            statement
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            and any(getattr(t, "id", None) == "CORPUS" for t in statement.targets)
+        )
+        names = _name_environment(tree)
+        hits = {
+            f"tests/test_planted_loader.py:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call))
+            and (
+                folded := _folded_string(node, {}, names)
+            )
+            is not None
+            and _FOLDED_INTERFACE_LITERAL.search(folded)
+        }
+        # Exactly one hit, on the CORPUS construction line itself — the
+        # plant is named by file and line whatever shape builds the path.
+        assert hits == {f"tests/test_planted_loader.py:{assign.value.lineno}"}, (
+            form,
+            hits,
+        )
+
+    @pytest.mark.parametrize(
+        "form",
+        sorted(
+            {
+                key
+                for key in _EVASION_FORMS
+                if key
+                not in {
+                    "concatenation",  # caught
+                    "inter-statement",  # caught (final-fold row 8)
+                    "named-separator-join",  # caught (final-fold row 8)
+                    "bytes-decode",  # caught (final-fold row 8)
+                }
+            }
+        ),
+    )
+    def test_the_named_misses_stay_misses(self, tmp_path: Path, form: str) -> None:
+        """The disclosure is honest (G4): shapes outside the fold's
+        allowlist do NOT fire — the guard never claims coverage its
+        mechanism does not have."""
+        sources = {
+            "percent-format": (
+                # %-with-dict: the named miss.
+                "CORPUS = \"standards/interface/%(v)s/mcp-tools.json\" % {\"v\": \"0.1.0\"}\n"
+            ),
+            "dot-format": (
+                # .format kwargs and format-spec: the named misses.
+                "a = \"standards/interface/{v}/x.json\".format(v=\"0.1.0\")\n"
+                "b = \"standards/interface/{:>4}/x.json\".format(\"0.1.0\")\n"
+            ),
+            "slash-join": (
+                # join over a comprehension: the named miss.
+                "parts = [\"standards\", \"interface\", \"0.1.0\"]\n"
+                "CORPUS = \"/\".join(p for p in parts)\n"
+            ),
+            "dynamic-fstring": (
+                # No literal interface/ context: the named miss.
+                "family, version = None, None\n"
+                "CORPUS = f\"{family}/{version}/mcp-tools.json\"\n"
+            ),
+            "path-segments": (
+                # os.path.join — the stdlib-constructor named miss.
+                "import os\n"
+                "CORPUS = os.path.join(\"standards\", \"interface\", \"0.1.0\")\n"
+            ),
+        }
+        source = sources[form]
+        scratch = tmp_path / "miss" / "tests"
+        scratch.mkdir(parents=True)
+        planted = scratch / "test_planted_loader.py"
+        planted.write_text(source, encoding="utf-8")
+        tree = ast.parse(planted.read_text())
+        names = _name_environment(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+                folded = _folded_string(node, {}, names)
+                assert folded is None or not _FOLDED_INTERFACE_LITERAL.search(
+                    folded
+                ), (form, folded)
+
+    def test_the_final_fold_named_misses_stay_misses(self, tmp_path: Path) -> None:
+        """Final-fold row 8 (G4): the shapes the extended fold still does
+        NOT catch, each asserted a miss — starred call arguments
+        (``Path(*[...])``), ``string.Template.substitute`` and
+        ``str.format_map``. The disclosure stays honest as the detector
+        grows."""
+        sources = {
+            "starred-args": (
+                "from pathlib import Path\n"
+                "CORPUS = Path(*[\"standards\", \"interface\", \"0.1.0\"])\n"
+            ),
+            "template-substitute": (
+                "from string import Template\n"
+                "CORPUS = Template(\"standards/interface/$v/x.json\").substitute(v=\"0.1.0\")\n"
+            ),
+            "format-map": (
+                "CORPUS = \"standards/interface/{v}/x.json\".format_map({\"v\": \"0.1.0\"})\n"
+            ),
+        }
+        for name, source in sources.items():
+            scratch = tmp_path / "miss" / name
+            scratch.mkdir(parents=True)
+            planted = scratch / "test_planted_loader.py"
+            planted.write_text(source, encoding="utf-8")
+            tree = ast.parse(planted.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.BinOp, ast.JoinedStr, ast.Call)):
+                    folded = _folded_string(node, {}, _name_environment(tree))
+                    assert folded is None or not _FOLDED_INTERFACE_LITERAL.search(
+                        folded
+                    ), (name, folded)
+
+    def test_the_fold_marks_dynamic_pieces_without_losing_context(self) -> None:
+        """The marker's contract: a folded template keeps its literal
+        context around the dynamic piece — the plain string forms fold
+        exactly, the dynamic forms fold to the marker, and no fold ever
+        fabricates a version the expression does not carry."""
+        module = ast.parse(
+            "a = \"standards/interface/\" + \"0.1.0\"\n"
+            "b = \"standards/interface/%s/x\" % version\n"
+            "c = f\"standards/interface/{v}/x\"\n"
+            "d = 4 / 2\n"
+        )
+        memo: dict[int, str | None] = {}
+        names = _name_environment(module)
+        folds: dict[str, str | None] = {}
+        for statement in module.body:
+            if isinstance(statement, ast.Assign) and isinstance(
+                statement.targets[0], ast.Name
+            ):
+                folds[statement.targets[0].id] = _folded_string(statement.value, memo, names)
+        assert folds["a"] == "standards/interface/0.1.0"
+        assert folds["b"] == f"standards/interface/{_DYNAMIC_MARKER}/x"
+        assert folds["c"] == f"standards/interface/{_DYNAMIC_MARKER}/x"
+        assert folds["d"] is None  # numeric division never folds
 
 
 def _counter_run(*argv: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

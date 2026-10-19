@@ -292,10 +292,11 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
 
     25 = the retained version directories enumerated from the corpus
     manifest across the seven manifest standards at this commit (otdp 7,
-    registry 4, execution 2, interface 1, plugin-ui 6, plugin-ui-preview
-    3, plugin-ui-class-reference 2; measured 2026-10-16 at the L5 bump —
-    was 23). The expected count is re-derived from the same mechanism the
-    render uses, and the literal 25 pins the denominator: if either moves,
+    registry 4, execution 2, interface 2, plugin-ui 6, plugin-ui-preview
+    3, plugin-ui-class-reference 2; measured 2026-10-17 at the interface
+    0.1.1 bump — was 25 at the L5 bump, 23 before it). The expected count
+    is re-derived from the same mechanism the
+    render uses, and the literal 26 pins the denominator: if either moves,
     the test names which.
     """
     from benchweave.standards.manifest import load_manifest, retained_versions
@@ -306,7 +307,7 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
     expected = sum(
         len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
     )
-    assert expected == 25, f"the seed retained-set denominator moved: {expected}"
+    assert expected == 26, f"the seed retained-set denominator moved: {expected}"
     assert len(rows) == expected, (
         f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
         "(one row per retained version)"

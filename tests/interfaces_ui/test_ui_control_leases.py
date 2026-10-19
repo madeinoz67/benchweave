@@ -735,9 +735,9 @@ def test_d_no_lease_banner_before_and_absent_after_on_bench_and_device(rig: Any)
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     bench_page = _get(rig, f"/ui/benches/{_BENCH}", record)
     assert 'data-bw-mode="no-lease"' in bench_page.text
-    devices, _next = rig.app.state.ui_operations.device_list(
+    devices = rig.app.state.ui_operations.device_list(
         _identity_for(record), _BENCH, limit=10, cursor=None
-    )
+    )["items"]
     device_page = _get(
         rig, f"/ui/benches/{_BENCH}/devices/{devices[0]['device_id']}", record
     )

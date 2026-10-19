@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
 
 import pytest
 
@@ -26,8 +25,10 @@ from benchweave.interfaces.errors import (
     failure,
     internal_failure,
 )
+from benchweave.vendoring import active_contract_family
 
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 CATALOG = json.loads((CORPUS / "operation-catalog.json").read_text(encoding="utf-8"))
 _HEX16 = re.compile(r"^[0-9a-f]{16}$")
 

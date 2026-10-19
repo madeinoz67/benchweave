@@ -29,10 +29,12 @@ from benchweave.interfaces.identity import Identity, issue
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
+from benchweave.vendoring import active_contract_family
 
 REPO = Path(__file__).resolve().parents[2]
 REG = REPO / "fixtures" / "registry"
-CORPUS = REPO / "standards" / "interface/0.1.0"
+# D1 (issue #450 §3-D1): manifest-active, never a version literal.
+CORPUS = active_contract_family("interface")
 NOW = "2026-09-12T00:00:00Z"
 # The registry clock, verbatim from test_registry_reuse: inside every fixture
 # status's validity window (expires 2027-09-11, updated_at not in the future).

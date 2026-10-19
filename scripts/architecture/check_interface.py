@@ -2,6 +2,7 @@ import base64
 import copy
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -146,6 +147,202 @@ for o in catalog["operations"]:
 unique_operations = len({o["name"] for o in catalog["operations"]})
 check("20 unique REST operations", unique_operations == 20)
 check("17 unique MCP tools", len(maptools) == 17)
+# Rows 2 + D4 (issue #450, interface 0.1.1): the annotation family the
+# revision pins — the closed four-key shape (correcting the parent record's
+# two-key description against the frozen bytes: all 17 rows carried four
+# keys), the read-only/destructive contradiction class out for good, and
+# the contract-stated idempotent pair (§6 prose: run_cancel durable and
+# idempotent; lease release idempotent). What these rows do not catch:
+# idempotency for any tool the contract does not sentence about — there is
+# no mechanical source in the corpus; the named-pair row is deliberately
+# exhaustive over contract-stated idempotency (2 tools; denominator: 17).
+check(
+    "every tool carries the closed four-key annotation shape",
+    all(
+        set(t.get("annotations", {}))
+        == {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
+        for t in tools
+    ),
+)
+check(
+    "read-only tools never declare destructiveHint true",
+    all(
+        t["annotations"]["destructiveHint"] is not True
+        for t in tools
+        if t["annotations"].get("readOnlyHint") is True
+    ),
+)
+check(
+    "contract-stated idempotent pair is idempotentHint true",
+    all(
+        maptools[name]["annotations"]["idempotentHint"] is True
+        for name in ("stg_v1_run_cancel", "stg_v1_lease_release")
+    ),
+)
+# Rows 7/11 (issue #450 fold): the origin def's pair closure and its
+# presence rule. The pair set is derived FROM the def's own allOf branches
+# and pinned to the five pairs the gateway derivation emits
+# (operations._document_origin: two plugin bases, two operator bases, one
+# gateway basis); the checker cannot import gateway code, so the emitted set
+# is the named literal here — the named-specimen precedent of the
+# idempotent-pair row above. What these rows do not catch: the code emitter
+# drifting from the set — the wire census arms in
+# tests/integration/test_interface_parity.py pin the served side.
+origin_def = D["origin"]
+derived_pairs = []
+document_forbidden_kinds = set()
+for rule in origin_def.get("allOf", []):
+    kind_clause = rule["if"]["properties"]["kind"]
+    then_clause = rule["then"]
+    basis_enum = then_clause.get("properties", {}).get("basis", {}).get("enum")
+    if basis_enum:
+        for kind in kind_clause.get("enum", [kind_clause["const"]]):
+            derived_pairs.extend((kind, basis) for basis in basis_enum)
+    if "not" in then_clause:
+        document_forbidden_kinds.update(kind_clause["enum"])
+check(
+    "origin def closes kind-basis pairs to the emitted five",
+    sorted(derived_pairs)
+    == sorted(
+        (
+            ("plugin", "admitted-device-ref"),
+            ("plugin", "descriptor-schema-id"),
+            ("operator", "execution-doc-schema-id"),
+            ("operator", "unclassified-fallback"),
+            ("gateway", "gateway-approval-binding"),
+        )
+    ),
+)
+check(
+    "origin document ref rides plugin pairs only",
+    document_forbidden_kinds == {"operator", "gateway"},
+)
+# Row 7: the presence rule is stated where it binds, and the blanket
+# always-populates claim (false on run_check: an unstored binding serves
+# its finding and omits the marker — pinned at the seam by
+# test_run_check_serves_the_binding_document_origin) is gone. The
+# document_get site's "on success" wording stays: a document_get success
+# has a stored row by construction, so the claim is true there.
+check(
+    "run_check origin description states the stored-binding rule",
+    "exactly when the checked binding document is stored"
+    in json.dumps(D["run_check_output"]),
+)
+check(
+    "no always-populates-everywhere claim remains in the schema",
+    "always populates it where this marker is defined" not in json.dumps(schema),
+)
+# Row 14: the conformance presence rule names the degraded-governance
+# omission — a PINNED device whose classification refuses (malformed
+# governance bytes) omits the field, so "exactly when pinned" alone was
+# false. The seam arm
+# (test_device_conformance_malformed_governance_omits_the_field) pins the
+# behavior; this row pins the published description.
+check(
+    "conformance presence description names the degraded-governance omission",
+    "malformed governance" in D["conformance"]["description"]
+    and "malformed governance" in json.dumps(D["device"]),
+)
+# Row 12's prose half (the lane-B/mechanism-critic reconciliation): the
+# basis descriptions must describe what the mechanism serves on
+# SCHEMA-VALID state — the store-time family identity the writer records.
+# A sentence that reads the same whether or not any valid document can
+# match it is the G4 defect both lanes flagged: pre-fix, the two family
+# bases were reachable only through the ungated $schema read on
+# corpus-INVALID bytes.
+check(
+    "origin basis descriptions name the store-time family identity",
+    "store-time family identity"
+    in D["origin"]["properties"]["basis"]["description"],
+)
+# Final-fold row 2: the descriptor schema root is validator-closed — the
+# approval quartet cannot appear on a schema-valid descriptor, so a
+# descriptor carrying it is malformed bytes that the WRITER-RECORDED
+# family identity (not the content shape) classifies. Opening the root
+# (adding a quartet key to the root properties, or dropping
+# additionalProperties: false) reds here. The otdp corpus is read through
+# the same manifest-derived resolver as the interface corpus.
+otdp_dir = _validation_report.corpus_directory(STANDARDS, "otdp")
+descriptor_schema = json.loads(
+    (otdp_dir / "otdp-device-descriptor.schema.json").read_text(encoding="utf-8")
+)
+check(
+    "descriptor schema root is closed to the approval quartet",
+    descriptor_schema.get("additionalProperties") is False
+    and not (
+        {
+            "change_id",
+            "expected_generation",
+            "approver_principal",
+            "policy_version",
+        }
+        & set(descriptor_schema.get("properties", {}))
+    )
+    # Narrow-fold row C: the PATTERN channel too. patternProperties
+    # overrides additionalProperties:false, so a permissive pattern
+    # admitted all four quartet keys while this row stayed green (the
+    # refute's plant: "^[a-z_]+$"). JSON Schema patterns are SEARCHED,
+    # not anchored: a pattern admits a key iff re.search matches it.
+    and not any(
+        re.search(pattern, key)
+        for pattern in descriptor_schema.get("patternProperties", {})
+        for key in (
+            "change_id",
+            "expected_generation",
+            "approver_principal",
+            "policy_version",
+        )
+    ),
+)
+
+
+def _schema_site_description(def_name: str) -> str:
+    """The schema's ``data.properties.origin`` site description for one
+    output def — the authority the openapi sites must mirror."""
+    for branch in D[def_name]["oneOf"]:
+        origin = (
+            branch.get("properties", {}).get("data", {}).get("properties", {}).get("origin")
+        )
+        if isinstance(origin, dict):
+            return str(origin["description"])
+    raise AssertionError(f"no origin site in {def_name}")
+
+
+# Final-fold row 12 (the amendment's re-attack): openapi.json was silently
+# excluded from the prose sweeps — the fourth machine artifact still
+# carried row 7's false always-populates claim at the run-checks site.
+# This pin DERIVES openapi's origin site descriptions from the schema's
+# site descriptions and requires equality for both sites, so a fifth
+# silent exclusion cannot recur; a phrasing-specific ban is narrower than
+# the claim, which is exactly why this one survived.
+check(
+    "openapi origin site descriptions equal the schema's",
+    all(
+        api["paths"][path][method]["responses"]["200"]["content"]["application/json"]
+        ["schema"]["properties"]["data"]["properties"]["origin"]["description"]
+        == _schema_site_description(def_name)
+        for path, (method, def_name) in {
+            "/v1/benches/{bench_id}/run-checks": ("post", "run_check_output"),
+            "/v1/documents/{sha256}": ("get", "document_get_output"),
+        }.items()
+    ),
+)
+# Final-fold row 11 (amendment): the 17 inline mcp-tools copies of the
+# origin basis description must equal the schema def's text, and the copy
+# COUNT is pinned. CON-3 pins served==vendored per tool, not tools==
+# schema — this row pins the pair, closing the row-13 self-miss class (an
+# enumerated surface set that silently excluded copies, with a pin
+# narrower than the claim).
+_schema_basis_description = D["origin"]["properties"]["basis"]["description"]
+_tool_basis_descriptions = [
+    tool["outputSchema"]["$defs"]["origin"]["properties"]["basis"]["description"]
+    for tool in tools
+    if "origin" in tool.get("outputSchema", {}).get("$defs", {})
+]
+check(
+    "mcp-tools origin basis descriptions equal the schema def (17 copies)",
+    _tool_basis_descriptions == [_schema_basis_description] * 17,
+)
 check(
     "administration absent from MCP",
     all(o["mcp_tool"] is None for o in catalog["operations"] if o["permission"] == "admin"),
