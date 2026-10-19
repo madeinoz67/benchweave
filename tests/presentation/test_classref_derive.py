@@ -284,27 +284,30 @@ class TestSelection:
     def test_unknown_class_selects_no_reference(self) -> None:
         """The fail-open signal: a descriptor whose profiles name no class
         with a corpus reference selects NOTHING (the composition then
-        renders today's no-attachment absence — B3). dc_psu carried this
-        arm until L11 gave it a reference, dmm until L12; oscilloscope
-        (L13) carries it now."""
+        renders today's no-attachment absence — B3). The exemplar
+        ROTATES with the sweep: dc_psu carried this arm until L11 gave it
+        a reference, dmm until L12, oscilloscope until L13;
+        function_generator (the L14 slot, unwritten) carries it now —
+        when L14 lands its reference, the exemplar advances again."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.scalar",
-            "profiles": ["otdp.oscilloscope/1.0.0"],
+            "profiles": ["otdp.function_generator/1.0.0"],
         }
         assert select_references(corpus_root(), descriptor) is None
 
     def test_selection_is_bytewise_sorted_first_with_a_reference(self) -> None:
         """Reference selection: profiles sorted bytewise; a profile
         without a corpus reference is skipped and the next one applies.
-        dc_psu was the skipped profile until L11, dmm until L12;
-        oscilloscope (L13, sorted after the analyser bytewise) carries
+        The skipped profile ROTATES with the sweep: dc_psu until L11,
+        dmm until L12, oscilloscope until L13; function_generator (the
+        L14 slot, unwritten — sorted after the analyser bytewise) carries
         the skip arm now — and the corpus pairs add their own
         multi-profile arms below."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.multi",
-            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.oscilloscope/1.0.0"],
+            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.function_generator/1.0.0"],
         }
         selected = select_references(corpus_root(), descriptor)
         assert selected is not None and len(selected) == 1
