@@ -614,3 +614,59 @@ check); (c) one design-time execution beyond reading was performed — the A4 RE
 (`select_references` None for dmm / resolving for dc_psu on the L11 branch head) —
 because a pre-committed acceptance rule that can be banked before the build should
 be; it wrote nothing.
+
+
+## 16. Addendum — build-time corrections to §8's census (dated 2026-10-19, the build pass)
+
+The body above is frozen as authored; this addendum corrects the corpus-motion
+census and records the test-surface motions the build proved necessary. Each
+carries its evidence.
+
+**Corrected: `standards-manifest.json` is NOT unchanged.** §8 listed it
+unchanged; the build falsified that on three independent grounds: (a) repin's
+`_regenerable_paths` classifies regenerable rows FROM the standards-manifest
+normative lists — a pinned file inside a current version dir that the manifest
+forgets to list classifies frozen, pointing every future edit at a defect;
+(b) the export bundle builds from the normative rows, and §7 item 3's own
+vendored ingest requires `class-dmm.json` in the promotion leg's bundle;
+(c) the L11 precedent lists `class-dc_psu.json` in the same array. The landed
+motion: ONE positional line, `standards/plugin-ui-class-reference/0.3.0/
+class-dmm.json` inserted directly after the dc_psu entry (no sort, no reflow).
+Independently verified on-branch by the L14 design lane and relayed by the
+lead before push — the same finding from two lanes.
+
+**Test-surface motions §8's census under-enumerated** (all landed, none
+weakening any assertion):
+
+- `tests/ui_html/test_classref_dc_psu.py` — beyond the census-import switch,
+  ruff's isort re-formed the import block (single-line aliased imports; test
+  function bodies byte-identical throughout).
+- `tests/ui_html/test_patterns.py` — 18→19 pages, 36→38 export counts (the
+  class-readings page joins; L11's own motion mirrored).
+- `tests/ui_html/test_styleguide_mockup.py` — the directory set grows to
+  three files, `DMM-01` joins the invented-name sentinels, and a dmm section
+  (operator-surface + token-consumption arms) mirrors the psu section.
+- `tests/architecture/...contracts.py` — the docstring's TWO→THREE class
+  references; `TestPlotKindWidening.test_time_series_plot_admits` converts to
+  `test_time_series_without_series_refuses` (the F4 settlement REVERSES the
+  old arm's premise — a series-less time_series template admitting — while the
+  admit direction stays covered, unchanged, by
+  `test_time_series_with_the_series_rule_admits`); plus `TestDmmReference`.
+- `tests/presentation/test_classref_derive.py` and
+  `tests/interfaces_ui/test_ui_presentation.py` — the reference-less specimen
+  moves dmm→oscilloscope in three arms whose L11 docstrings PRE-COMMITTED the
+  motion ("dmm (L12) carries it now"), and a dmm+analyser both-selected
+  sorted arm joins. With the dmm reference in the corpus these arms' old
+  specimens are no longer reference-less — the two-directional kill firing on
+  the selection side, exactly as designed.
+- `tests/win_core_manifest.json` — refreshed via the manifest script's own
+  `--refresh` (the L12 test motions moved four files' counts and added one
+  file).
+- `tests/standards/test_train_window.py` — one fused comment line (a rebase
+  artifact, E501, PRE-EXISTING at the base `c64f3d05` from `fa9cfc63`)
+  reflowed; comment-only.
+
+**Order note (from the L14 relay, carried into the record):** the corpus
+commit must land on the stacked line BEFORE the promotion's pointer leg —
+once the batch promotes, 0.3.0 freezes and the same landing degrades to a
+PATCH plus its own SDK ingest. The branch's commit order satisfies this.
