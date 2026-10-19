@@ -5,10 +5,14 @@ Landing 1 of the class-reference program (design record
 L5 widening rides design record
 ``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
 The family's ACTIVE version ``plugin-ui-class-reference/0.3.0`` ships two
-machine schemas and TWO class references — the founding
-``class-logic_analyser.json`` (re-stamped, zero content change) and the L11
+machine schemas and THREE class references — the founding
+``class-logic_analyser.json`` (re-stamped, zero content change), the L11
 ``class-dc_psu.json`` (the first scalar/readings-shaped class; design record
-``.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md``). The 0.1.0
+``.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md``) and the
+L12 ``class-dmm.json`` (the observation-pure class; design record
+``.claude/deep-review/2026-10-19-classref-l12-dmm-design.md`` — the F4
+settlement rides the same record: ``series`` is REQUIRED on ``time_series``
+plots). The 0.1.0
 and 0.2.0 predecessors stay digest-frozen — the retained-freeze arms below
 assert them. Every schema rule carries a
 valid and an invalid case; the reference-content tests pin the D2
@@ -30,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
 REFERENCE_PSU = DIRECTORY / "class-dc_psu.json"
+REFERENCE_DMM = DIRECTORY / "class-dmm.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
     "/0.3.0/class-reference.schema.json"
@@ -921,11 +926,15 @@ class TestPlotKindWidening:
     """The 0.3.0 MINOR's substance: ``page_template.plot.kind`` widens
     const -> enum ``[digital_lanes, time_series]`` with per-kind
     conditionals — the lanes group machinery stays exactly as it was
-    (digital_lanes), ``time_series`` adds the one structural field
+    (digital_lanes), ``time_series`` carries the one structural field
     ``series: "numeric_variables"`` (the closed derivation rule), and
     ``waveform`` is deliberately NOT admitted (L13 widens again on its
     own evidence). RED against the 0.2.0 schema: time_series refuses,
-    the widening is what admits."""
+    the widening is what admits. The L12 F4 settlement (2026-10-19
+    record §5) makes ``series`` REQUIRED on ``time_series`` inside the
+    same unreleased 0.3.0 window: a series-less time_series template is
+    a document that does not exist in the corpus, and the tightening
+    changes validity for exactly those."""
 
     def _page(self, plot: dict[str, Any]) -> dict[str, Any]:
         document = minimal_reference()
@@ -940,8 +949,15 @@ class TestPlotKindWidening:
         ]
         return document
 
-    def test_time_series_plot_admits(self) -> None:
-        assert reference_validator().is_valid(
+    def test_time_series_without_series_refuses(self) -> None:
+        """The F4 settlement's RED arm (A9): a time_series plot template
+        WITHOUT ``series`` fails schema validation after the tightening —
+        absent-semantics would leave two spellings of one meaning and
+        push a default into every consumer. The admit direction is
+        ``test_time_series_with_the_series_rule_admits`` below (this arm
+        replaces the pre-settlement ``test_time_series_plot_admits``,
+        whose series-less admit assertion the settlement reverses)."""
+        assert not reference_validator().is_valid(
             self._page({"kind": "time_series", "over_slot": "lanes"})
         )
 
@@ -993,6 +1009,23 @@ class TestPlotKindWidening:
                 }
             )
         )
+
+    def test_both_committed_time_series_documents_carry_series(self) -> None:
+        """A9's break-nothing half: the tightening changes validity for
+        exactly the documents that do not exist — the only committed
+        ``time_series`` documents (dc_psu L11, dmm L12) both carry
+        ``series: "numeric_variables"`` and both still validate."""
+        for path in (REFERENCE_PSU, REFERENCE_DMM):
+            document = json.loads(path.read_bytes())
+            plots = [
+                page["plot"] for page in document["pages"] if "plot" in page
+            ]
+            time_series = [p for p in plots if p["kind"] == "time_series"]
+            assert time_series, path.name
+            assert all(
+                p.get("series") == "numeric_variables" for p in time_series
+            ), path.name
+            assert reference_validator().is_valid(document), path.name
 
 
 class TestDcPsuReference:
@@ -1103,6 +1136,118 @@ class TestDcPsuReference:
             "setpoint-staging",
             "margin-alert",
             "limit-overlay",
+            "presets",
+            "channel-names",
+        }
+
+
+class TestDmmReference:
+    """The committed ``class-dmm.json`` (L12): the observation-pure class
+    — binding ``otdp.dmm/1.0.0``, no sourcing action, no directional
+    safety surface, no capture view."""
+
+    def test_the_committed_reference_validates(self) -> None:
+        assert REFERENCE_DMM.is_file(), f"Missing {REFERENCE_DMM.name}"
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        assert document["profile_id"] == "otdp.dmm/1.0.0"
+        assert reference_validator().is_valid(document)
+
+    def test_the_reference_binds_the_catalogued_class_actions(self) -> None:
+        """Every action the reference names exists in the OTDP catalogue's
+        dmm row, and every required action (configure, measure) is
+        bound."""
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        catalog = json.loads(OTDP_CATALOG.read_bytes())
+        profile = next(
+            p for p in catalog["profiles"] if p["id"] == document["profile_id"]
+        )
+        bound = {
+            slot["action"]
+            for slot in document["slots"].values()
+            if "action" in slot
+        }
+        assert bound <= set(catalog["actions"])
+        assert set(profile["required_actions"]) <= bound
+
+    def test_dmm_numbers_are_structural_only(self) -> None:
+        """D2: the dmm reference's only numbers are the layout spans
+        (12, 7, 5) and the trend section's plot_index (0); its only
+        pure-numeric string is the count-arity literal "1"."""
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        numbers: list[int | float] = []
+        numeric_strings: list[str] = []
+
+        def walk(node: Any) -> None:
+            if isinstance(node, bool):
+                return
+            if isinstance(node, (int, float)):
+                numbers.append(node)
+            elif isinstance(node, str):
+                try:
+                    float(node)
+                except ValueError:
+                    return
+                numeric_strings.append(node)
+            elif isinstance(node, dict):
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(document)
+        assert set(numbers) == {0, 12, 7, 5}
+        assert set(numeric_strings) == {"1"}
+
+    def test_dmm_layouts_carry_no_text_nodes(self) -> None:
+        document = json.loads(REFERENCE_DMM.read_bytes())
+
+        def walk(node: Any) -> None:
+            if isinstance(node, dict):
+                if "body" in node:
+                    pytest.fail("reference layout carries a text node")
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        for layout_page in document.get("layouts", []):
+            walk(layout_page)
+
+    def test_dmm_controls_match_the_class_ladder(self) -> None:
+        """configure is preset-mediated at birth (the function/range/
+        aperture/autozero surface is inexpressible at L2 — the record's
+        §3); measure needs no control (the dataset slot is page-covered
+        via the plot figure)."""
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        controls = document["expect"]["controls"]
+        assert controls == {
+            "otdp.dmm.configure/1.0.0": "preset",
+        }
+
+    def test_dmm_declares_the_observation_pure_forbid_set(self) -> None:
+        """Three forbid ids: the family-generic carry WITHOUT the
+        energy-removing id — dmm has no energy-removing action and cannot
+        acquire one within its profile, so dc_psu's intent declaration
+        would be vacuous about a surface that cannot exist (the record's
+        §3, the drop with its reason recorded)."""
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        assert set(document["expect"]["forbid"]) == {
+            "confirm-wrapped-run-action",
+            "color-role-hint-on-lane",
+            "untraceable-lane-label",
+        }
+
+    def test_dmm_cannot_derive_names_the_mockup_elements(self) -> None:
+        """Every cannot_derive id traces to a mockup element (the record's
+        §3 table): the five ids, verbatim."""
+        document = json.loads(REFERENCE_DMM.read_bytes())
+        ids = {str(row["id"]) for row in document["cannot_derive"]}
+        assert ids == {
+            "function-selection",
+            "range-margin-alert",
+            "range-overlay",
             "presets",
             "channel-names",
         }

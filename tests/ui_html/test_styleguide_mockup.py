@@ -87,13 +87,17 @@ def test_every_mock_embeds_the_shipped_tokens_byte_for_byte(path: Path) -> None:
 @pytest.mark.parametrize("path", MOCK_FILES, ids=lambda p: p.stem)
 def test_every_mock_naming_is_invented_only(path: Path) -> None:
     html = path.read_text(encoding="utf-8")
-    assert "Veridian" in html or "PSU-01" in html, path.stem
+    assert "Veridian" in html or "PSU-01" in html or "DMM-01" in html, path.stem
     for real in ("Intronix", "intronix", "LogicPort"):
         assert real not in html, (path.stem, real)
 
 
-def test_the_directory_has_both_device_mocks() -> None:
-    assert {p.name for p in MOCK_FILES} == {"class-dc_psu.html", "class-logic_analyser.html"}
+def test_the_directory_has_every_device_mock() -> None:
+    assert {p.name for p in MOCK_FILES} == {
+        "class-dc_psu.html",
+        "class-dmm.html",
+        "class-logic_analyser.html",
+    }
 
 
 def test_the_index_links_every_device_mock() -> None:
@@ -195,3 +199,35 @@ def test_psu_consumes_the_shipped_tokens(psu_html: str) -> None:
     for bespoke in ("var(--canvas)", "var(--cyan)", "var(--amber)", "var(--green)", "var(--edge)"):
         assert bespoke not in psu_html, bespoke
     assert "--bw-accent" in psu_html and "--bw-warning" in psu_html
+
+
+# --- the DMM mock (L12 — authored with the reference, not inherited) ------------
+
+
+@pytest.fixture
+def dmm_html() -> str:
+    return (MOCKS_DIR / "class-dmm.html").read_text(encoding="utf-8")
+
+
+def test_dmm_carries_the_operator_surface(dmm_html: str) -> None:
+    """The observation-pure surface in both themes: the two reading
+    tiles, the range-margin alert, the preset-preview control card, the
+    trend, the channel table, the severity states."""
+    body = _body(dmm_html)
+    assert body.count('data-theme="light"') == 1
+    assert body.count('data-theme="dark"') == 1
+    assert dmm_html.count("Multimeter · DMM-01") == 2
+    assert dmm_html.count("Range margin") == 2
+    assert dmm_html.count("PRESET") == 2
+    assert dmm_html.count("WARNING") == 2
+    assert dmm_html.count("Near limit") == 2
+    assert dmm_html.count("Controls") == 2
+
+
+def test_dmm_consumes_the_shipped_tokens(dmm_html: str) -> None:
+    """The remap arm, third instance: the DMM composition carries no
+    bespoke token names — every colour/stroke reference rides the
+    shipped --bw-* set."""
+    for bespoke in ("var(--canvas)", "var(--cyan)", "var(--amber)", "var(--green)", "var(--edge)"):
+        assert bespoke not in dmm_html, bespoke
+    assert "--bw-accent" in dmm_html and "--bw-warning" in dmm_html

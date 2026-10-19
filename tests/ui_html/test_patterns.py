@@ -48,16 +48,18 @@ def test_every_enumerated_key_is_a_fixture_row(slug: str) -> None:
 
 
 def test_one_page_per_component_plus_the_refusal_page() -> None:
-    """The §E.1 component pages plus the refusal page plus the two
-    class-reference pages (Landing 3; L11 adds the dc_psu output page):
-    18 pages (15 §E.1 components since L5's input trio)."""
+    """The §E.1 component pages plus the refusal page plus the three
+    class-reference pages (Landing 3; L11 adds the dc_psu output page,
+    L12 the dmm readings page): 19 pages (15 §E.1 components since L5's
+    input trio)."""
     pages = patterns.pages()
     assert pages == _manifest_keys("e-1-components") + (
         "refusals",
         "class-capture",
         "class-output",
+        "class-readings",
     )
-    assert len(pages) == 18
+    assert len(pages) == 19
 
 
 def test_every_page_has_entries_and_every_entry_names_a_page() -> None:
@@ -104,9 +106,9 @@ def test_the_row_checkers_fixture_population_is_the_librarys() -> None:
 def test_export_writes_the_page_tree_both_themes_and_the_index(
     tmp_path: Path,
 ) -> None:
-    """36 pages (18 × 2 themes) + the index."""
+    """38 pages (19 × 2 themes) + the index."""
     result = patterns.export(tmp_path)
-    assert len(result.pages) == 36, result.pages
+    assert len(result.pages) == 38, result.pages
     assert set(result.themes) == {"light", "dark"}
     assert result.index == "patterns/index.html"
     for theme in ("light", "dark"):

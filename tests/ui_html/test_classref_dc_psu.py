@@ -21,18 +21,31 @@ The expansion side (derive-ui/verify-ui censuses) is the SDK widening's
 work and rides that train; what this file pins is the corpus pair's
 structure — the reference document and the composition the host renders
 from it.
+
+L12 lift (2026-10-19 record §6): the census machinery lives in the
+shared helper ``tests/ui_html/classref_census.py`` — imported here under
+its original names so this module's test functions are byte-identical
+through the motion; the instrument is one, never a per-class fork.
 """
 
 from __future__ import annotations
 
-import json
 import re
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 import pytest
 from benchweave_ui_html import classref, patterns
+
+from classref_census import (
+    HOOKS,
+    PLACEMENT_CONTAINER as _PLACEMENT_CONTAINER,
+    PLACEMENT_TAG as _PLACEMENT_TAG,
+    HookCensus as _HookCensus,
+    hook_census,
+    load_document as _load,
+    resolve_count as _resolve_count,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
@@ -40,78 +53,9 @@ REFERENCE = FAMILY_DIR / "class-dc_psu.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.3/examples/class-dc_psu.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-dc_psu.html"
 
-#: The §E.1 contract hooks the mockup carries (RC-L11-3): the component
-#: roots the census keys on — never bespoke selectors.
-HOOKS = ("bw-reading", "bw-alert-bubble", "bw-plot", "bw-data-table")
-
-
-def _load(path: Path) -> dict[str, Any]:
-    document: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return document
-
-
-class _HookCensus(HTMLParser):
-    """The §E.1 hook count per ``data-theme`` section of the mockup, with
-    each occurrence's tag and the classes of its ancestors — the census
-    is PLACEMENT-AWARE (the refute fold's F1: a count-conserving move of
-    a hook onto the wrong element is a structural lie, not a pass)."""
-
-    VOID = {"meta", "br", "img", "input", "hr", "link", "line", "rect",
-            "path", "pattern", "polyline"}
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.counts: dict[str, dict[str, int]] = {}
-        #: (theme, hook, tag, ancestors) per hook occurrence, where each
-        #: ancestor is the (tag, class-tuple) pair from the open stack.
-        self.placements: list[
-            tuple[str, str, str, tuple[tuple[str, tuple[str, ...]], ...]]
-        ] = []
-        #: elements carrying the "control" class (the staged-output card)
-        #: and any hook they carry — the cannot_derive surface.
-        self.control_hooks: list[tuple[str, str, tuple[str, ...]]] = []
-        self._theme: str | None = None
-        self._stack: list[tuple[str, tuple[str, ...]]] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        fields = {key: value for key, value in attrs}
-        classes = tuple((fields.get("class") or "").split())
-        class_set = set(classes)
-        theme = fields.get("data-theme")
-        if "mock-theme" in class_set and theme is not None:
-            self._theme = theme
-            self.counts[theme] = {hook: 0 for hook in HOOKS}
-            self._stack.append((tag, classes))
-            return
-        if self._theme is not None:
-            for hook in HOOKS:
-                if hook in class_set:
-                    self.counts[self._theme][hook] += 1
-                    self.placements.append(
-                        (self._theme, hook, tag, tuple(self._stack))
-                    )
-            if "control" in class_set:
-                self.control_hooks.append(
-                    (
-                        self._theme or "",
-                        tag,
-                        tuple(hook for hook in HOOKS if hook in class_set),
-                    )
-                )
-        if tag not in self.VOID:
-            self._stack.append((tag, classes))
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in self.VOID:
-            return
-        if self._stack:
-            self._stack.pop()
-
 
 def _hook_census() -> dict[str, dict[str, int]]:
-    parser = _HookCensus()
-    parser.feed(MOCKUP.read_text(encoding="utf-8"))
-    return parser.counts
+    return hook_census(MOCKUP)
 
 
 def _source_channels(reference: dict[str, Any], descriptor: dict[str, Any]) -> list[dict[str, Any]]:
@@ -136,19 +80,6 @@ def _structural_counters(
         "n_reading_tiles": n_scalar_variables,  # one tile per scalar variable
         "n_pages": len(reference["pages"]),
     }
-
-
-def _resolve_count(expression: str, counters: dict[str, int]) -> int:
-    """The closed count grammar the expect block authors: a pure-numeric
-    literal or a ``{name}`` expression over the structural counters. An
-    expression outside the closure refuses — an unknown name cannot
-    launder a divergence."""
-    if re.fullmatch(r"[0-9]+", expression):
-        return int(expression)
-    match = re.fullmatch(r"\{([a-z_]+)\}", expression)
-    if match is not None and match.group(1) in counters:
-        return counters[match.group(1)]
-    raise AssertionError(f"unknown count expression: {expression!r}")
 
 
 def _f_psu_2() -> dict[str, Any]:
@@ -214,23 +145,6 @@ def test_mockup_hook_counts_equal_the_resolved_expectation() -> None:
         assert hooks["bw-reading"] == resolved["reading-tile"], theme
         assert hooks["bw-plot"] == resolved["engineering-plot"], theme
         assert hooks["bw-data-table"] == resolved["data-table"], theme
-
-
-#: The placement contract (the refute fold's F1): each hook names its
-#: §E.1 component ROOT element, and the two container-scoped hooks sit in
-#: their mockup containers — `bw-reading` only inside the readings row,
-#: `bw-plot` only inside the lower grid. The mockup is the spec;
-#: placement is part of the spec.
-_PLACEMENT_TAG: dict[str, str] = {
-    "bw-reading": "article",
-    "bw-alert-bubble": "aside",
-    "bw-plot": "section",
-    "bw-data-table": "table",
-}
-_PLACEMENT_CONTAINER: dict[str, str] = {
-    "bw-reading": "readings",
-    "bw-plot": "lower",
-}
 
 
 def test_every_hook_sits_on_its_contract_root_and_container() -> None:
