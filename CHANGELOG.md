@@ -100,6 +100,7 @@ All notable changes to this project will be documented in this file.
 - Issue #241 row-12 arm-1 deadline design record
 - Row-12 refute corrections addendum (F1, F2)
 - Issue #241 row 12 attempt 2 — deadline-timebase dilation via the F6 services-clock seam
+- Issue #450 fold addendum — owner row call, folded deferrals
 
 ### Features
 
@@ -135,6 +136,7 @@ All notable changes to this project will be documented in this file.
 - The derivation mirrors the SDK decoder behaviors (F2)
 - The L5 input trio — renderer partials, contract rows, gateway read-only arms (PR-1)
 - Plugin-ui 0.4.0 + class-reference 0.2.0 — the L5 corpus-and-version arc (gateway #463)
+- Interface 0.1.1 — the #450 corpus revision (rows 1b/2/3/5 + D1/D2/D4/D5/F4, fold-all)
 
 ### Miscellaneous
 
@@ -165,6 +167,7 @@ All notable changes to this project will be documented in this file.
 - Bump types-jsonschema
 - Bump fastapi from 0.141.1 to 0.143.0
 - Pin reviewer to sonnet and doc writer to haiku (#496)
+- Advance the pointer to v0.16.0 — the interface 0.1.1 pairing (#450)
 
 ### Refactoring
 
@@ -210,6 +213,11 @@ All notable changes to this project will be documented in this file.
 ### Fold
 
 - The #463 final review wave — four rows (gateway #463)
+- Issue #450 refute-lane fold — all 18 rows into the corpus revision
+- Row-12 refinement — store-time identity prose, plus a caught self-miss
+- Issue #450 final fold — both refute lanes' findings (11 rows)
+- Issue #450 amendment — openapi's excluded copy pinned, the 18-copy pin, row-1 say-so
+- Issue #450 narrow fold — the refute's five residuals (rows A-E)
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
