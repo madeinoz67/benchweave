@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<title>BenchWeave mock — Data acquisition (class-daq)</title>
+<style>
+.mock-theme { min-height:100vh; padding:18px; margin-bottom:20px; background:var(--bw-canvas); color:var(--bw-text); }
+/* bw-shipped:tokens — embedded from packages/ui-html assets (drift-guarded) */
+:root {
+  --bw-space-1: 0.25rem;
+  --bw-space-2: 0.5rem;
+  --bw-space-3: 0.75rem;
+  --bw-space-4: 1rem;
+  --bw-space-5: 1.5rem;
+  --bw-space-6: 2rem;
+  --bw-radius-control: 0.5rem;
+  --bw-radius-panel: 0.875rem;
+  --bw-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bw-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --bw-shadow-raised: 0.5rem 0.625rem 1.5rem var(--bw-shadow-dark), -0.35rem -0.35rem 1rem var(--bw-shadow-light);
+  --bw-shadow-recessed: inset 0.25rem 0.25rem 0.625rem var(--bw-shadow-dark), inset -0.2rem -0.2rem 0.5rem var(--bw-shadow-light);
+  --bw-focus-ring: 0 0 0 0.2rem color-mix(in srgb, var(--bw-focus), transparent 55%);
+  --bw-transition-fast: 120ms ease;
+}
+/* /bw-shipped:tokens */
+/* bw-shipped:themes */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bw-canvas: #e4ebef;
+  --bw-surface: #f5f8f9;
+  --bw-surface-recessed: #dce5ea;
+  --bw-text: #17242c;
+  --bw-text-muted: #5b6a73;
+  --bw-border: #c3cfd5;
+  --bw-accent: #0b7181;
+  --bw-accent-contrast: #ffffff;
+  --bw-focus: #087f8c;
+  --bw-shadow-dark: #b9c5cc;
+  --bw-shadow-light: #ffffff;
+  --bw-advisory: #2476b8;
+  --bw-warning: #a96608;
+  --bw-critical: #b63830;
+  --bw-trip: #a92858;
+  --bw-success: #177158;
+  --bw-limiting: #274076;
+  --bw-series-1: #253421;
+  --bw-series-2: #8e7588;
+  --bw-series-3: #2f3300;
+  --bw-series-4: #00379d;
+  --bw-series-5: #7e002d;
+  --bw-series-6: #746084;
+  --bw-series-7: #5a1538;
+  --bw-series-8: #183058;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bw-canvas: #19252c;
+  --bw-surface: #26363f;
+  --bw-surface-recessed: #101a20;
+  --bw-text: #eef5f7;
+  --bw-text-muted: #aebbc2;
+  --bw-border: #40515b;
+  --bw-accent: #42cee2;
+  --bw-accent-contrast: #07161a;
+  --bw-focus: #59d9eb;
+  --bw-shadow-dark: #0c1317;
+  --bw-shadow-light: #354852;
+  --bw-advisory: #62aee8;
+  --bw-warning: #ffb342;
+  --bw-critical: #ff6d63;
+  --bw-trip: #ff5d91;
+  --bw-success: #67d8b2;
+  --bw-limiting: #5f9500;
+  --bw-series-1: #00744a;
+  --bw-series-2: #e3d7ff;
+  --bw-series-3: #567200;
+  --bw-series-4: #805e71;
+  --bw-series-5: #007df3;
+  --bw-series-6: #ae686e;
+  --bw-series-7: #755d9a;
+  --bw-series-8: #7d8f00;
+}
+/* /bw-shipped:themes */
+/* bw-shipped:globals */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+  font-family: var(--bw-font-ui);
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 0.125rem solid var(--bw-focus);
+  outline-offset: 0.125rem;
+  box-shadow: var(--bw-focus-ring);
+}
+
+.bw-story-canvas {
+  min-height: 100vh;
+  padding: var(--bw-space-5);
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+}
+
+.bw-data {
+  font-family: var(--bw-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+/* /bw-shipped:globals */
+
+    * { box-sizing: border-box; }
+        body { margin: 0; padding: 32px; background: #111a20; color: #edf4f6; }
+    header { max-width: 1440px; margin: 0 auto 24px; }
+    h1 { margin: 0 0 6px; font-size: clamp(1.5rem, 3vw, 2.25rem); }
+    header p { margin: 0; color: #9badb6; }
+                .topbar,.footer { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--bw-border); font-size:.72rem; letter-spacing:.08em; }
+    .footer { border:0; border-top:1px solid var(--bw-border); color:var(--bw-text-muted); }
+    .status { color:var(--bw-success); font-family:ui-monospace,monospace; }
+    .content { padding:18px; }
+    .title-row { display:flex; justify-content:space-between; gap:12px; align-items:end; }
+    .eyebrow { color:var(--bw-text-muted); font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    h2 { margin:4px 0 0; font-size:1.25rem; }
+    button { border:1px solid var(--bw-border); border-radius:9px; padding:8px 12px; color:var(--bw-text); background:linear-gradient(145deg,var(--bw-surface),var(--bw-canvas)); box-shadow:0 4px 8px #0003,inset 0 1px #fff2; font-weight:700; }
+    .capture { margin-top:16px; padding:13px; border:1px solid var(--bw-border); border-radius:12px; background:var(--bw-surface-recessed); box-shadow:inset 5px 5px 12px #0004,inset -3px -3px 9px #fff1; }
+    .plot-head { display:flex; justify-content:space-between; color:var(--bw-text-muted); font:.63rem ui-monospace,monospace; }
+    .legend { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:8px; font:.66rem ui-monospace,monospace; color:var(--bw-text-muted); }
+    .legend span { display:inline-flex; align-items:center; gap:5px; }
+    .swatch { width:14px; height:3px; border-radius:2px; display:inline-block; }
+    svg { display:block; width:100%; height:165px; margin-top:8px; }
+    .acq { margin-top:6px; color:var(--bw-text-muted); font:.63rem ui-monospace,monospace; }
+    .ctx { margin-top:12px; color:var(--bw-text-muted); font:.66rem ui-monospace,monospace; letter-spacing:.06em; }
+    .chip { position:absolute; padding:2px 7px; border:1px solid var(--bw-border); border-radius:7px; background:color-mix(in srgb,var(--bw-surface) 82%,transparent); font:.6rem ui-monospace,monospace; color:var(--bw-text); }
+    .trig-chip { left:158px; top:34px; }
+    .cur-chip { left:328px; top:56px; }
+    .run { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-start; margin-top:16px; padding:13px; border:1px solid var(--bw-border); border-radius:12px; background:linear-gradient(145deg,var(--bw-surface),var(--bw-canvas)); box-shadow:var(--bw-shadow-raised); }
+    .run .eyebrow { margin-right:8px; }
+    .run button.primary { border-color:var(--bw-accent); color:var(--bw-accent-contrast); background:var(--bw-accent); }
+    .alert { margin-top:16px; padding:12px 14px; border:1px solid var(--bw-warning); border-radius:11px; background:color-mix(in srgb,var(--bw-warning) 10%,var(--bw-surface)); box-shadow:0 0 20px color-mix(in srgb,var(--bw-warning) 22%,transparent); }
+    .alert strong { color:var(--bw-warning); }
+    .alert p { margin:4px 0 0; font-size:.82rem; }
+    @media (max-width:980px) { body{padding:18px}.themes{grid-template-columns:1fr}.theme{max-width:720px;margin:auto} }
+    @media (max-width:520px) { .title-row{align-items:start}.topbar{align-items:start;gap:10px}.status{text-align:right}.run{gap:8px} }
+
+    </style>
+</head>
+<body>
+<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.3.0</p></div>
+<section class="mock-theme" data-theme="light" aria-label="Light theme mock-up">
+<div class="topbar"><strong>BENCHWEAVE</strong><span class="status">BENCH A · CONNECTED</span></div>
+      <div class="content">
+        <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>Data acquisition · DAQ-01</h2></div><button>Controls</button></div>
+        <section class="capture bw-plot"><div class="plot-head"><span>CAPTURE · SIX CHANNELS</span><span>y · count</span></div>
+          <div class="legend"><span><i class="swatch" style="background:var(--bw-series-1)"></i>ch1</span><span><i class="swatch" style="background:var(--bw-series-2)"></i>ch2</span><span><i class="swatch" style="background:var(--bw-series-3)"></i>ch3</span><span><i class="swatch" style="background:var(--bw-series-4)"></i>ch4</span><span><i class="swatch" style="background:var(--bw-series-5)"></i>ch5</span><span><i class="swatch" style="background:var(--bw-series-6)"></i>ch6</span></div>
+            <svg viewBox="0 0 460 165" role="img" aria-label="Six channel acquisition traces"><defs><pattern id="gl" width="46" height="33" patternUnits="userSpaceOnUse"><path d="M46 0H0V33" fill="none" stroke="#bdcbd2"/></pattern></defs><rect width="460" height="165" fill="url(#gl)"/><line x1="150" y1="0" x2="150" y2="165" style="stroke:var(--bw-border);stroke-dasharray:5 4"/><line x1="200" y1="0" x2="200" y2="165" style="stroke:var(--bw-text-muted);stroke-dasharray:2 3"/><line x1="330" y1="0" x2="330" y2="165" style="stroke:var(--bw-text-muted);stroke-dasharray:2 3"/><path d="M0 30L45 28L90 33L135 26L180 31L225 24L270 29L315 22L365 27L415 21L460 25" fill="none" style="stroke:var(--bw-series-1)" stroke-width="2"/><path d="M0 56L45 54L90 58L135 52L180 57L225 50L270 55L315 49L365 53L415 48L460 51" fill="none" style="stroke:var(--bw-series-2)" stroke-width="2"/><path d="M0 81L45 79L90 84L135 77L180 82L225 76L270 80L315 74L365 78L415 73L460 76" fill="none" style="stroke:var(--bw-series-3)" stroke-width="2"/><path d="M0 106L45 103L90 108L135 101L180 106L225 99L270 104L315 97L365 101L415 96L460 99" fill="none" style="stroke:var(--bw-series-4)" stroke-width="2"/><path d="M0 131L45 128L90 133L135 126L180 130L225 124L270 129L315 122L365 127L415 121L460 124" fill="none" style="stroke:var(--bw-series-5)" stroke-width="2"/><path d="M0 152L45 150L90 154L135 148L180 151L225 146L270 150L315 144L365 148L415 143L460 146" fill="none" style="stroke:var(--bw-series-6)" stroke-width="2"/><text x="156" y="14" class="chip trig-chip">TRIG · edge · −1.2 ms</text><text x="336" y="14" class="chip cur-chip">Δt 4.0 ms · Δv 213 count</text></svg>
+          <div class="acq bw-plot__acquisition" data-bw-acquisition>Acquired 19,800 samples · plotted 6,600</div>
+        </section>
+        <div class="ctx">UNIT COUNT · CALIBRATION NOT APPLIED</div>
+        <div class="run"><span class="eyebrow">Run</span><button class="primary bw-button">Arm</button><button class="bw-button">Trigger</button><button class="bw-button">Abort</button></div>
+        <aside class="alert bw-alert-bubble"><strong>△ Buffer overflow</strong><p>Acquisition truncated · partial dataset retained · DAQ-01</p></aside>
+      </div>
+      <div class="footer"><span>LIGHT THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
+</section>
+<section class="mock-theme" data-theme="dark" aria-label="Dark theme mock-up">
+<div class="topbar"><strong>BENCHWEAVE</strong><span class="status">BENCH A · CONNECTED</span></div>
+      <div class="content">
+        <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>Data acquisition · DAQ-01</h2></div><button>Controls</button></div>
+        <section class="capture bw-plot"><div class="plot-head"><span>CAPTURE · SIX CHANNELS</span><span>y · count</span></div>
+          <div class="legend"><span><i class="swatch" style="background:var(--bw-series-1)"></i>ch1</span><span><i class="swatch" style="background:var(--bw-series-2)"></i>ch2</span><span><i class="swatch" style="background:var(--bw-series-3)"></i>ch3</span><span><i class="swatch" style="background:var(--bw-series-4)"></i>ch4</span><span><i class="swatch" style="background:var(--bw-series-5)"></i>ch5</span><span><i class="swatch" style="background:var(--bw-series-6)"></i>ch6</span></div>
+            <svg viewBox="0 0 460 165" role="img" aria-label="Six channel acquisition traces"><defs><pattern id="gd" width="46" height="33" patternUnits="userSpaceOnUse"><path d="M46 0H0V33" fill="none" stroke="#293a44"/></pattern></defs><rect width="460" height="165" fill="url(#gd)"/><line x1="150" y1="0" x2="150" y2="165" style="stroke:var(--bw-border);stroke-dasharray:5 4"/><line x1="200" y1="0" x2="200" y2="165" style="stroke:var(--bw-text-muted);stroke-dasharray:2 3"/><line x1="330" y1="0" x2="330" y2="165" style="stroke:var(--bw-text-muted);stroke-dasharray:2 3"/><path d="M0 30L45 28L90 33L135 26L180 31L225 24L270 29L315 22L365 27L415 21L460 25" fill="none" style="stroke:var(--bw-series-1)" stroke-width="2"/><path d="M0 56L45 54L90 58L135 52L180 57L225 50L270 55L315 49L365 53L415 48L460 51" fill="none" style="stroke:var(--bw-series-2)" stroke-width="2"/><path d="M0 81L45 79L90 84L135 77L180 82L225 76L270 80L315 74L365 78L415 73L460 76" fill="none" style="stroke:var(--bw-series-3)" stroke-width="2"/><path d="M0 106L45 103L90 108L135 101L180 106L225 99L270 104L315 97L365 101L415 96L460 99" fill="none" style="stroke:var(--bw-series-4)" stroke-width="2"/><path d="M0 131L45 128L90 133L135 126L180 130L225 124L270 129L315 122L365 127L415 121L460 124" fill="none" style="stroke:var(--bw-series-5)" stroke-width="2"/><path d="M0 152L45 150L90 154L135 148L180 151L225 146L270 150L315 144L365 148L415 143L460 146" fill="none" style="stroke:var(--bw-series-6)" stroke-width="2"/><text x="156" y="14" class="chip trig-chip">TRIG · edge · −1.2 ms</text><text x="336" y="14" class="chip cur-chip">Δt 4.0 ms · Δv 213 count</text></svg>
+          <div class="acq bw-plot__acquisition" data-bw-acquisition>Acquired 19,800 samples · plotted 6,600</div>
+        </section>
+        <div class="ctx">UNIT COUNT · CALIBRATION NOT APPLIED</div>
+        <div class="run"><span class="eyebrow">Run</span><button class="primary bw-button">Arm</button><button class="bw-button">Trigger</button><button class="bw-button">Abort</button></div>
+        <aside class="alert bw-alert-bubble"><strong>△ Buffer overflow</strong><p>Acquisition truncated · partial dataset retained · DAQ-01</p></aside>
+      </div>
+      <div class="footer"><span>DARK THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
+</section>
+</body>
+</html>
