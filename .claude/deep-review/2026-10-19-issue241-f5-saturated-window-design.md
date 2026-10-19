@@ -433,3 +433,87 @@ than spelling them — the convention the two adjacent #241 records used (their 
 why the count is 1 and not higher; it is disclosed here rather than leaned on, because the
 one remaining hit is load-bearing for a build agent (it is where `bench_poll_ns` lives) and
 eliding it to reach 0/8 would be the wrong trade.
+
+---
+
+## ADDENDUM — the fold wave (2026-10-19, issue #241 F5's refute slate)
+
+Corrections the two-lane fold (lane A semantics, lane B evidence) added to this record,
+each independently re-verified by the builder before it landed here. Append-only:
+nothing above is rewritten (the rubric's no-retrofit rule). The fold's one executable
+finding (F1) is code on this branch, commit `ef86165d` — an eighth assert gating the
+worst recorded `next_event` span at 0.6 of the configured slice — not a record edit.
+F3 (the census strengthening, see A6) rides the PR body and the PR-time issue comment
+per the fold's discipline.
+
+- **A1 (fold F1, lane A) — the saturation gate was absolute, and the issue's own class
+  returned.** §7 disclosed softness (i): the 40 ms gap/span literals were calibrated as
+  80% of the 50 ms slice and are only 20-25% of the 200 ms budget. Lane A pushed it from
+  softness to hole: `SLOW_NEXT_EVENT_MS=45` at the 200 ms budget GREENS the seven
+  asserts (lane A stamps: span 47.1 ms, landings 1, outcome passed) — a ~22%-saturated
+  poll certified as saturated, where the same 45 ms at the 50 ms cadence was 90%
+  saturation. Fixed in `ef86165d` (builder RED/GREEN pair with the new assert in
+  place: SLOW=45 exit 1 at the new assert, span 47.1 ms; SLOW=150 exit 0, span
+  152.1 ms). Alternative (f)'s rejection — restating the literals as a slice fraction
+  — was right for the 0.8 it named and wrong in principle: a fraction BELOW the
+  delivered evidence is the legitimate form the gate was missing.
+
+- **A2 (fold F2.1, lane B; builder-confirmed) — §11.1's keyword-scan count is false.**
+  §11.1 reports "8: 1" for `protection` and asserts the record's text "does not spell
+  the keyword list out, so no legend exclusion is needed". Re-run with §11.1's own
+  named method (`grep -oiw protection` over this record): **4** — line 27 (§1's
+  `protection.py:52-64` citation), line 396 (§11 quoting the rule's own keyword),
+  line 398 (§11 restating the citation), line 400 (§11 quoting the rubric's
+  "a protection-related key"). The tier conclusion is unchanged — first-match-wins
+  fires on that keyword at a count of 1 or of 4, Tier 3 stands — and §11.1's other
+  count (the test-file added lines score 0/8 independently) does verify. The false
+  count and its false "does not spell out" premise are claim defects, frozen here.
+
+- **A3 (fold F2.2, lane B; builder-confirmed) — §1's fingerprint block is a composite
+  presented as one run.** The block pairs the pytest anchor
+  `tests/integration/test_run_activation.py:1407` — the UNFIXED file's line for the
+  landing assert, verified: `assert landing_times` sits at 1407 in the origin/main
+  bytes — with the pre-assert stamps. The stamps require the probe print, and the
+  print shifts that assert to 1427 (builder RED capture: `...:1427: AssertionError`
+  with the stamps line, true exit 1). The two halves cannot co-occur in one
+  execution; the design-time probe grafted them. Lane B reproduced both halves
+  separately and the builder's captures corroborate both. The mechanism claim stands
+  — both halves reproduce; only the one-run presentation was false.
+
+- **A4 (fold F2.3, lane B; builder-confirmed) — one span set was recorded where two
+  exist, and the multipliers took the optimistic end.** §4's "Measured proof" records
+  the designer's n=5 under 8 CPU burners: spans 151.1 / 151.2 / 152.8 / 154.7 /
+  159.2 ms. The builder's n=5, same protocol and host class, different session:
+  spans 150.2 / 151.1 / 151.2 / 151.2 / 151.2 ms. Both are the same experiment and
+  both stand. Pairing rule: margin = 200 ms budget − span, paired span-by-span, and
+  the multiplier ranges pair the SMALLEST margin (the LARGEST span) against the
+  overshoot figures — worst-case-first. Designer margins 40.8-48.9 ms → **2.8-3.3×**
+  the measured overshoot max (14.8 ms, n=40, 8 burners) and **1.6-1.9×** the repo's
+  recorded 26 ms class; builder margins 48.8-49.8 ms → 3.3-3.4× and 1.9×. §4's
+  "~3.2x" and "~1.85x" quoted the small-span end of one set as if it were the range.
+
+- **A5 (fold F2.4, lane B) — the RED plants and the issue's input-domain lesson
+  (#439).** Both RED controls plant the mock's pacing sleep (forced +0.020 and +0.080
+  past its cushion) — an input in the domain #439 warns about. Why these plants are
+  deterministic and carry no false-green risk: (i) the plant changes exactly one
+  input, and every asserted quantity — landings, spans, session_failed, ticks — is
+  read from the mechanism's OUTPUT, so the red can appear only through the production
+  chain (deadline bracket → late-return classification → session poison → engine
+  latch → zero landings) acting on the planted input; if that chain regressed, the
+  planted run would GREEN, and that direction is what the GREEN-side runs watch. The
+  plant cannot assert its own value back. (ii) The planted sleep crosses the deadline
+  by construction before any scheduling noise — 65 ms against the 50 ms budget, 230 ms
+  against 200 ms (15 ms and 30 ms past), and scheduling noise only adds lateness — so
+  the return is past the deadline on every run. The natural flake was a RACE (~3 ms
+  realized margin against the same overshoot class); the plant removes the race
+  rather than relying on it.
+
+- **A6 (fold F3, lane B — carried, not built here) — the census's evidence criterion
+  never applied to this test.** The #241 census's own criterion for "static" was
+  absence of a `time` import; `test_run_activation.py` imports `time` at module
+  scope, so row 22's "stable" classification was reached by a criterion the row's
+  file never satisfied. This strengthens deferral D3 (the classification
+  correction): the correction is not merely "the landing assert is load-fragile",
+  it is "the census's own screen excluded this test from its own evidence basis".
+  Per the fold, this rides the PR body and the PR-time issue comment; no bytes of
+  the census or this branch carry it.
