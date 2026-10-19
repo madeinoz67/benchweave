@@ -1383,7 +1383,8 @@ def test_f5_measurement_seams_tick_times_and_saturated_polls(
     seams the pre-committed M-A rule is unmeasurable. The fixture's
     saturation constants are the 200 ms signal-poll slice and a 150 ms
     slow-poll sleep (75% of that budget), leaving ~45 ms of return margin."""
-    harness = _CommissionedHarness(tmp_path, "req-activation-f5", signal_poll_ms=200)
+    slice_ms = 200  # the commissioned signal poll — the slice the engine polls at
+    harness = _CommissionedHarness(tmp_path, "req-activation-f5", signal_poll_ms=slice_ms)
     run_id = "run-f5"
     coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
     try:
@@ -1440,6 +1441,16 @@ def test_f5_measurement_seams_tick_times_and_saturated_polls(
             for span in [ended - started]
         ]
         assert slow_polls, "no overrun poll spans recorded"
+        # Scenario-relative saturation (the fold's F1): the 40 ms literals were
+        # calibrated at the 50 ms cadence and do not move with the budget — at
+        # 200 ms they accept a ~20%-saturated poll (SLOW=45 greens the seven
+        # asserts above). This gate ties "overruns most of each slice" to the
+        # configured slice; 0.6 of it (120 ms) sits below the observed
+        # 150-159 ms spans and far above a weakly-saturating poll.
+        assert max(slow_polls) >= 0.6 * (slice_ms / 1000), (
+            f"worst next_event span {max(slow_polls) * 1000:.1f} ms is under "
+            f"60% of the {slice_ms} ms slice — not a saturated round"
+        )
     finally:
         store.close()
 
