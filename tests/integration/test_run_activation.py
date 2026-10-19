@@ -1374,15 +1374,19 @@ def _worst_tick_gap(times: list[float]) -> float:
 
 
 def test_f5_measurement_seams_tick_times_and_saturated_polls(
-    commissioned: _CommissionedHarness,
+    tmp_path: Path,
 ) -> None:
     """F5 smoke (machinery, not an acceptance control): the tick recorder
     times EVERY monitor tick (dispatch-driven and engine-driven), and the
     saturated slow-poll mode overruns most of each slice while SURVIVING —
     the regime M-A's worst-gap-over-windows rule measures. Without these
-    seams the pre-committed M-A rule is unmeasurable."""
+    seams the pre-committed M-A rule is unmeasurable. The fixture's
+    saturation constants are the 200 ms signal-poll slice and a 150 ms
+    slow-poll sleep (75% of that budget), leaving ~45 ms of return margin."""
+    slice_ms = 200  # the commissioned signal poll — the slice the engine polls at
+    harness = _CommissionedHarness(tmp_path, "req-activation-f5", signal_poll_ms=slice_ms)
     run_id = "run-f5"
-    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
     try:
         from benchweave.interfaces.app import _RetainingCoordinator
 
@@ -1396,16 +1400,40 @@ def test_f5_measurement_seams_tick_times_and_saturated_polls(
             time.monotonic()
         )
         module = _loaded_adapter_module()
-        module.SLOW_NEXT_EVENT_MS = 100  # slice is 50 ms -> ~45 ms per poll
-        coordinator.start_run(run_id, "principal-activation")
+        module.SLOW_NEXT_EVENT_MS = 150  # slice is 200 ms -> ~150 ms per poll
+        record = coordinator.start_run(run_id, "principal-activation")
         module.SLOW_NEXT_EVENT_MS = 0
+        entry = host.devices[DEVICE_ID]
+        # Classification stamps BEFORE the asserts (a print after an assert
+        # is unreachable on exactly the runs it exists for): on a red the
+        # lane replays this line, and the stamps discriminate a late-poll
+        # poison (session_failed/bridge_failed, one cut span, zero landings)
+        # from a refused subscribe (engine absent) or an absent window.
+        print(
+            "f5-stamps",
+            {
+                "outcome": record["outcome"],
+                "engine": entry.engine is not None,
+                "session_failed": bool(
+                    entry.engine is not None and entry.engine.session_failed
+                ),
+                "bridge_failed": entry.bridge._failed,
+                "next_event_spans": [
+                    round((ended - started) * 1000, 1)
+                    for verb, started, ended in entry.bridge._adapter.dispatch_spans
+                    if verb == "next_event"
+                ],
+                "ticks": len(tick_times),
+                "worst_ms": round(_worst_tick_gap(tick_times) * 1000, 1),
+                "landings": len(landing_times),
+            },
+        )
         assert len(tick_times) >= 5, "the tick recorder observed no rhythm"
         worst = _worst_tick_gap(tick_times)
         assert worst >= 0.040, (
             f"worst tick gap {worst * 1000:.1f} ms — saturated rounds absent"
         )
         assert landing_times, "no events landed in the saturated window"
-        entry = host.devices[DEVICE_ID]
         assert entry.engine is not None
         slow_polls = [
             span for verb, started, ended in entry.bridge._adapter.dispatch_spans
@@ -1413,6 +1441,16 @@ def test_f5_measurement_seams_tick_times_and_saturated_polls(
             for span in [ended - started]
         ]
         assert slow_polls, "no overrun poll spans recorded"
+        # Scenario-relative saturation (the fold's F1): the 40 ms literals were
+        # calibrated at the 50 ms cadence and do not move with the budget — at
+        # 200 ms they accept a ~20%-saturated poll (SLOW=45 greens the seven
+        # asserts above). This gate ties "overruns most of each slice" to the
+        # configured slice; 0.6 of it (120 ms) sits below the observed
+        # 150-159 ms spans and far above a weakly-saturating poll.
+        assert max(slow_polls) >= 0.6 * (slice_ms / 1000), (
+            f"worst next_event span {max(slow_polls) * 1000:.1f} ms is under "
+            f"60% of the {slice_ms} ms slice — not a saturated round"
+        )
     finally:
         store.close()
 
