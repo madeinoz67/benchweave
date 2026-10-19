@@ -6,6 +6,18 @@ instrument, authored in the 2026-10-18 record and folded once by its
 refute — F1's placement-awareness) so every class arm of the sweep keys
 on ONE instrument, never a per-class fork.
 
+L13 extension (oscilloscope; design record
+``.claude/deep-review/2026-10-19-classref-l13-oscilloscope-design.md``
+§6): the capture classes render run controls, so the instrument carries
+the ``bw-button`` root and the per-class parameterization — a hook
+family set, a container map and an idiom-surface class set per mockup.
+Defaults are byte-preserved for the readings classes (the dc_psu/dmm
+arm sets keep importing ``HOOKS``/``PLACEMENT_*`` unchanged); the
+capture instance passes its own families and containers. The idiom
+record answers the design's third arm: a non-contract idiom surface
+(trigger marker, cursor pair) must carry NO ``bw-`` hook at all —
+reverse-planting one reds while the count census stays green.
+
 Non-test helper in the suite's standing idiom (``colour_instrument.py``,
 ``thresholds.py``): imported by test modules, carrying no tests of its
 own. The census counts the §E.1 contract hooks per ``data-theme``
@@ -36,6 +48,7 @@ PLACEMENT_TAG: dict[str, str] = {
     "bw-alert-bubble": "aside",
     "bw-plot": "section",
     "bw-data-table": "table",
+    "bw-button": "button",
 }
 PLACEMENT_CONTAINER: dict[str, str] = {
     "bw-reading": "readings",
@@ -57,8 +70,18 @@ class HookCensus(HTMLParser):
     VOID = {"meta", "br", "img", "input", "hr", "link", "line", "rect",
             "path", "pattern", "polyline"}
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        hooks: tuple[str, ...] = HOOKS,
+        containers: dict[str, str] | None = None,
+        idiom_classes: frozenset[str] = frozenset(),
+    ) -> None:
         super().__init__()
+        self.hooks = hooks
+        self.containers = (
+            dict(PLACEMENT_CONTAINER) if containers is None else dict(containers)
+        )
+        self.idiom_classes = idiom_classes
         self.counts: dict[str, dict[str, int]] = {}
         #: (theme, hook, tag, ancestors) per hook occurrence, where each
         #: ancestor is the (tag, class-tuple) pair from the open stack.
@@ -68,6 +91,12 @@ class HookCensus(HTMLParser):
         #: elements carrying the "control" class (the staged-output card)
         #: and any hook they carry — the cannot_derive surface.
         self.control_hooks: list[tuple[str, str, tuple[str, ...]]] = []
+        #: (theme, tag, classes, bw-prefixed classes carried) per element
+        #: carrying an idiom class — a non-contract idiom surface must
+        #: carry NO `bw-` hook (the L13 arm).
+        self.idiom_surfaces: list[
+            tuple[str, str, tuple[str, ...], tuple[str, ...]]
+        ] = []
         self._theme: str | None = None
         self._stack: list[tuple[str, tuple[str, ...]]] = []
 
@@ -78,11 +107,11 @@ class HookCensus(HTMLParser):
         theme = fields.get("data-theme")
         if "mock-theme" in class_set and theme is not None:
             self._theme = theme
-            self.counts[theme] = {hook: 0 for hook in HOOKS}
+            self.counts[theme] = {hook: 0 for hook in self.hooks}
             self._stack.append((tag, classes))
             return
         if self._theme is not None:
-            for hook in HOOKS:
+            for hook in self.hooks:
                 if hook in class_set:
                     self.counts[self._theme][hook] += 1
                     self.placements.append(
@@ -93,7 +122,16 @@ class HookCensus(HTMLParser):
                     (
                         self._theme or "",
                         tag,
-                        tuple(hook for hook in HOOKS if hook in class_set),
+                        tuple(hook for hook in self.hooks if hook in class_set),
+                    )
+                )
+            if self.idiom_classes & class_set:
+                self.idiom_surfaces.append(
+                    (
+                        self._theme or "",
+                        tag,
+                        classes,
+                        tuple(sorted(c for c in classes if c.startswith("bw-"))),
                     )
                 )
         if tag not in self.VOID:
@@ -106,9 +144,13 @@ class HookCensus(HTMLParser):
             self._stack.pop()
 
 
-def hook_census(mockup: Path) -> dict[str, dict[str, int]]:
-    """The per-theme hook counts of one class mockup."""
-    parser = HookCensus()
+def hook_census(
+    mockup: Path, hooks: tuple[str, ...] = HOOKS
+) -> dict[str, dict[str, int]]:
+    """The per-theme hook counts of one class mockup, over the hook
+    family set that mockup's class carries (the default is the readings
+    classes' shared set)."""
+    parser = HookCensus(hooks=hooks)
     parser.feed(mockup.read_text(encoding="utf-8"))
     return parser.counts
 

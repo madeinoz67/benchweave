@@ -48,18 +48,19 @@ def test_every_enumerated_key_is_a_fixture_row(slug: str) -> None:
 
 
 def test_one_page_per_component_plus_the_refusal_page() -> None:
-    """The §E.1 component pages plus the refusal page plus the three
+    """The §E.1 component pages plus the refusal page plus the four
     class-reference pages (Landing 3; L11 adds the dc_psu output page,
-    L12 the dmm readings page): 19 pages (15 §E.1 components since L5's
-    input trio)."""
+    L12 the dmm readings page, L13 the oscilloscope waveform page):
+    20 pages (15 §E.1 components since L5's input trio)."""
     pages = patterns.pages()
     assert pages == _manifest_keys("e-1-components") + (
         "refusals",
         "class-capture",
         "class-output",
         "class-readings",
+        "class-waveform",
     )
-    assert len(pages) == 19
+    assert len(pages) == 20
 
 
 def test_every_page_has_entries_and_every_entry_names_a_page() -> None:

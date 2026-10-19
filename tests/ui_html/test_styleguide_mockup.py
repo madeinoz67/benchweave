@@ -87,7 +87,12 @@ def test_every_mock_embeds_the_shipped_tokens_byte_for_byte(path: Path) -> None:
 @pytest.mark.parametrize("path", MOCK_FILES, ids=lambda p: p.stem)
 def test_every_mock_naming_is_invented_only(path: Path) -> None:
     html = path.read_text(encoding="utf-8")
-    assert "Veridian" in html or "PSU-01" in html or "DMM-01" in html, path.stem
+    assert (
+        "Veridian" in html
+        or "PSU-01" in html
+        or "DMM-01" in html
+        or "OSC-01" in html
+    ), path.stem
     for real in ("Intronix", "intronix", "LogicPort"):
         assert real not in html, (path.stem, real)
 
@@ -97,6 +102,7 @@ def test_the_directory_has_every_device_mock() -> None:
         "class-dc_psu.html",
         "class-dmm.html",
         "class-logic_analyser.html",
+        "class-oscilloscope.html",
     }
 
 
@@ -231,3 +237,38 @@ def test_dmm_consumes_the_shipped_tokens(dmm_html: str) -> None:
     for bespoke in ("var(--canvas)", "var(--cyan)", "var(--amber)", "var(--green)", "var(--edge)"):
         assert bespoke not in dmm_html, bespoke
     assert "--bw-accent" in dmm_html and "--bw-warning" in dmm_html
+
+
+# --- the oscilloscope mock (L13 — authored with the reference, hooks from birth) ---
+
+
+@pytest.fixture
+def oscilloscope_html() -> str:
+    return (MOCKS_DIR / "class-oscilloscope.html").read_text(encoding="utf-8")
+
+
+def test_oscilloscope_carries_the_capture_surface(oscilloscope_html: str) -> None:
+    """The acquisition surface in both themes: the waveform canvas with
+    both channel traces, the trigger marker and cursor pair idioms, the
+    acquisition line, the run panel's three buttons, the partial-capture
+    alert."""
+    body = _body(oscilloscope_html)
+    assert body.count('data-theme="light"') == 1
+    assert body.count('data-theme="dark"') == 1
+    assert oscilloscope_html.count("Oscilloscope · OSC-01") == 2
+    assert oscilloscope_html.count("Partial capture") == 2
+    assert oscilloscope_html.count("Acquisition truncated") == 2
+    assert oscilloscope_html.count("Acquired") == 2
+    assert oscilloscope_html.count("TRIG") == 2
+    assert oscilloscope_html.count("Controls") == 2
+    for label in ("Arm acquisition", "Abort acquisition", "Force trigger"):
+        assert oscilloscope_html.count(label) == 2, label
+
+
+def test_oscilloscope_consumes_the_shipped_tokens(oscilloscope_html: str) -> None:
+    """The remap arm, fourth instance: the oscilloscope composition
+    carries no bespoke token names — every colour/stroke reference rides
+    the shipped --bw-* set."""
+    for bespoke in ("var(--canvas)", "var(--cyan)", "var(--amber)", "var(--green)", "var(--edge)"):
+        assert bespoke not in oscilloscope_html, bespoke
+    assert "--bw-accent" in oscilloscope_html and "--bw-warning" in oscilloscope_html
