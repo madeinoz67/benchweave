@@ -400,6 +400,23 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The function_generator class page (L14 of the class sweep; gateway
+    # issue #463, design record 2026-10-19): the pure-source class's
+    # configuration-page composition — the per-channel function cards,
+    # the load-convention alert, the settings table, the waveform
+    # preview and the preset/staged-output idioms — rendered from the
+    # committed reference/descriptor expansion (classref.py — host
+    # composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-function_generator",
+            fixture_id="configuration",
+            kind="class-page",
+            page="class-configuration",
+            render=classref.render_function_generator_configuration_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -426,6 +443,7 @@ _PAGE_TITLES: dict[str, str] = {
     "confirm-action": "Confirm action",
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
+    "class-configuration": "Function generator configuration (class reference)",
     "class-output": "DC power supply output (class reference)",
     "class-readings": "Digital multimeter readings (class reference)",
     "class-waveform": "Oscilloscope capture (class reference)",
@@ -434,11 +452,12 @@ _PAGE_TITLES: dict[str, str] = {
 
 def pages() -> tuple[str, ...]:
     """The library's page slugs: one per §E.1 component plus the refusal
-    page plus the class-reference capture page (16), the components in
-    §E.1's own order."""
+    page plus the class-reference pages (five classes and counting),
+    the components in §E.1's own order."""
     ordered = [key for key in _keys("e-1-components")]
     ordered.append("refusals")
     ordered.append("class-capture")
+    ordered.append("class-configuration")
     ordered.append("class-output")
     ordered.append("class-readings")
     ordered.append("class-waveform")

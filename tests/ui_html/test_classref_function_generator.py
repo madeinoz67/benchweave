@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from benchweave_ui_html import classref, patterns
@@ -145,14 +145,19 @@ def _configure_schema(descriptor: dict[str, Any]) -> dict[str, Any]:
     D13 intersection — an empty constraint set leaves the catalog schema
     unchanged, which is this example's shape)."""
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    schema = catalog["actions"][CONFIGURE_ACTION]["input_schema"]
+    schema = cast(
+        "dict[str, Any]",
+        catalog["actions"][CONFIGURE_ACTION]["input_schema"],
+    )
     constraints = descriptor["actions"][CONFIGURE_ACTION].get(
         "input_constraints", {}
     )
     constraint_fields = constraints.get("properties", {})
     if not constraint_fields:
         return schema
-    effective = json.loads(json.dumps(schema))
+    effective = cast(
+        "dict[str, Any]", json.loads(json.dumps(schema))
+    )
     effective.setdefault("properties", {}).update(constraint_fields)
     return effective
 
@@ -312,7 +317,7 @@ def test_the_count_conserving_move_of_the_table_hook_reds_placement() -> None:
     # the placement arm reds: every occurrence is checked, and each
     # moved occurrence now fails the root (or container) assertion
     reds = 0
-    for theme, hook, tag, ancestors in parser.placements:
+    for _theme, hook, tag, ancestors in parser.placements:
         root_ok = tag == PLACEMENT_TAG[hook]
         container = parser.containers.get(hook)
         container_ok = container is None or any(
@@ -473,36 +478,65 @@ def test_the_reference_validates_against_the_family_schema() -> None:
 
 
 def test_a_page_binding_an_unknown_slot_refuses() -> None:
-    """The family schema's own admission refusal, pinned for this
-    class's page set: a scratch document binding a slot key the
-    reference does not own refuses (``classref_unknown_slot``)."""
+    """The family's cross-object admission refusal, pinned for this
+    class's page set: a scratch reference binding a slot key it does not
+    own refuses at derivation (``classref_unknown_slot``) — an unknown
+    key cannot launder a page. The schema alone is structural; the
+    cross-object check is the derivation's (the README's own split)."""
+    from benchweave.presentation.classref import derive_attachment
+
     document = load_document(REFERENCE)
     document["pages"][0]["binding_slots"] = ["configure", "measure"]
-    with pytest.raises(ClassRefusal, match="classref"):
-        validate_reference_document(document, corpus=corpus_root())
+    descriptor_raw = DESCRIPTOR.read_bytes()
+    with pytest.raises(ClassRefusal, match="classref_unknown_slot"):
+        derive_attachment(
+            descriptor_raw,
+            corpus=corpus_root(),
+            references_override=[document],
+        )
 
 
 # --- A8: the when_declared arm (this class's own) --------------------------------
 
 
 def test_the_upload_less_descriptor_still_selects_the_reference() -> None:
-    """A8, the gateway-side half: on the upload-less derived fixture
+    """A8, executed gateway-side: on the upload-less derived fixture
     (the example minus its ``upload`` action, derived in-test — the
     descriptor shape a generator without arbitrary-waveform support
     presents), ``select_references`` still resolves the reference and
-    the reference still validates: the optional-action seam is
-    descriptor-driven, never a second corpus document. The
-    derivation-side half (the controls plan reading configure L3 /
-    output L0 with NO upload divergence — the ledger tracks declared
-    actions) is the batched SDK leg's work and rides that train."""
-    from benchweave.presentation.classref import select_references
+    the derivation still produces the SAME two-page set — the
+    ``when_declared`` slot skips the undeclared action, leaving no
+    upload-shaped residue (no ghost page, no stray binding). The
+    upload binding exists ONLY on the fixture that declares the action.
+    The SDK-side census (the controls plan's deviation ledger rows) is
+    the batched SDK leg's work and rides that train."""
+    from benchweave.presentation.classref import derive_attachment, select_references
 
     fixture = _upload_less_fixture()
     assert "otdp.function_generator.upload/1.0.0" not in fixture["actions"]
     selected = select_references(corpus_root(), fixture)
     assert selected is not None and len(selected) == 1
     assert selected[0]["profile_id"] == "otdp.function_generator/1.0.0"
-    validate_reference_document(load_document(REFERENCE), corpus=corpus_root())
+
+    full = json.loads(
+        derive_attachment(
+            DESCRIPTOR.read_bytes(), corpus=corpus_root()
+        ).manifest_raw
+    )
+    reduced = json.loads(
+        derive_attachment(
+            json.dumps(fixture).encode(), corpus=corpus_root()
+        ).manifest_raw
+    )
+    for manifest, label in ((full, "declared"), (reduced, "upload-less")):
+        assert [page["id"] for page in manifest["pages"]] == [
+            "configuration",
+            "device-features",
+        ], (label, manifest["pages"])
+    binding_ids = {b["id"] for b in full["bindings"]}
+    reduced_binding_ids = {b["id"] for b in reduced["bindings"]}
+    assert "upload" in binding_ids
+    assert "upload" not in reduced_binding_ids
 
 
 # --- the pattern-library configuration page --------------------------------------
@@ -573,7 +607,7 @@ def test_the_function_cards_derive_from_the_declared_channels() -> None:
     page = classref.render_function_generator_configuration_page()
     reference = load_document(REFERENCE)
     fixture = load_document(DESCRIPTOR)
-    cards = page.count('class="card fncard')
+    cards = page.count('class="fncard card')
     channels = _source_channels(reference, fixture)
     assert cards == len(channels), (cards, len(channels))
     for channel in channels:

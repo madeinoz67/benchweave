@@ -1491,6 +1491,11 @@
       "path": "plugin-ui-class-reference/0.3.0/class-oscilloscope.json",
       "source": "docs/plugin-ui-class-reference-v2/class-oscilloscope.json",
       "sha256": "7da86c2dc771847ffca61f4d374882debf501bdbc94311f6b7940fa650ae966e"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-function_generator.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-function_generator.json",
+      "sha256": "363bc0c7438fcb6f666f7bdebe04b2645f9f9d1ed2b26c8c659d0ed72ba704e7"
     }
   ]
 }

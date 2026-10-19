@@ -71,6 +71,23 @@ row citing the authoring staging path
 `docs/plugin-ui-class-reference-v2/class-oscilloscope.json` (removed in
 the same pull request — the founding convention).
 
+## L14 note (in-window: the `function_generator` class, nothing widened)
+
+The 0.3.0 window was still open when the `function_generator` class
+landed (the batch's promotion leg unbuilt), so the fifth class file
+joined the same bump with ZERO vocabulary motion — no schema byte, no
+count expression beyond the closure the 0.2.0 bump already carried, no
+layout block, no numeric literal. The profile is measurement-free
+(required `configure` + `output`, optional `upload`, `source` channels
+only), so the reference owns TWO pages (Configuration, Device
+features): no observation binds, no plot template names an over-slot,
+and an output-shaped third page would render panels and a mode-banner
+around two REPORTED deviations — placement-by-anticipation, refused.
+`upload` is the `when_declared` seam's second use and its first
+non-lifecycle optional action. Its row cites the authoring staging
+path `docs/plugin-ui-class-reference-v2/class-function_generator.json`
+(removed in the same pull request — the founding convention).
+
 ## Files
 
 | File | What it is |
@@ -81,6 +98,7 @@ the same pull request — the founding convention).
 | `class-dc_psu.json` | The reference for the `otdp.dc_psu/1.0.0` class (L11) |
 | `class-dmm.json` | The reference for the `otdp.dmm/1.0.0` class (L12) |
 | `class-oscilloscope.json` | The reference for the `otdp.oscilloscope/1.0.0` class (L13) |
+| `class-function_generator.json` | The reference for the `otdp.function_generator/1.0.0` class (L14) |
 
 ## The structure rule (D2)
 
@@ -212,6 +230,6 @@ derivation per bump (design record R2).
 
 ## Names
 
-All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01"
-and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
+All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01",
+"FGEN-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
 products, vendors, or benches.

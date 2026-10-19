@@ -2,11 +2,12 @@
 program; gateway issues #462 rows 1-2; design record §7 Landing 3, §7A L3;
 the L11 output page per the 2026-10-18 dc_psu design record).
 
-Three pattern-library pages compose the class-page compositions the
-references describe from the §E.1 partials the renderer already ships:
-host composition, no renderer change, no new contract rows (the record's
-§2.6 rule). The §E.1 partials, templates and the contract harness are
-untouched by any of the three slices.
+The class-page pattern-library compositions are built from the §E.1
+partials the renderer already ships: host composition, no renderer
+change, no new contract rows (the record's §2.6 rule). The §E.1
+partials, templates and the contract harness are untouched by any of
+the slices; the class-page composers now number five (analyser,
+dc_psu, dmm, oscilloscope, function_generator).
 
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. The analyser page's data was produced by a
@@ -694,12 +695,197 @@ def render_oscilloscope_capture_page() -> str:
     )
 
 
+# --- the function_generator configuration page (L14; design record 2026-10-19) --
+#
+# The pure-source class, fifth composer, same standing shape — and the
+# first class whose pattern page composes the CONFIGURATION page: no
+# measurement action exists, so no observation binds and no plot
+# template names an over-slot; the page set owns Configuration and
+# Device features only (RC-L14-2), the reference authors zero layout
+# blocks and zero numeric literals. The counts derive from the committed
+# corpus pair: two function cards (one per (channel, declared quantity)
+# of the OTDP example's declared source channels — 2 x 1), one settings
+# data table whose field-row set is the catalog's configure input
+# schema minus the identity fields the composition carries elsewhere
+# (configuration_id on the staged-configuration evidence, channel on
+# the cards), and one alert carrying the mockup's own wording. Card
+# values and the preview paint are fixture choices in the fixtures.py
+# sense (the mockup's illustrative data); the card labels and the field
+# names are corpus strings. No control surface derives at birth and NO
+# idiom presents as a contract component: the output toggle and the
+# waveform upload are declared deviations (the directional section C.1
+# presentation; the pattern-narrowed channel and the artifact-selection
+# inputs), the preview is a runtime join against the effective
+# configuration (no dataset action exists for a plot arm to bind — the
+# canvas lands as paint, never bw-plot), and the preset scaffold is
+# commissioned evidence (A02) — the drift guards pin the absence of
+# every fabricated control (bw-rotary, bw-confirm, bw-button, <button>,
+# bw-plot) and of any reading tile (a requested value is not a reading).
+
+#: The per-channel function cards — one per (channel, declared
+#: quantity) of the example's declared source channels. Labels are the
+#: descriptor's own channel labels (corpus strings); values and states
+#: are fixture choices (the mockup's illustrative data).
+_FG_CARDS: tuple[dict[str, str], ...] = (
+    {
+        "label": "Reference channel 1",
+        "function": "sine",
+        "value": "1 kHz · 2.5 Vpp · +125 mV",
+        "state": "50 Ω LOAD · OUTPUT ON",
+    },
+    {
+        "label": "Reference channel 2",
+        "function": "square",
+        "value": "10 kHz · 5 Vpp · 25% duty",
+        "state": "50 Ω LOAD · OUTPUT OFF",
+    },
+)
+
+#: The load-convention alert (cannot_derive load-convention-alert
+#: renders from host-observed conditions; the composition carries the
+#: mockup's illustrative one, not dismissible — a persistent condition).
+_FG_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Load convention",
+    message=(
+        "voltage is specified at the declared 50 Ω load; "
+        "high-impedance operation changes the delivered amplitude"
+    ),
+    live_region="status",
+    dismissible=False,
+)
+
+#: The settings table's field rows: one row per configure input-schema
+#: property minus the identity fields ({configuration_id, channel}) the
+#: composition carries elsewhere — the committed artifact of the
+#: schema derivation (Kind from the property's own shape: enum ->
+#: selection, string -> text, numeric otherwise; Notes from the
+#: schema's allOf conditions), the catalog's own strings verbatim. A
+#: catalog edit reddens the drift guard until this data is regenerated.
+_FG_SETTINGS_ROWS: tuple[TableDataRow, ...] = (
+    TableDataRow(key="function", cells=("function", "selection", "—")),
+    TableDataRow(key="frequency_hz", cells=("frequency_hz", "numeric", "—")),
+    TableDataRow(key="amplitude_vpp", cells=("amplitude_vpp", "numeric", "—")),
+    TableDataRow(key="offset_v", cells=("offset_v", "numeric", "—")),
+    TableDataRow(key="phase_deg", cells=("phase_deg", "numeric", "—")),
+    TableDataRow(key="load_ohm", cells=("load_ohm", "numeric", "—")),
+    TableDataRow(
+        key="duty_cycle",
+        cells=("duty_cycle", "numeric", "required when function is square or pulse"),
+    ),
+    TableDataRow(
+        key="waveform_id",
+        cells=("waveform_id", "text", "required when function is arbitrary"),
+    ),
+)
+
+_FG_TABLE = TableData(
+    caption="Configure fields",
+    headers=("Field", "Kind", "Notes"),
+    rows=_FG_SETTINGS_ROWS,
+)
+
+#: The preview paint (host composition, never a §E.1 plot): two traces
+#: over one canvas — the sine solid, the square dashed — the mockup's
+#: own geometry, currentColor so each theme tints it.
+_FG_PREVIEW_SVG = (
+    '<svg viewBox="0 0 460 150" role="img" '
+    'aria-label="Painted preview of the two configured output waveforms">'
+    '<path d="M0 82C30 30 60 30 90 82S150 134 180 82 '
+    '240 30 270 82 330 134 360 82 420 30 450 82" '
+    'fill="none" stroke="currentColor" stroke-width="2.5"/>'
+    '<path d="M0 58H45V106H135V58H225V106H315V58H405V106H460" '
+    'fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-dasharray="8 5"/></svg>'
+)
+
+#: The staged-output card's §C.1 directional lines (painted idiom, the
+#: mockup's own wording): the enable arm's armed line names effect and
+#: target (stage-then-confirm); the disable arm is one ungated action.
+_FG_ARMED_LINE = (
+    "ENABLE · REFERENCE CHANNEL 1 · EFFECT: OUTPUT ON AT THE STAGED "
+    "CONFIGURATION"
+)
+_FG_UNGATED_LINE = "DISABLE · REFERENCE CHANNEL 1 · ONE ACTION · NO CONFIRMATION"
+
+_FG_CONFIGURATION_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="cards"
+  data-surface="raised" data-bw-span="12" aria-label="Function cards">
+<h3>Function cards</h3>
+<div class="bw-fg-cards">
+{% for card in cards %}<article class="fncard card">
+<span class="fn-label">{{ card.label }} · {{ card.function | upper }}</span>
+<div class="fn-value">{{ card.value }}</div>
+<span class="fn-state">{{ card.state }}</span>
+</article>
+{% endfor %}</div>
+</section>
+</div>
+{{ alert | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section settings" data-bw-section-id="settings"
+  data-surface="raised" data-bw-span="5" aria-label="Settings">
+<h3>Settings</h3>
+{{ table | safe }}
+</section>
+<section class="bw-classref-section" data-bw-section-id="preview"
+  data-surface="recessed" data-bw-span="7" aria-label="Preview">
+<div class="plot waveform-preview">
+<div class="plot-head"><span>PREVIEW · CONFIGURED OUTPUT</span>
+<span>— SINE CH1&nbsp;&nbsp; -- SQUARE CH2</span></div>
+{{ preview_svg }}
+<div class="acq">Preview joins the effective configuration · illustrative</div>
+</div>
+</section>
+</div>
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="preset"
+  data-surface="raised" data-bw-span="6" aria-label="Preset">
+<article class="preset-card card"><span class="eyebrow">Preset</span>
+<div class="preset-line">FUNCTION · SINE / 1 kHz / 2.5 Vpp</div>
+<span class="staged">PRESET · APPLY REQUIRED</span></article>
+</section>
+<section class="bw-classref-section" data-bw-section-id="output"
+  data-surface="raised" data-bw-span="6" aria-label="Output">
+<article class="output-control card"><span class="eyebrow">Output</span>
+<div class="armed-line">{{ armed_line }}</div>
+<span class="staged">STAGED · CONFIRM REQUIRED</span>
+<div class="ungated">{{ ungated_line }}</div>
+</article>
+</section>
+</div>
+</div>"""
+
+
+def render_function_generator_configuration_page() -> str:
+    """The function_generator configuration-page composition: mode
+    banner, the Function-cards section (one hook-less card per declared
+    source channel — requested values, never readings), the
+    load-convention alert, the Settings section (one §E.1 data table
+    over the configure schema's field rows) beside the hook-less
+    waveform-preview panel, and the preset and staged-output idiom
+    cards — the pure-source class's two derivable contract surfaces
+    carrying the composition, everything else painted host-side."""
+    return ENV.from_string(_FG_CONFIGURATION_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        cards=_FG_CARDS,
+        alert=render_alert_bubble(_FG_ALERT),
+        table=render_data_table(_FG_TABLE),
+        preview_svg=_FG_PREVIEW_SVG,
+        armed_line=_FG_ARMED_LINE,
+        ungated_line=_FG_UNGATED_LINE,
+    )
+
+
 __all__ = [
     "capture_lanes",
     "dmm_readings",
     "output_readings",
     "render_capture_page",
     "render_dmm_readings_page",
+    "render_function_generator_configuration_page",
     "render_oscilloscope_capture_page",
     "render_output_page",
 ]

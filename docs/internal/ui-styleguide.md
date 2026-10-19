@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -335,6 +335,35 @@ contract components. No control surface derives beyond the ladder's —
 acquisition settings are `cannot_derive` (`acquisition-settings`;
 configure is preset-mediated) and the page fabricates none; the capture
 page carries no data table.
+
+The `class-configuration` pattern-library page composes the
+`otdp.function_generator` configuration-page composition the same way:
+the reference (`standards/plugin-ui-class-reference/0.3.0/class-function_generator.json`,
+the L14 class — the sweep's first PURE SOURCE: no measurement action,
+so no observation binds and no plot template names an over-slot; two
+pages, zero layout blocks, zero numeric literals) expanded against the
+OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-function_generator.json`),
+rendered from the §E.1 partials the renderer already ships — one
+`data-table` over the configure schema's field rows (the field names
+and the conditional Notes wording are the catalog's own strings) and
+one `alert-bubble` carrying the load-convention condition. The drift
+guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_function_generator.py`) re-derive the
+page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. The mockup paints the non-contract idioms (the
+per-channel function cards, the waveform preview panel, the preset
+card and the staged output-control card) with no `bw-` hook — they are
+`cannot_derive` (`function-summary`, `waveform-preview`,
+`function-selection`, `output-control`), so they never present as
+contract components; a requested value is never a reading. No control
+surface derives at all — both procedure controls (the output toggle
+and the optional arbitrary-waveform `upload`, the `when_declared`
+seam's first non-lifecycle use) are declared deviations at birth, and
+the configuration page carries no plot.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 
