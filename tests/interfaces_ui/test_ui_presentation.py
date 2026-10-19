@@ -871,7 +871,7 @@ def test_unknown_class_fails_open_to_the_pre_l4_absence_note(
     obligations the descriptor does not create."""
     descriptor = json.loads(_f1_descriptor_raw("f1"))
     descriptor["id"] = "dev.example.scalar"
-    descriptor["profiles"] = ["otdp.dmm/1.0.0"]
+    descriptor["profiles"] = ["otdp.oscilloscope/1.0.0"]
     descriptor["channels"] = []
     descriptor["actions"] = {}
     descriptor["contracts"] = []

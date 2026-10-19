@@ -6,7 +6,7 @@
     },
     "tests/architecture/test_plugin_ui_class_reference_contracts.py": {
       "core": 0,
-      "total": 94
+      "total": 102
     },
     "tests/architecture/test_plugin_ui_contracts.py": {
       "core": 0,
@@ -518,7 +518,7 @@
     },
     "tests/presentation/test_classref_derive.py": {
       "core": 0,
-      "total": 23
+      "total": 24
     },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,
@@ -654,9 +654,13 @@
     },
     "tests/ui_html/test_browser_patterns.py": {
       "core": 0,
-      "total": 44
+      "total": 46
     },
     "tests/ui_html/test_classref_dc_psu.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/ui_html/test_classref_dmm.py": {
       "core": 0,
       "total": 15
     },
@@ -738,7 +742,7 @@
     },
     "tests/ui_html/test_styleguide_mockup.py": {
       "core": 0,
-      "total": 13
+      "total": 18
     },
     "tests/ui_html/test_templates_packaged.py": {
       "core": 0,
