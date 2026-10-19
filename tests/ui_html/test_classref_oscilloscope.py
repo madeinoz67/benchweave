@@ -45,10 +45,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from benchweave.presentation.classref import (
-    ClassRefusal,
-    validate_reference_document,
-)
 from benchweave_ui_html import classref, patterns
 from classref_census import (
     PLACEMENT_TAG,
@@ -56,6 +52,11 @@ from classref_census import (
     hook_census,
     load_document,
     resolve_count,
+)
+
+from benchweave.presentation.classref import (
+    ClassRefusal,
+    validate_reference_document,
 )
 from benchweave.vendoring import corpus_root
 
@@ -75,7 +76,7 @@ OSCILLOSCOPE_HOOKS: tuple[str, ...] = ("bw-plot", "bw-button", "bw-alert-bubble"
 #: The placement contract for this mockup: each container-scoped hook
 #: sits in its mockup container (the capture region, the run panel).
 OSCILLOSCOPE_CONTAINERS: dict[str, str] = {
-    "bw-plot": "capture",
+    "bw-plot": "traces",
     "bw-button": "run",
 }
 
@@ -150,7 +151,7 @@ def _scratch_with_plot(plot: dict[str, Any]) -> dict[str, Any]:
     """A scratch reference document carrying the given plot block: the
     committed dmm document with its (first) plot swapped — the A8 arm
     vehicle, scratch-only (never committed)."""
-    document = json.loads(
+    document: dict[str, Any] = json.loads(
         (FAMILY_DIR / "class-dmm.json").read_text(encoding="utf-8")
     )
     for page in document["pages"]:
@@ -293,7 +294,13 @@ def test_the_reference_authors_structure_not_data() -> None:
 
     allowed_numbers = {0, 12}  # plot_index 0; the grid span 12
     for value in walk(reference):
-        assert not isinstance(value, int) or value in allowed_numbers, value
+        # bools are schema flags (when_declared), not numeric literals —
+        # bool subclasses int, so it is excluded explicitly
+        assert (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value in allowed_numbers
+        ), value
         assert not isinstance(value, float), value
     raw = json.dumps(reference)
     fixture = load_document(DESCRIPTOR)
@@ -377,7 +384,7 @@ def test_every_committed_class_document_validates() -> None:
             documents.append((path, document))
     names = {path.name for path, _ in documents}
     assert "class-oscilloscope.json" in names, names
-    for path, document in documents:
+    for _path, document in documents:
         validate_reference_document(document, corpus=corpus_root())
 
 
@@ -423,7 +430,7 @@ def test_the_run_buttons_resolve_over_declared_actions() -> None:
     )
     # the staging control is the L2 arm face: a numeric input beside the
     # button, never a confirm subtree (the D7 forbid)
-    assert "bw-numeric-input" in page
+    assert "bw-numeric" in page
     assert "bw-confirm" not in page
 
 

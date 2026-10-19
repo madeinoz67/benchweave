@@ -384,6 +384,22 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The oscilloscope class page (L13 of the class sweep; gateway issue
+    # #463, design record 2026-10-19): the capture class's
+    # capture-page composition — the waveform canvas and the run panel —
+    # rendered from the committed reference/descriptor expansion
+    # (classref.py — host composition of the §E.1 partials, no renderer
+    # change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-oscilloscope",
+            fixture_id="capture",
+            kind="class-page",
+            page="class-waveform",
+            render=classref.render_oscilloscope_capture_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -412,6 +428,7 @@ _PAGE_TITLES: dict[str, str] = {
     "class-capture": "Logic analyser capture (class reference)",
     "class-output": "DC power supply output (class reference)",
     "class-readings": "Digital multimeter readings (class reference)",
+    "class-waveform": "Oscilloscope capture (class reference)",
 }
 
 
@@ -424,6 +441,7 @@ def pages() -> tuple[str, ...]:
     ordered.append("class-capture")
     ordered.append("class-output")
     ordered.append("class-readings")
+    ordered.append("class-waveform")
     return tuple(ordered)
 
 

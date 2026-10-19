@@ -309,6 +309,33 @@ function/range/aperture/autozero selection is `cannot_derive`
 (`function-selection`; configure is preset-mediated) and the page
 fabricates none.
 
+The `class-waveform` pattern-library page composes the `otdp.oscilloscope`
+capture-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-oscilloscope.json`, the
+L13 class — the sweep's first waveform-shaped one: capture view over the
+fetch dataset, acquisition-lifecycle run controls, no decode) expanded
+against the OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-oscilloscope.json`), rendered from
+the §E.1 partials the renderer already ships — one `engineering-plot`
+waveform over the capture dataset (one trace per (channel, declared
+quantity) of the declared analogue inputs), the per-trace acquisition
+disclosure as the capture-context strip (`Acquired {n} samples · plotted
+{m} at {rate}` — §E.2.5, landed by use), and the run panel's arm staging
+control plus the abort and trigger buttons (one per declared run action).
+The drift guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_oscilloscope.py`) re-derive the page's
+structure from those corpus files and pin the styleguide mockup's §E.1
+component-hook counts to the reference's resolved expectation: a corpus
+edit reddens the page data until it is regenerated, and a mockup edit
+that changes a hook count reds against the reference. The mockup paints
+the non-contract idioms (the trigger marker and cursor pair with its Δ
+readout) with no `bw-` hook — they are `cannot_derive` (`trigger-marker`,
+`cursor-readout`; the host-knowledge seam), so they never present as
+contract components. No control surface derives beyond the ladder's —
+acquisition settings are `cannot_derive` (`acquisition-settings`;
+configure is preset-mediated) and the page fabricates none; the capture
+page carries no data table.
+
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 
 ## Plugin presentation

@@ -560,11 +560,146 @@ def render_dmm_readings_page() -> str:
 
 
 
+# --- the oscilloscope capture page (L13; design record 2026-10-19) -------------
+#
+# The capture class's own geometry, fourth composer, same standing shape:
+# the traces section (the analyser's capture geometry — plot recessed and
+# dominant, span 12) and the run section (raised, span 12), mirroring the
+# reference layout block's surfaces and spans. The counts derive from the
+# committed corpus pair: one waveform plot over the capture dataset (one
+# trace per (channel, declared quantity) of the OTDP example's declared
+# analogue channels — 2 x 1), and one run control per DECLARED run action
+# of the example (3: arm staging + abort + trigger buttons — the example
+# declares all five actions; a trigger-less descriptor renders its ghost
+# at expansion). Trace values and the acquisition numbers are fixture
+# choices in the fixtures.py sense (the mockup's own illustrative data);
+# the labels and trace ids are corpus strings (channel labels x declared
+# quantities). The acquisition disclosure (§E.2.5) is exercised with the
+# class's own numbers — the capture-context strip lands by use (RC-L5-1's
+# second idiom: no contract row, no motion). No control surface derives
+# beyond the ladder's: acquisition settings are cannot_derive
+# (acquisition-settings; configure is preset-mediated at birth) and the
+# page fabricates no settings face; the trigger marker and cursor readout
+# are cannot_derive (host-knowledge seam) and compose nothing here; the
+# capture page carries NO data table — a table of waveform samples is not
+# a surface this class presents (the drift guard pins the absence).
+
+def _scope_traces() -> tuple[TraceSpec, ...]:
+    """One trace per (channel, quantity) of the OTDP example's analogue
+    channels — both channel voltage waveforms (2 x 1 derived from the
+    corpus pair; no subset choice to disclose). The acquired counts are
+    the mockup's own acquisition numbers (fixture data)."""
+    return (
+        TraceSpec(
+            "Reference channel 1 · voltage",
+            "V",
+            samples=(0.0, 3.0, 3.0, -3.0, -3.0, 0.0, 3.0, 3.0, -3.0, -3.0, 0.0),
+            acquired=4096,
+        ),
+        TraceSpec(
+            "Reference channel 2 · voltage",
+            "V",
+            samples=(0.0, 2.1, 3.0, 2.1, 0.0, -2.1, -3.0, -2.1, 0.0, 2.1, 3.0),
+            acquired=4096,
+        ),
+    )
+
+
+#: The partial-capture alert (cannot_derive partial-capture-alert renders
+#: from host-observed conditions; the composition carries the mockup's
+#: illustrative one, not dismissible — a persistent condition).
+_SCOPE_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Partial capture",
+    message="Acquisition truncated — partial dataset",
+    live_region="status",
+    dismissible=False,
+)
+
+#: The run controls (expect.controls: arm staging L2, abort/trigger
+#: button L1). Display labels and faces are fixture choices — the
+#: reference authors structure, not data (D2); the face set is the
+#: design's §2 mockup contract (Arm primary; Trigger and Abort
+#: secondary).
+_SCOPE_ARM_NUMERIC = NumericInputData(
+    label="Max duration",
+    unit="ms",
+    value="10000",  # fixture choice — the analyser composer's own
+    minimum="1",  # the action schema's own minimum
+    maximum="",  # no schema maximum — the absent bound (A02)
+    step="1",  # the schema type's integer step, type-derived
+    input_id="bw-classref-scope-arm-duration",
+)
+_SCOPE_ARM_BUTTON = ButtonData(label="Arm acquisition", variant="primary")
+_SCOPE_TRIGGER_BUTTON = ButtonData(label="Force trigger", variant="secondary")
+_SCOPE_ABORT_BUTTON = ButtonData(label="Abort acquisition", variant="secondary")
+
+
+def _scope_plot() -> ComposedPlot:
+    """The capture plot: one waveform engineering plot over the capture
+    dataset — both declared channel traces (the mockup's two). The
+    per-trace acquisition disclosure renders because the drawn samples
+    are fewer than acquired (the §E.2.5 strip lands by use)."""
+    return compose_plot(
+        title="Capture",
+        description=(
+            "Both declared analogue channels' voltage waveforms over the "
+            "acquisition window."
+        ),
+        traces=_scope_traces(),
+        hints={},
+        rate="1 MS/s",
+    )
+
+
+_SCOPE_CAPTURE_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="traces"
+  data-surface="recessed" data-bw-span="12" aria-label="Traces">
+<h3>Traces</h3>
+{{ plot | safe }}
+</section>
+</div>
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="run"
+  data-surface="raised" data-bw-span="12" aria-label="Run">
+<h3>Run</h3>
+<p data-bw-staged-config>{{ staged_config }}</p>
+{{ arm_numeric | safe }}
+{{ arm_button | safe }}
+{{ trigger_button | safe }}
+{{ abort_button | safe }}
+</section>
+</div>
+{{ alert | safe }}
+</div>"""
+
+
+def render_oscilloscope_capture_page() -> str:
+    """The oscilloscope capture-page composition: mode banner, the Traces
+    section (one engineering waveform plot over the capture dataset),
+    the Run section (staged-config evidence, the arm staging numeric and
+    the three run buttons) and the partial-capture alert — the reference
+    layout block's own surfaces and spans."""
+    return ENV.from_string(_SCOPE_CAPTURE_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        plot=render_plot(_scope_plot()),
+        staged_config=_STAGED_CONFIG_TEXT,
+        arm_numeric=render_numeric_input(_SCOPE_ARM_NUMERIC),
+        arm_button=render_button(_SCOPE_ARM_BUTTON),
+        trigger_button=render_button(_SCOPE_TRIGGER_BUTTON),
+        abort_button=render_button(_SCOPE_ABORT_BUTTON),
+        alert=render_alert_bubble(_SCOPE_ALERT),
+    )
+
+
 __all__ = [
     "capture_lanes",
     "dmm_readings",
     "output_readings",
     "render_capture_page",
     "render_dmm_readings_page",
+    "render_oscilloscope_capture_page",
     "render_output_page",
 ]

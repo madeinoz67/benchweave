@@ -107,9 +107,9 @@ def test_the_row_checkers_fixture_population_is_the_librarys() -> None:
 def test_export_writes_the_page_tree_both_themes_and_the_index(
     tmp_path: Path,
 ) -> None:
-    """38 pages (19 × 2 themes) + the index."""
+    """40 pages (20 × 2 themes) + the index."""
     result = patterns.export(tmp_path)
-    assert len(result.pages) == 38, result.pages
+    assert len(result.pages) == 40, result.pages
     assert set(result.themes) == {"light", "dark"}
     assert result.index == "patterns/index.html"
     for theme in ("light", "dark"):

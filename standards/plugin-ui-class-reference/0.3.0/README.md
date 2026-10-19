@@ -25,9 +25,10 @@ label pattern `D{first}-D{last}`, radix hex/decimal — and may not carry
 `series`), `time_series` requires the one structural field
 `series: "numeric_variables"` (the closed derivation rule: every numeric
 scalar variable of the over-slot's dataset becomes a series) and may not
-carry the group machinery. `waveform` is deliberately NOT admitted — no
-class in this slice needs it; the oscilloscope class widens again on its
-own evidence. The founding reference re-stamps with zero content change
+carry the group machinery. `waveform` was NOT admitted in the L11 slice
+(the oscilloscope class widens on its own evidence) and the L13
+oscilloscope class landed it in the same unreleased window (see the L13
+note below). The founding reference re-stamps with zero content change
 (exactly the `contract_version` line — the L5 shape).
 
 The new `class-dc_psu.json` is the first scalar/readings-shaped class: the
@@ -55,6 +56,21 @@ cross-constraints row amends in place with the floor unchanged — the
 widening consumes vocabulary plugin-ui 0.4.0 already ships — evidence
 re-cited to this bump's design record).
 
+## L13 note (in-window: the `waveform` widening + the oscilloscope class)
+
+The 0.3.0 window was still open when the L13 class landed (the batch's
+promotion leg unbuilt), so the one vocabulary motion joined the same
+bump: `page_template.plot.kind` admits `waveform`, with a conditional
+mirroring `time_series` (`series: "numeric_variables"` required, the
+group machinery banned). The semantic difference from `time_series`
+lives in the DATASET kind at expansion — the waveform dataset's trace
+variables are array-valued numeric variables (one per channel and
+declared quantity) over an explicit time axis — never in a new series
+rule. The `class-oscilloscope.json` reference rides the same bump, its
+row citing the authoring staging path
+`docs/plugin-ui-class-reference-v2/class-oscilloscope.json` (removed in
+the same pull request — the founding convention).
+
 ## Files
 
 | File | What it is |
@@ -64,6 +80,7 @@ re-cited to this bump's design record).
 | `class-logic_analyser.json` | The founding reference for the `otdp.logic_analyser/1.0.0` class |
 | `class-dc_psu.json` | The reference for the `otdp.dc_psu/1.0.0` class (L11) |
 | `class-dmm.json` | The reference for the `otdp.dmm/1.0.0` class (L12) |
+| `class-oscilloscope.json` | The reference for the `otdp.oscilloscope/1.0.0` class (L13) |
 
 ## The structure rule (D2)
 
@@ -103,15 +120,19 @@ marks the page that hosts the Device-features section. The `plot` block
 declares the page's plot: a `digital_lanes` plot over a dataset slot
 (group of 8 with label pattern `D{first}-D{last}`, radix `hex` (default)
 or `decimal`; labels are decimal positional always, the radix formats
-rendered values, never labels) or a `time_series` plot over a dataset
-slot (the 0.3.0 widening; `series: "numeric_variables"` names the closed
-derivation rule).
+rendered values, never labels), a `time_series` plot over a dataset slot
+(the 0.3.0 widening; `series: "numeric_variables"` names the closed
+derivation rule), or a `waveform` plot over a dataset slot (the L13
+widening; the same `series` rule — the waveform dataset's trace
+variables are array-valued numeric variables over an explicit time
+axis; the group machinery is banned exactly as for `time_series`).
 
 **Expect** declares the gate's assertions. `components` maps a component
 name to a `count` — an integer or a closed expression (`{n_lanes}`,
 `{n_groups}`, `{n_decoders}`, `{n_run_actions}`, `{n_configure_fields}`,
 `{n_pages}`, the L11 counters `{n_source_channels}`, `{n_scalar_variables}`,
-`{n_reading_tiles}`, integer literals, `+`); `attribute` maps a
+`{n_reading_tiles}`, the L13 counters `{n_analogue_channels}`,
+`{n_trace_variables}`, integer literals, `+`); `attribute` maps a
 `"name=value"` selector to a count expression; the selector set is closed:
 the three `data-bw-lane-kind` selectors (channel, group, decoder) and
 nothing else. `per_page` names a page id, or `*` for every page, or is
@@ -191,6 +212,6 @@ derivation per bump (design record R2).
 
 ## Names
 
-All fixture names are invented. "Veridian", "PSU-01" and the `ch1`/`ch2`
-channel naming are fixture vocabulary, not real products, vendors, or
-benches.
+All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01"
+and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
+products, vendors, or benches.

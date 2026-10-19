@@ -229,7 +229,8 @@
             "kind": {
               "enum": [
                 "digital_lanes",
-                "time_series"
+                "time_series",
+                "waveform"
               ]
             },
             "over_slot": {
@@ -278,6 +279,42 @@
                 "properties": {
                   "kind": {
                     "const": "time_series"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "series"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "group_size"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "group_label_pattern"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "group_radix"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "waveform"
                   }
                 },
                 "required": [
