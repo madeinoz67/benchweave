@@ -93,6 +93,7 @@ def test_every_mock_naming_is_invented_only(path: Path) -> None:
         or "DMM-01" in html
         or "OSC-01" in html
         or "FGEN-01" in html
+        or "ELOAD-01" in html
     ), path.stem
     for real in ("Intronix", "intronix", "LogicPort"):
         assert real not in html, (path.stem, real)
@@ -102,6 +103,7 @@ def test_the_directory_has_every_device_mock() -> None:
     assert {p.name for p in MOCK_FILES} == {
         "class-dc_psu.html",
         "class-dmm.html",
+        "class-electronic_load.html",
         "class-function_generator.html",
         "class-logic_analyser.html",
         "class-oscilloscope.html",

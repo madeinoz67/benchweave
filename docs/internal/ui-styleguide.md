@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -364,6 +364,41 @@ surface derives at all — both procedure controls (the output toggle
 and the optional arbitrary-waveform `upload`, the `when_declared`
 seam's first non-lifecycle use) are declared deviations at birth, and
 the configuration page carries no plot.
+
+The `class-input` pattern-library page composes the
+`otdp.electronic_load` input-page composition the same way: the
+reference (`standards/plugin-ui-class-reference/0.3.0/class-electronic_load.json`,
+the L15 class — the sweep's first energy-ADMITTING instrument, the
+PSU's mirror over `sink`-role channels; zero vocabulary motion, the
+first sweep class since the analyser needing none) expanded against the
+OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-electronic_load.json`),
+rendered from the §E.1 partials the renderer already ships — one
+`reading-tile` per (channel, quantity) of the example's two declared
+sink channels (2 × 3), one `time_series` `engineering-plot` over the
+measure slot, one `data-table` with a row per pair, and one
+`alert-bubble` carrying the sinking-margin condition. The drift guard
+and the mockup-consistency arm
+(`tests/ui_html/test_classref_electronic_load.py`) re-derive the
+page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. The mockup paints the non-contract idioms (the staged
+mode/setpoint draw card, the trend's dashed configured-maximum line)
+with no `bw-` hook — they are `cannot_derive` (`draw-staging`,
+`limit-overlay`), so they never present as contract components. The
+class's directional question — which side of ui-contract §C.1 the
+input-enable sits on — is pinned in the reference's own data: the
+`output` control is a declared deviation, the `input-control`
+cannot_derive row names the inversion (engage stages then confirms
+naming effect, values and target; disengage is the one ungated
+action), the forbid set carries
+`intermediated-energy-removing-action` with its second true home, and
+the direction-pin arm (`test_the_direction_pin_*`) makes both
+dangerous simplifications — the ungated engage or the gated disengage
+— visible reds. No control surface derives: the input control is the
+named deviation and no staged draw is fabricated.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 

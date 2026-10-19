@@ -1496,6 +1496,11 @@
       "path": "plugin-ui-class-reference/0.3.0/class-function_generator.json",
       "source": "docs/plugin-ui-class-reference-v2/class-function_generator.json",
       "sha256": "363bc0c7438fcb6f666f7bdebe04b2645f9f9d1ed2b26c8c659d0ed72ba704e7"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-electronic_load.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-electronic_load.json",
+      "sha256": "6d4fa64bae1f79082fed407bbb7ec601f941aae56e4efacad6e063c73351a173"
     }
   ]
 }

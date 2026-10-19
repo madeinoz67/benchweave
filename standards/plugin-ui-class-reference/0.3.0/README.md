@@ -88,6 +88,31 @@ non-lifecycle optional action. Its row cites the authoring staging
 path `docs/plugin-ui-class-reference-v2/class-function_generator.json`
 (removed in the same pull request — the founding convention).
 
+## L15 note (in-window: the `electronic_load` class, nothing widened — not even a settlement)
+
+The 0.3.0 window was still open when the `electronic_load` class landed,
+so the sixth class file joined the same bump with ZERO vocabulary motion
+— and unlike L11/L12/L13, which each carried a schema motion inside the
+window, this slice moves NO family-schema byte at all: the load is
+dc_psu's mirror (the same `configure`/`output`/`measure` action triple
+over `sink`-role channels — `where_role` is a free string, so `"sink"`
+widens nothing), its page is dc_psu's own composition over inverted-role
+channels, and the class's one hard question is DIRECTIONAL, not
+presentational: which side of ui-contract §C.1 the input-enable sits on.
+The reference pins the ruling in data — `output` is a declared
+`deviation` with the `input-control` cannot_derive row naming the
+inversion (engage is the energy-admitting, flow-starting direction:
+stage then confirm naming effect, values and target; disengage is the
+one ungated action, R-DEENERGISE-1), `forbid` carries
+`intermediated-energy-removing-action` with its second true home (the
+never-intermediated action is the DISENGAGE — a bulk-energy flow-stop),
+and the `output` slot marks the OTDP conditional (`configuration_id`
+required iff `enabled: true`) structural via
+`host_supplied: ["configuration_id"]`. Its row cites the authoring
+staging path
+`docs/plugin-ui-class-reference-v2/class-electronic_load.json` (removed
+in the same pull request — the founding convention).
+
 ## Files
 
 | File | What it is |
@@ -99,6 +124,7 @@ path `docs/plugin-ui-class-reference-v2/class-function_generator.json`
 | `class-dmm.json` | The reference for the `otdp.dmm/1.0.0` class (L12) |
 | `class-oscilloscope.json` | The reference for the `otdp.oscilloscope/1.0.0` class (L13) |
 | `class-function_generator.json` | The reference for the `otdp.function_generator/1.0.0` class (L14) |
+| `class-electronic_load.json` | The reference for the `otdp.electronic_load/1.0.0` class (L15) |
 
 ## The structure rule (D2)
 
@@ -231,5 +257,5 @@ derivation per bump (design record R2).
 ## Names
 
 All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01",
-"FGEN-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
+"FGEN-01", "ELOAD-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
 products, vendors, or benches.

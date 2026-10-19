@@ -394,20 +394,36 @@ def test_the_reference_authors_structure_not_data() -> None:
 
     for value in walk(reference):
         # bools are schema flags (vendor_features), not numeric literals
-        # — bool subclasses int, excluded explicitly
-        assert isinstance(value, bool) or not isinstance(value, int), value
+        # — bool subclasses int, excluded explicitly; every genuine int
+        # must be a structural one (a span or a plot index)
+        if isinstance(value, bool):
+            continue
         assert not isinstance(value, float), value
         if isinstance(value, int):
             assert value in allowed_numbers, value
-    raw = json.dumps(reference)
+    # the authored-string census: no value anywhere in the document is a
+    # fixture data string or a mode enum member, and the STRUCTURAL
+    # surface (where a data binding would launder — slots, pages,
+    # layouts, expect) carries none of them even as a substring. Prose
+    # reasons are authored explanation, not data: an English word that
+    # happens to be a quantity name ("the configured current maximum")
+    # is not a binding, so the substring rule scopes to structure only.
     fixture = load_document(DESCRIPTOR)
     banned: set[str] = {"cc", "cv", "cr", "cp"}
     for channel in fixture["channels"]:
         banned.add(str(channel["id"]))
         banned.add(str(channel["label"]))
         banned.update(str(q) for q in channel["quantities"])
+    for value in walk(reference):
+        if isinstance(value, str):
+            assert value not in banned, value
+    structural = {
+        key: reference[key]
+        for key in ("slots", "pages", "layouts", "expect", "targets")
+    }
+    raw_structural = json.dumps(structural)
     for data_string in banned:
-        assert data_string not in raw, data_string
+        assert data_string not in raw_structural, data_string
 
 
 def test_the_reference_validates_against_the_family_schema() -> None:

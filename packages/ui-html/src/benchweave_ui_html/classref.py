@@ -6,8 +6,8 @@ The class-page pattern-library compositions are built from the §E.1
 partials the renderer already ships: host composition, no renderer
 change, no new contract rows (the record's §2.6 rule). The §E.1
 partials, templates and the contract harness are untouched by any of
-the slices; the class-page composers now number five (analyser,
-dc_psu, dmm, oscilloscope, function_generator).
+the slices; the class-page composers now number six (analyser,
+dc_psu, dmm, oscilloscope, function_generator, electronic_load).
 
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. The analyser page's data was produced by a
@@ -879,12 +879,178 @@ def render_function_generator_configuration_page() -> str:
     )
 
 
+# --- the electronic_load input page (L15; design record 2026-10-19) -------------
+#
+# The sweep's first energy-ADMITTING class, sixth composer, dc_psu's
+# mirror: same standing shape (the readings 12 raised / trend 7 recessed
+# / table 5 raised ratio — the class's difference from dc_psu is content
+# and direction, not geometry), and its counts derive from the committed
+# corpus pair the same way: one reading tile per (channel, quantity) of
+# the OTDP example's declared sink channels (2 x 3), one engineering
+# plot over the measure dataset (voltage and current of the first
+# declared channel — the mockup's two traces, the disclosed author
+# channel_hints choice, dc_psu's own posture), one data table with a row
+# per pair. Tile values, severities and the table's quality wording are
+# fixture choices in the fixtures.py sense (the mockup's own
+# illustrative data — the internally consistent story: CR at 3.05 Ω
+# over a DUT at ~11.98 V draws ~3.93 A against a configured 4.00 A
+# maximum, the margin alert's condition painted in its
+# threshold-neighbourhood; ch2's input is disengaged and draws nothing);
+# the labels and trace ids are corpus strings (channel labels x declared
+# quantities). No control surface derives at birth: the input
+# engage/disengage control is the class's named directional deviation
+# (the design record §1's ruling — engage stages then confirms naming
+# effect, values and target; disengage is the one ungated action,
+# R-DEENERGISE-1) and the staged mode/setpoint draw idiom is
+# cannot_derive (draw-staging) — the page fabricates neither. The
+# trend's dashed configured-maximum line is cannot_derive
+# (limit-overlay, a runtime join against the active configuration) and
+# composes nothing here.
+
+
+def _eload_tiles() -> tuple[ReadingData, ...]:
+    """One tile per (channel, quantity) pair of the OTDP example's sink
+    channels; the ch1 current tile renders the mockup's warning variant
+    (structure renders the variant, data decides it)."""
+    first: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("11.98", "V", "success"),
+        "current": ("3.93", "A", "warning"),
+        "power": ("47.1", "W", "success"),
+    }
+    second: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("11.97", "V", "success"),
+        "current": ("0.00", "A", "success"),
+        "power": ("0.0", "W", "success"),
+    }
+    channels = (("Reference channel 1", first), ("Reference channel 2", second))
+    tiles: list[ReadingData] = []
+    for label, quantities in channels:
+        for quantity, (value, unit, severity) in quantities.items():
+            tiles.append(
+                ReadingData(
+                    label=f"{label} · {quantity}",
+                    severity=severity,
+                    value=value,
+                    unit=unit,
+                )
+            )
+    return tuple(tiles)
+
+
+#: The sinking-margin alert (cannot_derive sink-margin-alert renders from
+#: host-observed conditions; the composition carries the mockup's
+#: illustrative one, not dismissible — a persistent condition).
+_ELOAD_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Sinking margin",
+    message="Draw approaching configured current maximum",
+    live_region="status",
+    dismissible=False,
+)
+
+
+def _eload_plot() -> ComposedPlot:
+    """The trend: one time-series engineering plot over the measure
+    dataset — voltage and current of the first declared sink channel (the
+    mockup's two traces; the author channel_hints choice, disclosed)."""
+    return compose_plot(
+        title="Input",
+        description=(
+            "Input voltage and current over the trend window for the "
+            "first declared sink channel."
+        ),
+        traces=(
+            TraceSpec(
+                "Reference channel 1 · voltage",
+                "V",
+                samples=(11.99, 11.98, 11.97, 11.98, 11.99, 11.98),
+                acquired=60,
+            ),
+            TraceSpec(
+                "Reference channel 1 · current",
+                "A",
+                samples=(3.74, 3.81, 3.87, 3.90, 3.92, 3.93),
+                acquired=60,
+            ),
+        ),
+        hints={},
+    )
+
+
+def _eload_table() -> TableData:
+    """One row per (channel, quantity) pair — the tiles' own derivation;
+    the quality column carries the mockup's wording."""
+    rows = []
+    for tile in _eload_tiles():
+        quality = "Near limit" if tile.severity == "warning" else "Verified"
+        rows.append(
+            TableDataRow(
+                key=tile.label,
+                cells=(tile.label, f"{tile.value} {tile.unit}", quality),
+            )
+        )
+    return TableData(
+        caption="Input readings",
+        headers=("Channel", "Reading", "Quality"),
+        rows=tuple(rows),
+    )
+
+
+_INPUT_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="readings"
+  data-surface="raised" data-bw-span="12" aria-label="Readings">
+<h3>Readings</h3>
+<div class="bw-readings-grid">
+{% for tile in tiles %}{{ tile | safe }}
+{% endfor %}</div>
+</section>
+</div>
+{{ alert | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="trend"
+  data-surface="recessed" data-bw-span="7" aria-label="Trend">
+<h3>Trend</h3>
+{{ plot | safe }}
+</section>
+<section class="bw-classref-section" data-bw-section-id="table"
+  data-surface="raised" data-bw-span="5" aria-label="Table">
+<h3>Table</h3>
+{{ table | safe }}
+</section>
+</div>
+</div>"""
+
+
+def eload_readings() -> tuple[ReadingData, ...]:
+    """The composition's reading tiles (the drift guard's count arm)."""
+    return _eload_tiles()
+
+
+def render_electronic_load_input_page() -> str:
+    """The electronic_load input-page composition: mode banner, the
+    Readings section (one §E.1 tile per channel/quantity pair), the
+    sinking-margin alert, the Trend section (one engineering plot) and
+    the Table section (one §E.1 data table) — the reference layout
+    block's own surfaces and spans."""
+    return ENV.from_string(_INPUT_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        tiles=[render_reading(tile) for tile in _eload_tiles()],
+        alert=render_alert_bubble(_ELOAD_ALERT),
+        plot=render_plot(_eload_plot()),
+        table=render_data_table(_eload_table()),
+    )
+
+
 __all__ = [
     "capture_lanes",
     "dmm_readings",
+    "eload_readings",
     "output_readings",
     "render_capture_page",
     "render_dmm_readings_page",
+    "render_electronic_load_input_page",
     "render_function_generator_configuration_page",
     "render_oscilloscope_capture_page",
     "render_output_page",

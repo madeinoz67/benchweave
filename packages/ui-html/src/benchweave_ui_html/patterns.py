@@ -417,6 +417,23 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The electronic_load class page (L15 of the class sweep; gateway
+    # issue #463, design record 2026-10-19): the sweep's first
+    # energy-ADMITTING class — the input-page composition, dc_psu's
+    # mirror over sink-role channels (one tile per channel/quantity
+    # pair, the sinking-margin alert, the trend, the table) — rendered
+    # from the committed reference/descriptor expansion (classref.py —
+    # host composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-electronic_load",
+            fixture_id="input",
+            kind="class-page",
+            page="class-input",
+            render=classref.render_electronic_load_input_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -444,6 +461,7 @@ _PAGE_TITLES: dict[str, str] = {
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
     "class-configuration": "Function generator configuration (class reference)",
+    "class-input": "Electronic load input (class reference)",
     "class-output": "DC power supply output (class reference)",
     "class-readings": "Digital multimeter readings (class reference)",
     "class-waveform": "Oscilloscope capture (class reference)",
@@ -458,6 +476,7 @@ def pages() -> tuple[str, ...]:
     ordered.append("refusals")
     ordered.append("class-capture")
     ordered.append("class-configuration")
+    ordered.append("class-input")
     ordered.append("class-output")
     ordered.append("class-readings")
     ordered.append("class-waveform")
