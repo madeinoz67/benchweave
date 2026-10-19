@@ -2,11 +2,11 @@
 program; gateway issues #462 rows 1-2; design record §7 Landing 3, §7A L3;
 the L11 output page per the 2026-10-18 dc_psu design record).
 
-Two pattern-library pages compose the class-page compositions the
+Three pattern-library pages compose the class-page compositions the
 references describe from the §E.1 partials the renderer already ships:
 host composition, no renderer change, no new contract rows (the record's
 §2.6 rule). The §E.1 partials, templates and the contract harness are
-untouched by either slice.
+untouched by any of the three slices.
 
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. The analyser page's data was produced by a
@@ -16,11 +16,12 @@ expanded against standards/otdp/0.2.3/examples/class-logic_analyser.json —
 and the module is the committed artifact. The dc_psu output page (L11)
 follows the same shape against
 standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json ×
-standards/otdp/0.2.3/examples/class-dc_psu.json; its structural counts
-(tiles, plot, table rows) derive from the reference × descriptor pair and
-are re-derived by the drift guard (tests/ui_html/test_classref_dc_psu.py),
-with the mockup-consistency arm pinning the mockup side. For both pages,
-a corpus edit reddens the drift guards until the page data is regenerated;
+standards/otdp/0.2.3/examples/class-dc_psu.json; the dmm readings page
+(L12) against class-dmm.json × class-dmm.json — the third composer, the
+observation-pure class (design record 2026-10-19). For every class page,
+a corpus edit reddens the drift guards (tests/ui_html/
+test_classref_dc_psu.py, test_classref_dmm.py) until the page data is
+regenerated, with the mockup-consistency arms pinning the mockup side;
 presentation values are fixture choices in the fixtures.py sense
 (corpus-shaped, fixture-documented), while structural strings and counts
 are corpus-derived and test-pinned.
@@ -407,10 +408,163 @@ def render_output_page() -> str:
     )
 
 
+# --- the dmm readings page (L12; design record 2026-10-19) ----------------------
+#
+# The observation-pure class, third composer, same standing shape. The
+# composition mirrors the dmm reference's own layout block (readings 12
+# raised / trend 7 recessed / table 5 raised — the dc_psu ratio; the
+# class's difference is content, not geometry) and its counts derive
+# from the committed corpus pair: one reading tile per (channel,
+# quantity) of the OTDP example's declared measure channels (2 x 1),
+# one engineering plot over the measure dataset (one trace per declared
+# channel — both channel traces, no author hint subset), one data table
+# with a row per pair. Tile values, severities and the table's quality
+# wording are fixture choices in the fixtures.py sense (the mockup's
+# own illustrative data); the labels and trace ids are corpus strings
+# (channel labels x declared quantities). No control surface derives at
+# birth: the function/range/aperture/autozero selection is cannot_derive
+# (function-selection) and the page fabricates none (the drift guard
+# pins the absence). The dashed range-bound overlay is cannot_derive
+# (range-overlay) and composes nothing here.
+
+
+def _dmm_tiles() -> tuple[ReadingData, ...]:
+    """One tile per (channel, quantity) pair of the OTDP example's
+    measure channels; the ch2 tile renders the mockup's warning variant
+    (structure renders the variant, data decides it)."""
+    first: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("11.982", "V", "success"),
+    }
+    second: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("0.304", "V", "warning"),
+    }
+    channels = (("Reference channel 1", first), ("Reference channel 2", second))
+    tiles: list[ReadingData] = []
+    for label, quantities in channels:
+        for quantity, (value, unit, severity) in quantities.items():
+            tiles.append(
+                ReadingData(
+                    label=f"{label} · {quantity}",
+                    severity=severity,
+                    value=value,
+                    unit=unit,
+                )
+            )
+    return tuple(tiles)
+
+
+#: The range-margin alert (cannot_derive range-margin-alert renders from
+#: host-observed conditions; the composition carries the mockup's
+#: illustrative one, not dismissible — a persistent condition).
+_DMM_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Range margin",
+    message="Reading approaching configured range limit",
+    live_region="status",
+    dismissible=False,
+)
+
+
+def _dmm_plot() -> ComposedPlot:
+    """The trend: one time-series engineering plot over the measure
+    dataset — one trace per declared measure channel (both channel
+    traces; the mockup's two, no subset choice to disclose)."""
+    return compose_plot(
+        title="Readings",
+        description=(
+            "Both declared measure channels' voltage readings over the "
+            "trend window."
+        ),
+        traces=(
+            TraceSpec(
+                "Reference channel 1 · voltage",
+                "V",
+                samples=(11.981, 11.983, 11.980, 11.982, 11.984, 11.982),
+                acquired=60,
+            ),
+            TraceSpec(
+                "Reference channel 2 · voltage",
+                "V",
+                samples=(0.296, 0.300, 0.304, 0.303, 0.304, 0.304),
+                acquired=60,
+            ),
+        ),
+        hints={},
+    )
+
+
+def _dmm_table() -> TableData:
+    """One row per (channel, quantity) pair — the tiles' own derivation;
+    the quality column carries the mockup's wording."""
+    rows = []
+    for tile in _dmm_tiles():
+        quality = "Near limit" if tile.severity == "warning" else "Verified"
+        rows.append(
+            TableDataRow(
+                key=tile.label,
+                cells=(tile.label, f"{tile.value} {tile.unit}", quality),
+            )
+        )
+    return TableData(
+        caption="Channel readings",
+        headers=("Channel", "Reading", "Quality"),
+        rows=tuple(rows),
+    )
+
+
+_READINGS_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="readings"
+  data-surface="raised" data-bw-span="12" aria-label="Readings">
+<h3>Readings</h3>
+<div class="bw-readings-grid">
+{% for tile in tiles %}{{ tile | safe }}
+{% endfor %}</div>
+</section>
+</div>
+{{ alert | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="trend"
+  data-surface="recessed" data-bw-span="7" aria-label="Trend">
+<h3>Trend</h3>
+{{ plot | safe }}
+</section>
+<section class="bw-classref-section" data-bw-section-id="table"
+  data-surface="raised" data-bw-span="5" aria-label="Table">
+<h3>Table</h3>
+{{ table | safe }}
+</section>
+</div>
+</div>"""
+
+
+def dmm_readings() -> tuple[ReadingData, ...]:
+    """The composition's reading tiles (the drift guard's count arm)."""
+    return _dmm_tiles()
+
+
+def render_dmm_readings_page() -> str:
+    """The dmm readings-page composition: mode banner, the Readings
+    section (one §E.1 tile per channel/quantity pair), the range-margin
+    alert, the Trend section (one engineering plot) and the Table
+    section (one §E.1 data table) — the reference layout block's own
+    surfaces and spans."""
+    return ENV.from_string(_READINGS_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        tiles=[render_reading(tile) for tile in _dmm_tiles()],
+        alert=render_alert_bubble(_DMM_ALERT),
+        plot=render_plot(_dmm_plot()),
+        table=render_data_table(_dmm_table()),
+    )
+
+
 
 __all__ = [
     "capture_lanes",
+    "dmm_readings",
     "output_readings",
     "render_capture_page",
+    "render_dmm_readings_page",
     "render_output_page",
 ]

@@ -1465,7 +1465,7 @@
     {
       "path": "plugin-ui-class-reference/0.3.0/class-reference.schema.json",
       "source": "standards/plugin-ui-class-reference/0.2.0/class-reference.schema.json",
-      "sha256": "d7f95209a28245b5866ff74373bdd20e97edc9b0d99fe90f62a06a6e5be1a9e7"
+      "sha256": "05c9d529ddb3d85c6fe09b392d071a6d09048493bfb1b6ab395475ecf04d5329"
     },
     {
       "path": "plugin-ui-class-reference/0.3.0/layout.schema.json",
@@ -1481,6 +1481,11 @@
       "path": "plugin-ui-class-reference/0.3.0/class-dc_psu.json",
       "source": "docs/plugin-ui-class-reference-v2/class-dc_psu.json",
       "sha256": "20655ed2298fadbec97057bf79a5572a6dd08610288ee835ec2ac51a41365311"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-dmm.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-dmm.json",
+      "sha256": "77681d643a19c523a15fbbd049aabc95155dc55db73117d7afc92da7d4d55fbb"
     }
   ]
 }

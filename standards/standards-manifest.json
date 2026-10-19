@@ -218,6 +218,7 @@
       "normative": [
         "standards/plugin-ui-class-reference/0.3.0/class-reference.schema.json",
         "standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json",
+        "standards/plugin-ui-class-reference/0.3.0/class-dmm.json",
         "standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
         "standards/plugin-ui-class-reference/0.3.0/layout.schema.json"
       ]

@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -286,6 +286,28 @@ and a mockup edit that changes a hook count reds against the reference.
 No control surface derives at birth — the output toggle is a declared
 deviation (the directional safety presentation is the safety-behaviours
 slice's work) and the staged setpoint idiom is `cannot_derive`.
+
+The `class-readings` pattern-library page composes the `otdp.dmm`
+readings-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-dmm.json`, the L12
+class — observation-pure: no sourcing action, no directional safety
+surface, no capture view) expanded against the OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-dmm.json`), rendered from the
+§E.1 partials the renderer already ships — one reading tile per
+(channel, quantity) pair of the declared measure inputs, one
+`engineering-plot` trend over the measure dataset (one trace per
+declared channel), one `data-table`, and the range-margin alert as host
+composition (the condition itself is commissioned policy —
+`cannot_derive range-margin-alert`). The drift guard and the
+mockup-consistency arm (`tests/ui_html/test_classref_dmm.py`) re-derive
+the page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. No control surface derives at birth — the
+function/range/aperture/autozero selection is `cannot_derive`
+(`function-selection`; configure is preset-mediated) and the page
+fabricates none.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 

@@ -6,8 +6,8 @@ severity cells, §D.1 wording cells), so the library cannot drift from the
 contract without the gate's own rows reding first.
 
 The export writes a static tree — plain rendered HTML files, no server:
-``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; eighteen
-pages (one per §E.1 component + one refusal page + the two class-reference
+``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; nineteen
+pages (one per §E.1 component + one refusal page + the three class-reference
 pages) × two themes; every page root
 carries ``data-bw-pattern-library``. Screenshots (UR-13) are captured into
 the same tree by the browser lane (slice 4). Styling inlines the REAL token
@@ -368,6 +368,22 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The dmm class page (L12 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the observation-pure class's
+    # readings-page composition — readings, trend, table, alert —
+    # rendered from the committed reference/descriptor expansion
+    # (classref.py — host composition of the §E.1 partials, no renderer
+    # change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-dmm",
+            fixture_id="readings",
+            kind="class-page",
+            page="class-readings",
+            render=classref.render_dmm_readings_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -395,6 +411,7 @@ _PAGE_TITLES: dict[str, str] = {
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
     "class-output": "DC power supply output (class reference)",
+    "class-readings": "Digital multimeter readings (class reference)",
 }
 
 
@@ -406,6 +423,7 @@ def pages() -> tuple[str, ...]:
     ordered.append("refusals")
     ordered.append("class-capture")
     ordered.append("class-output")
+    ordered.append("class-readings")
     return tuple(ordered)
 
 

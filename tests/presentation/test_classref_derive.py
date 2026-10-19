@@ -285,29 +285,46 @@ class TestSelection:
         """The fail-open signal: a descriptor whose profiles name no class
         with a corpus reference selects NOTHING (the composition then
         renders today's no-attachment absence — B3). dc_psu carried this
-        arm until L11 gave it a reference; dmm (L12) carries it now."""
+        arm until L11 gave it a reference, dmm until L12; oscilloscope
+        (L13) carries it now."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.scalar",
-            "profiles": ["otdp.dmm/1.0.0"],
+            "profiles": ["otdp.oscilloscope/1.0.0"],
         }
         assert select_references(corpus_root(), descriptor) is None
 
     def test_selection_is_bytewise_sorted_first_with_a_reference(self) -> None:
         """Reference selection: profiles sorted bytewise; a profile
         without a corpus reference is skipped and the next one applies.
-        dc_psu was the skipped profile until L11 gave it a reference; dmm
-        (L12, sorted before the analyser bytewise) carries the skip arm
-        now — and the L11 corpus pair adds its own multi-profile arm
-        below."""
+        dc_psu was the skipped profile until L11, dmm until L12;
+        oscilloscope (L13, sorted after the analyser bytewise) carries
+        the skip arm now — and the corpus pairs add their own
+        multi-profile arms below."""
+        descriptor = {
+            "otdp_version": "0.2.3",
+            "id": "dev.example.multi",
+            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.oscilloscope/1.0.0"],
+        }
+        selected = select_references(corpus_root(), descriptor)
+        assert selected is not None and len(selected) == 1
+        assert selected[0]["profile_id"] == "otdp.logic_analyser/1.0.0"
+
+    def test_a_two_reference_descriptor_selects_both_sorted_dmm(self) -> None:
+        """L12: with the dmm reference in the corpus, a descriptor
+        declaring it beside the analyser selects BOTH — sorted bytewise
+        (dmm before logic_analyser)."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.multi",
             "profiles": ["otdp.logic_analyser/1.0.0", "otdp.dmm/1.0.0"],
         }
         selected = select_references(corpus_root(), descriptor)
-        assert selected is not None and len(selected) == 1
-        assert selected[0]["profile_id"] == "otdp.logic_analyser/1.0.0"
+        assert selected is not None and len(selected) == 2
+        assert [r["profile_id"] for r in selected] == [
+            "otdp.dmm/1.0.0",
+            "otdp.logic_analyser/1.0.0",
+        ]
 
     def test_a_two_reference_descriptor_selects_both_sorted(self) -> None:
         """L11: with the dc_psu reference in the corpus, a descriptor

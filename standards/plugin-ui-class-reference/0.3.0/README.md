@@ -22,7 +22,7 @@ re-stamp. `page_template.plot.kind` widens from the `digital_lanes` const
 to the enum `["digital_lanes", "time_series"]` with per-kind conditionals:
 `digital_lanes` keeps its group machinery exactly as it was (group_size 8,
 label pattern `D{first}-D{last}`, radix hex/decimal — and may not carry
-`series`), `time_series` adds the one structural field
+`series`), `time_series` requires the one structural field
 `series: "numeric_variables"` (the closed derivation rule: every numeric
 scalar variable of the over-slot's dataset becomes a series) and may not
 carry the group machinery. `waveform` is deliberately NOT admitted — no
@@ -63,6 +63,7 @@ re-cited to this bump's design record).
 | `layout.schema.json` | The namespaced layout block vocabulary that rides the plugin-ui `extensions` seam under the key `plugin-ui-class-reference:layout` |
 | `class-logic_analyser.json` | The founding reference for the `otdp.logic_analyser/1.0.0` class |
 | `class-dc_psu.json` | The reference for the `otdp.dc_psu/1.0.0` class (L11) |
+| `class-dmm.json` | The reference for the `otdp.dmm/1.0.0` class (L12) |
 
 ## The structure rule (D2)
 
