@@ -107,23 +107,27 @@ def _previous_patch(version: str) -> str:
 
 class TestClaimsOverTheRealTree:
     def test_clean_tree_holds_every_row(self) -> None:
-        """A2: at a coherent tree tip all 18 rows verify — the anchor
-        matched, and every claim equals the manifest's own derivation."""
+        """A2: at a coherent tree tip every register row verifies — the
+        anchor matched, and every claim equals the manifest's own
+        derivation (24 rows since the fold's H1 sweep registered the
+        guide's versions row and the architecture doc's D11 row)."""
         result = _preflight("--claims-only")
         assert result.returncode == 0, result.stdout + result.stderr
         assert "[ok] docs version claims" in result.stdout
-        assert "18/18 rows verified" in result.stdout
+        assert "24/24 rows verified" in result.stdout
         assert "0 unmoved" in result.stdout
 
     def test_the_register_covers_exactly_five_files(self) -> None:
-        """The register's file set is the design's five sites — a sixth
+        """The register's file set is the founding five files — a sixth
         site joins by a visible register edit (the anti-laundering shape),
-        never by widening this pin silently."""
+        never by widening this pin silently; the fold's H1 grew the ROWS
+        (24), not the file set (publishing-guide.md rides the deferral —
+        its expectation has no derivation source in this tree yet)."""
         result = _preflight("--claims-only", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         payload = json.loads(result.stdout)
         assert sorted(payload["files"]) == sorted(CLAIM_FILES)
-        assert payload["rows"] == 18
+        assert payload["rows"] == 24
 
 
 class TestPlantedClaims:

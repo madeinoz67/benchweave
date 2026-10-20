@@ -141,6 +141,29 @@ CLAIMS: tuple[ClaimRow, ...] = (
         "interface",
         "active",
     ),
+    # docs/device-developer-guide.md:133 — the versions-and-identity row
+    # (governor H1: a live claim site the register did not cover). The
+    # "is active" parenthetical discriminates :133 from the same claim in
+    # its short forms at :268 and :867, which stay unregistered (D2's
+    # widening, recorded in the fold addendum).
+    ClaimRow(
+        "docs/device-developer-guide.md",
+        r"\((\d+\.\d+\.\d+) is active;",
+        "otdp",
+        "active",
+    ),
+    ClaimRow(
+        "docs/device-developer-guide.md",
+        r"\(\d+\.\d+\.\d+ is active; (\d+\.\d+\.\d+) and",
+        "otdp",
+        "served",
+    ),
+    ClaimRow(
+        "docs/device-developer-guide.md",
+        r"is active; \d+\.\d+\.\d+ and (\d+\.\d+\.\d+) remain served",
+        "otdp",
+        "served",
+    ),
     # docs/ai-device-reviewer.md — the review-baseline sentence.
     ClaimRow(
         "docs/ai-device-reviewer.md",
@@ -217,6 +240,28 @@ CLAIMS: tuple[ClaimRow, ...] = (
         r"consolidates[\s\S]{0,200}?interface (\d+\.\d+\.\d+)",
         "interface",
         "active",
+    ),
+    # the architecture doc's D11 row (:271 — governor H1's second named
+    # site). "served version:" discriminates D11 from the two §-prose
+    # "Version X is active" sentences (:17/:279, swept in the same arc,
+    # still unregistered — D2's widening, recorded in the fold addendum).
+    ClaimRow(
+        "docs/smart-test-gateway-architecture-v1.5.md",
+        r"served version: (\d+\.\d+\.\d+) is active",
+        "otdp",
+        "active",
+    ),
+    ClaimRow(
+        "docs/smart-test-gateway-architecture-v1.5.md",
+        r"(\d+\.\d+\.\d+)/\d+\.\d+\.\d+ remain served",
+        "otdp",
+        "served",
+    ),
+    ClaimRow(
+        "docs/smart-test-gateway-architecture-v1.5.md",
+        r"/(\d+\.\d+\.\d+) remain served",
+        "otdp",
+        "served",
     ),
 )
 
