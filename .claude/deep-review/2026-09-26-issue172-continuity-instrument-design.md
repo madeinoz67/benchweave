@@ -437,7 +437,11 @@ fixtures; CI-stable lanes that exist, no Windows lane).
      inherited verbatim). **[Disclosure, 2026-09-26 fix wave:]** on the capture arm this
      band is [0, 200] — the lower bound is vacuous by arithmetic (`dispatch − 50 = 0`
      against the 50 ms cut), so the capture arm's blackout-reality pin rests on the
-     upper bound alone.
+     upper bound alone. **[Amended 2026-10-20 — issue #241's plan-reading slice:]** the
+     absolute wall ceiling (the `+ 150` side) is retired — it reds on sustained host
+     load (run 39358368822); the serial-model content is pinned by the one-sided
+     coupling `duration − X1 ≤ 50` and the floor instead
+     (`.claude/deep-review/2026-10-20-issue241-belt-cell-design.md` §2.3).
   4. Classifier grid total + single-valued; 2-of-5 cell = INCONCLUSIVE; None bounds =
      UNDERPOWERED; equality passes. **[Amended 2026-09-26, fix wave:]** AND FIRE
      requires exactly-5 `T_acq` trials (3-of-8 and 3-of-10 read INCONCLUSIVE); mixed
@@ -483,6 +487,18 @@ fixtures; CI-stable lanes that exist, no Windows lane).
      deleted. The frozen §6 classifier (`_continuity_rule.py`) is untouched:
      its range arm reads commissioned bounds over trial ledgers, a different
      artifact.
+     **[Amended 2026-10-20 — issue #241's plan-reading slice
+     (`.claude/deep-review/2026-10-20-issue241-belt-cell-design.md` §2.2):]**
+     the machine-checked reading's DOMAIN moved: wall per-axis → the
+     driving-signal plan (the cell's recorded `pacing_plan_ms` values —
+     load-immune bookkeeping, no clock in the path). The clause's intent is
+     unchanged — a cell whose trials scatter reads UNDERPOWERED, the trim
+     and the 25%-of-200 ms bound stand — and the move is the owner fork that
+     record §7 names: on sustained host load (the 2026-10-20 both-generations
+     belt red, run 39358368822) the wall reading provably cannot separate a
+     loose fixture from a loaded host (record §1.3), while the plan cannot be
+     host-stretched. Item 3's absolute wall ceilings retire in the same
+     slice, replaced by one-sided couplings/floors/wiring pins (record §2.3).
 - **KILL the increment if:** separation fails (long ≈ control — the axes are vacuous; a
   wiring/fixture defect to fix before merge, the M-A posture: explicitly NOT row-1
   evidence); OR the census finds a second store-opening thread; OR wall divergence leaks
