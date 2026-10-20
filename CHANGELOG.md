@@ -45,6 +45,7 @@ All notable changes to this project will be documented in this file.
 - The status guard — non-stable manifest entries refuse (governor M1)
 - The --json arm performs the check it reports on (LOW-6)
 - Sweep the architecture doc's stale active claims, register the two named sites (governor H1)
+- Read the range gate over unstarved trials; the belt's verdict was false
 
 ### Documentation
 
