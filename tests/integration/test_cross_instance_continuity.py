@@ -2750,6 +2750,204 @@ def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
         _BELT_GENERATION_RUNS.update(saved_runs)
 
 
+def test_issue241_load_shape_replay_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-1.4, the committed load-shape replay control (issue #241's
+    plan-reading slice, design §5.1): the EXACT CI red — run 39358368822,
+    key ``capture/unbuffered``, the 2026-10-20 both-generations belt red —
+    replayed as synthetic vectors. The trials carry tight plans (200.0 ms,
+    the rig's 100 x 2.0 ms chunk plan) with wall values stretched up to
+    4.3x (214.8 ms dispatch against the 50 ms budget) and every stretched
+    trial recording ``status: unknown`` and ``retries: 0`` — nothing
+    failed, the wall values were inflated by a sustained runner stretch.
+    The control asserts these vectors evaluate CLEAN through both new
+    evaluators, and that the host class never reaches the belt (a
+    tripwire stands in for the fresh generation; zero certifications).
+    This is the matched control fluff cannot pass: it is the exact CI
+    red, replayed.
+
+    Two named RED plants inside, per the design review's request:
+
+    * **uniform stretch** — every wall duration and axis value scaled by
+      one factor (4x here): the wall value INFLATES against the constant
+      band, so the RETIRED wall-domain readers red (the axis band and
+      the four-axis spread), while the new evaluators stay clean (the
+      plan is untouched by definition; the couplings scale with the
+      duration). This is the shape no wall-domain threshold can hold —
+      the row-12 attempt-1 kill, and the reason PR #504's 1.5x exclusion
+      factor was replaced rather than kept.
+    * **the episodic CI shape itself** — which additionally reds the
+      REJECTED ratio reading (design §2.5: trimmed spread vs 25% of the
+      cell's own measured duration) on BOTH generations: the stretch is
+      episodic per trial, so the denominator keeps an on-time majority
+      while the spread carries a stretched trial past the trim — a ratio
+      cancels uniform dilation and AMPLIFIES episodic dilation. The
+      control pins that the plan reading is immune to the shape that
+      defeats both wall-domain alternatives.
+
+    The retired readers are re-planted here verbatim (the axis band from
+    the pre-slice line; the four-axis spread from the pre-#504 line) as
+    the control's RED arms — they are NOT the live readers; the live
+    ones are imported from the module."""
+    arm, device_class = "capture", "unbuffered"
+
+    def ci_trial(
+        index: int, x1: float, x3: float, x4: float, dur: float
+    ) -> dict[str, Any]:
+        return {
+            "trial": index,
+            "x1_ms": x1,
+            "x2_ms": 1.0,  # the unbuffered class's immediate conversion
+            "x3_ms": x3,
+            "x4_ms": x4,
+            "dispatch_duration_ms": dur,
+            "pacing_plan_ms": 200.0,  # the rig's 100 x 2.0 ms chunk plan
+            "dispatch_budget_ms": 50.0,  # CAPTURE_BUDGET_MS
+            "t_cross_offset_ms": 20.0,  # the capture arm's script
+            "status": "unknown",  # the deadline-max cut, in every trial
+            "retries": 0,
+            "in_window_frames": 3,
+            "retry_sites": [],
+        }
+
+    gen1 = [
+        ci_trial(10, 51.8, 48.5, 78.0, 52.0),
+        ci_trial(20, 51.7, 48.4, 78.0, 51.8),
+        ci_trial(30, 51.4, 48.2, 77.7, 51.6),
+        ci_trial(40, 98.5, 95.3, 129.0, 98.8),
+        ci_trial(50, 199.9, 199.6, 226.4, 200.2),
+    ]
+    fresh = [
+        ci_trial(510, 106.6, 103.3, 241.8, 106.8),
+        ci_trial(520, 125.0, 121.7, 150.7, 125.2),
+        ci_trial(530, 101.3, 102.4, 242.7, 102.1),
+        ci_trial(540, 51.3, 51.6, 77.4, 51.5),
+        ci_trial(550, 214.6, 211.6, 241.2, 214.8),
+    ]
+    # Vector honesty: the vectors' wiring literals ARE the rig's.
+    assert gen1[0]["dispatch_budget_ms"] == _ARM_DISPATCH_BUDGET[arm]
+    assert gen1[0]["t_cross_offset_ms"] == _ARM_TRIP_OFFSET[arm]
+
+    def stretched(cell: list[dict[str, Any]], factor: float) -> list[dict[str, Any]]:
+        scaled = []
+        for trial in cell:
+            copy_trial = dict(trial)
+            for key in ("dispatch_duration_ms", "x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+                copy_trial[key] = trial[key] * factor
+            scaled.append(copy_trial)
+        return scaled
+
+    def old_axis_band_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The RETIRED axis upper band (pre-slice line), verbatim.
+        dispatch_ms = _ARM_DISPATCH_MS[arm]
+        out: list[str] = []
+        for trial in cell:
+            if trial["dispatch_duration_ms"] > dispatch_ms + 150:
+                out.append(f"dispatch_duration_ms {trial['dispatch_duration_ms']:.1f}")
+            if trial["x1_ms"] > dispatch_ms + 150:
+                out.append(f"x1_ms {trial['x1_ms']:.1f}")
+        return out
+
+    def old_range_spread_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The RETIRED four-axis spread loop (pre-#504 line), verbatim in
+        # form — the live trim, no exclusion.
+        out: list[str] = []
+        for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+            values = [trial[axis_key] for trial in cell]
+            if _underpowered_range_ms(values) > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
+                out.append(f"{axis_key} spread")
+        return out
+
+    def ratio_reading_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The REJECTED ratio reading (design §2.5): trimmed spread vs 25%
+        # of the SAME cell's measured duration, mean and median variants.
+        durations = [trial["dispatch_duration_ms"] for trial in cell]
+        bases = {
+            "mean": sum(durations) / len(durations),
+            "median": statistics.median(durations),
+        }
+        out: list[str] = []
+        for basis_name, basis in bases.items():
+            for axis_key in ("x1_ms", "x4_ms"):
+                spread = _underpowered_range_ms([trial[axis_key] for trial in cell])
+                if spread > 0.25 * basis:
+                    out.append(f"25%-of-{basis_name} {axis_key}")
+        return out
+
+    # --- the control's CLEAN arm: the exact CI vectors, new readers -----
+    for cell in (gen1, fresh):
+        assert _range_gate_breaches(cell, arm, device_class) == [], (
+            "the load shape must not breach the plan reading"
+        )
+        for trial in cell:
+            assert _axis_per_trial_breaches(trial, arm) == [], (
+                "the load shape must not breach the load-safe axis reading"
+            )
+            for axis in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+                assert trial[axis] is not None
+            assert trial["in_window_frames"] >= 1
+            assert trial["retries"] <= 2
+
+    # --- the belt tripwire: the host class never reaches the belt -------
+    def tripwire(*args: Any) -> list[dict[str, Any]]:
+        raise AssertionError(
+            "the 2026-10-20 load shape reached the belt — the plan reading "
+            "was supposed to be load-immune (broken recording seam)"
+        )
+
+    monkeypatch.setitem(globals(), "_cell", lambda *args: gen1)
+    monkeypatch.setitem(globals(), "_belt_fresh_generation", tripwire)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        certified = _certified_cell(
+            tmp_path, arm, device_class, _range_gate_evaluation(arm, device_class)
+        )
+        assert certified is gen1, "a clean evaluation returns gen-1, no re-roll"
+        assert _BELT_GENERATION_RUNS == {}, (
+            "zero certifications: the host class never reaches the belt"
+        )
+    finally:
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
+
+    # --- plant (a): uniform stretch reds the OLD readers, new stay clean
+    for cell in (gen1, fresh):
+        uniform = stretched(cell, 4.0)
+        assert old_axis_band_breaches(uniform), (
+            "uniform stretch must red the retired absolute band"
+        )
+        assert old_range_spread_breaches(uniform), (
+            "uniform stretch must red the retired constant-bound spread"
+        )
+        assert _range_gate_breaches(uniform, arm, device_class) == [], (
+            "uniform wall stretch cannot touch the plan reading"
+        )
+        for trial in uniform:
+            assert _axis_per_trial_breaches(trial, arm) == [], (
+                "uniform wall stretch cannot breach the load-safe axis "
+                "reading (the couplings scale with the duration)"
+            )
+
+    # --- plant (b): the episodic CI shape reds BOTH wall alternatives --
+    for cell in (gen1, fresh):
+        assert old_axis_band_breaches(cell), (
+            "the CI shape reddened the axis band on main (200.2/214.8)"
+        )
+        assert old_range_spread_breaches(cell), (
+            "the CI shape reddened the pre-#504 spread on main (51.3/92.0)"
+        )
+        assert ratio_reading_breaches(cell), (
+            "the CI shape reds the §2.5 ratio form too — episodic stretch "
+            "survives the one-trial trim and the denominator stays on-time"
+        )
+        # ...and both NEW readers stay clean on it (asserted above, and
+        # here once more next to its defeated alternatives).
+        assert _range_gate_breaches(cell, arm, device_class) == []
+        assert all(_axis_per_trial_breaches(trial, arm) == [] for trial in cell)
+
+
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
     """Check 3's artifact half: the measured cells emit the consolidated
     trial log under the trial dir — the future measurement record quotes
