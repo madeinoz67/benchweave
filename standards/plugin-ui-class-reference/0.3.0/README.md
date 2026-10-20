@@ -11,9 +11,11 @@ block. The gateway application is untouched.
 Design records: `.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`
 (the founding program),
 `.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md` (the
-0.2.0 MINOR) and
+0.2.0 MINOR),
 `.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md` (this bump —
-the L11 `dc_psu` class, gateway issue #463).
+the L11 `dc_psu` class, gateway issue #463) and
+`.claude/deep-review/2026-10-20-classref-composition-gate-design.md` (the
+cross-class composition gate, gateway issue #500).
 
 ## From-predecessor note (0.2.0 → 0.3.0, MINOR)
 
@@ -252,6 +254,44 @@ over the manifest schema's own refusal), `untraceable-lane-label` (every
 lane label traces to the descriptor or the group pattern),
 `intermediated-energy-removing-action` (any intermediating control on an
 energy-removing action).
+
+## Cross-class composition (normative, gateway issue #500)
+
+Every class in this family must compose with every other class. A
+device may claim several class profiles — the descriptor's `profiles`
+array has no maximum — and the gateway merges the selected references
+(parent §3.8): profile ids sorted bytewise, the first reference's slot
+ids and page ids kept bare, every later reference's prefixed
+`{slug}-` (the profile id's namespace with dots as dashes: the `daq`
+class composes second as `otdp-daq-capture`).
+
+Two rules bind every class reference, existing and new:
+
+1. **Never author an identifier in another class's prefixed namespace.**
+   A slot key, page id or layout page id shaped `otdp-<class>-…` collides
+   with that class's own ids the moment both classes compose on one
+   device. The merge overwrites such a collision silently; the schema
+   cannot see it (the id pattern admits the literal).
+2. **Never assume the class is the only profile, or that it sorts
+   first.** An identifier that composes only when this class is the bare
+   (first) profile breaks the device that claims it alongside any class
+   sorting before it. An action URN belongs to one class: two classes
+   claiming one URN in `expect.controls` is a duplicate control
+   identifier no prefixing can separate.
+
+The rule is enforced, not written down:
+`tests/ui_html/test_classref_composition.py` composes every unordered
+pair of the active family through the real selection and merge
+(`select_references` + `_merge_references`) and refuses any identifier
+the composed document would carry twice — slot keys, page template ids,
+authored layout page ids, and `expect.controls` action URNs, each
+refusal naming the colliding profiles. A class added to the family joins
+the pair set automatically. A composition gate that has never refused
+anything is a claim, not a guard: the refusal arms demonstrate a
+deliberately colliding class — schema-valid, silently accepted by the
+bare merge — refused from both directions (a new class colliding with
+an existing one, and an existing class edited so a new one collides),
+under either sort order.
 
 ## The layout vocabulary
 
