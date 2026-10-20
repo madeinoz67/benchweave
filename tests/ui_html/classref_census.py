@@ -34,6 +34,17 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+# The composition gate's seam into the real code path (issue #500): the
+# gateway's own selection and merge, private symbol included — the same
+# private-import posture ``tests/presentation/test_classref_derive.py``
+# established for ``_satisfies_target``. The gate judges what production
+# emits; a reimplementation here would drift unnoticed.
+from benchweave.presentation.classref import (
+    _merge_references,
+    family_version,
+    select_references,
+)
+
 #: The §E.1 contract hooks a class mockup carries (RC-L11-3): the
 #: component roots the census keys on — never bespoke selectors.
 HOOKS = ("bw-reading", "bw-alert-bubble", "bw-plot", "bw-data-table")
@@ -166,3 +177,119 @@ def resolve_count(expression: str, counters: dict[str, int]) -> int:
     if match is not None and match.group(1) in counters:
         return counters[match.group(1)]
     raise AssertionError(f"unknown count expression: {expression!r}")
+
+
+# --- the cross-class composition gate (issue #500; design record ----------------
+# --- .claude/deep-review/2026-10-20-classref-composition-gate-design.md) -------
+
+
+def family_profile_ids(corpus: Path) -> list[str]:
+    """The ACTIVE family's class profile ids, discovered the way the
+    production selection walk discovers references: the same
+    ``class-*.json`` glob ``_find_reference`` walks under the served
+    version, the same ``profile_id`` acceptance it applies. The gate's
+    pair set derives from the CURRENT family, never a frozen list — a
+    ninth class widens the gate automatically (the flip-target rotation
+    rule; an arm banked against yesterday's family goes dead silently
+    otherwise)."""
+    version = family_version(corpus)
+    root = corpus / "plugin-ui-class-reference" / version
+    profile_ids: list[str] = []
+    for path in sorted(root.glob("class-*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and str(
+            document.get("profile_id", "")
+        ).startswith("otdp."):
+            profile_ids.append(str(document["profile_id"]))
+    return profile_ids
+
+
+def merge_selected(
+    references: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The merge the real code path runs: sort bytewise by profile id
+    (the order ``select_references`` returns and ``derive_attachment``
+    re-establishes for override inputs), then the gateway's own
+    ``_merge_references`` — first reference bare, every later one
+    ``{slug}-`` prefixed. The seam both the pair gate and the refusal
+    arms compose through: selection for corpus classes, direct sorted
+    documents for synthetic ones (the corpus cannot carry a colliding
+    class without a standards bump)."""
+    ordered = sorted(references, key=lambda item: str(item["profile_id"]))
+    return ordered, _merge_references(ordered)
+
+
+def compose_pair(
+    corpus: Path, profile_ids: tuple[str, ...]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """One synthetic two-profile descriptor run through the REAL
+    selection and merge: ``select_references`` over ``{"profiles":
+    [...]}`` (digest-verified corpus reads, bytewise ordering, skip of
+    profile ids without a reference), asserting every claimed class was
+    selected, then ``merge_selected``. Raises ``AssertionError`` when
+    selection drops a claimed class — the pair gate never composes a
+    half-selected device."""
+    descriptor = {"profiles": [str(profile) for profile in profile_ids]}
+    references = select_references(corpus, descriptor)
+    if references is None or len(references) != len(set(descriptor["profiles"])):
+        found = [] if references is None else [str(r["profile_id"]) for r in references]
+        raise AssertionError(
+            f"selection dropped a claimed class: claimed "
+            f"{sorted(set(descriptor['profiles']))}, selected {sorted(found)}"
+        )
+    return merge_selected(references)
+
+
+def _emitted_identifier_owners(
+    references: list[dict[str, Any]],
+) -> dict[tuple[str, str], list[str]]:
+    """Per (identifier kind, identifier), the profiles whose merge
+    emission produces it — the merge's own transform re-derived (bare
+    for the first reference, ``{slug}-`` prefixed slot keys, page ids
+    and layout page ids for later ones; ``expect.controls`` URNs ride
+    unprefixed, a control's identity being its URN). Re-derived from the
+    merge's current shape at every call, never copied from a design
+    record."""
+    owners: dict[tuple[str, str], list[str]] = {}
+    for index, item in enumerate(references):
+        profile = str(item["profile_id"])
+        slug = "" if index == 0 else profile.split("/")[0].replace(".", "-")
+
+        def emit(kind: str, identifier: str, *, who: str = profile) -> None:
+            owners.setdefault((kind, identifier), []).append(who)
+
+        for key in item.get("slots", {}):
+            emit("slot", f"{slug}-{key}" if slug else str(key))
+        for page in item.get("pages", []):
+            emit("page", f"{slug}-{page['id']}" if slug else str(page["id"]))
+        for layout_page in item.get("layouts", []):
+            emit(
+                "layout-page",
+                f"{slug}-{layout_page['page_id']}"
+                if slug
+                else str(layout_page["page_id"]),
+            )
+        for urn in item.get("expect", {}).get("controls", {}):
+            emit("control-urn", str(urn))
+    return owners
+
+
+def composition_findings(references: list[dict[str, Any]]) -> list[str]:
+    """The composition gate's refusals: every identifier the composed
+    document would carry twice, WITH attribution — the two profiles whose
+    emissions collide under the merge prefixing. Four kinds: slot keys
+    (the composed binding namespace — the control handles the manifest's
+    pages bind), page template ids, authored layout page ids, and
+    ``expect.controls`` action URNs (two classes claiming one URN is a
+    duplicate control identifier no prefixing can separate). Sorted, so
+    a refusal is byte-stable across runs."""
+    findings: list[str] = []
+    for (kind, identifier), emitters in sorted(
+        _emitted_identifier_owners(references).items()
+    ):
+        if len(emitters) > 1:
+            findings.append(
+                f"{kind} {identifier!r} is emitted by both "
+                f"{' and '.join(emitters)} under the merge prefixing"
+            )
+    return findings
