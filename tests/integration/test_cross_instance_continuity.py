@@ -40,7 +40,6 @@ import hashlib
 import json
 import re
 import statistics
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -254,6 +253,14 @@ class ARigAdapter:
         self.consumed_windows: set[str] = set()
         self.acq_entered = threading.Event()
         self.captures: list[str] = []
+        # The driving-signal record (issue #241, the belt cell's plan
+        # reading): every pacing CALL's asked-for total, and the capture
+        # chunk plan at capture entry. Pure bookkeeping — no clock, no
+        # await — so host load cannot reach either; a fixture whose pacing
+        # parameters regress or scatter lands here by construction.
+        self.pace_log: list[float] = []
+        self.capture_plan_ms: float | None = None
+        self.capture_chunks: int | None = None
 
     async def open(self, descriptor: dict[str, Any], services: Any, context: Any) -> None:
         self.services = services
@@ -268,7 +275,12 @@ class ARigAdapter:
         instant) rather than a fixed slice count: ``asyncio.sleep`` only
         ever OVERSHOOTS, so fixed slices accumulate overshoot under host
         load — a deadline-driven pacer converges to the target within one
-        sleep granularity and the natural duration stays ~T_acq_min."""
+        sleep granularity and the natural duration stays ~T_acq_min.
+        The asked-for ``total_ms`` is appended to ``self.pace_log`` at
+        entry, before the first sleep: the driving-signal record survives
+        a deadline cut mid-pace (the cancellation never unwinds the
+        append)."""
+        self.pace_log.append(total_ms)
         deadline = self.services.monotonic() + total_ms / 1000.0
         while True:
             remaining = deadline - self.services.monotonic()
@@ -356,6 +368,15 @@ class ARigAdapter:
             }
         self.consumed_windows.add(window)
         self.captures.append(capture_id)
+        # The capture arm's driving signal: the chunk plan from the LIVE
+        # instance state (the capture arm never calls ``_pace`` — its
+        # natural duration is the chunk loop, so its plan is the plan the
+        # chunks encode). One multiplication, no clock. The chunk COUNT is
+        # recorded beside it — the primitive construction artefact the
+        # capture pins read (probe G's fold: the capture dispatch must
+        # record the construction it claims, not just the wall it took).
+        self.capture_plan_ms = self.chunks * self.chunk_ms
+        self.capture_chunks = self.chunks
         for _ in range(self.chunks):
             if context.is_cancelled():
                 break
@@ -1234,6 +1255,7 @@ def _run_trial_once(
         tick_mark = len(rig.tick_times)
         snap_mark = len(rig.snapshots)
         event_mark = len(rig.events)
+        pace_mark = len(rig.adapter_a.pace_log)
         # X4's hazard onset: scripted INSIDE the dispatch window (the
         # harness knows T_cross exactly). The wrapper's structure is
         # tick -> dispatch -> tick, so exactly one tick (and one retained
@@ -1242,6 +1264,7 @@ def _run_trial_once(
         dispatch_start_ns = rig.clock.now_ns()
         if no_trip:
             t_cross_ns = None
+            t_cross_offset_ms = None
         else:
             t_cross_offset_ms = {"capture": 20.0, "non_capture": 40.0, "control": 10.0}[
                 "control" if arm == "control" else arm
@@ -1282,6 +1305,34 @@ def _run_trial_once(
                 raise TrialInfrastructureError(detail, site="dispatch-door")
             raise AssertionError(detail)
         duration_ms = (dispatch_end_ns - dispatch_start_ns) / 1e6
+
+        # The driving-signal record (issue #241, the plan reading, design
+        # §2.1): the measured dispatch's paced total, its budget literal,
+        # and the scripted trip offset — read from the adapter's live state
+        # and this trial's own locals, none from a clock. The read/write/
+        # control arms' measured dispatch performs exactly one acq pace
+        # (the write leg's pace comes later, outside this bracket); the
+        # capture arm never paces, so its plan is the chunk plan the
+        # adapter recorded at capture entry. These are the fields the
+        # belt's evaluators read: host load inflates every wall field, it
+        # cannot reach these.
+        if arm == "capture":
+            assert rig.adapter_a.capture_plan_ms is not None, (
+                "the capture arm never recorded its chunk plan"
+            )
+            assert rig.adapter_a.capture_chunks is not None, (
+                "the capture arm never recorded its chunk count"
+            )
+            pacing_plan_ms: float | None = rig.adapter_a.capture_plan_ms
+        else:
+            paced_entries = rig.adapter_a.pace_log[pace_mark:]
+            assert len(paced_entries) == 1, (
+                f"the {arm} arm's measured dispatch paced "
+                f"{len(paced_entries)} times — exactly one acq pace is the "
+                "fixture's contract (a behavioral pacing regression that "
+                "changes the call shape lands HERE, not in a wall band)"
+            )
+            pacing_plan_ms = paced_entries[0]
 
         # X1 — the tick-gap class (monotonic, the _recording_tick seam).
         x1 = _max_tick_gap_ms(rig.tick_times[tick_mark:])
@@ -1441,6 +1492,10 @@ def _run_trial_once(
             "observation_to_enter_call_ms": observation_to_enter_call_ms,
             "enter_call_to_action_ms": enter_call_to_action_ms,
             "dispatch_duration_ms": duration_ms,
+            "pacing_plan_ms": pacing_plan_ms,
+            "capture_chunks": rig.adapter_a.capture_chunks,
+            "dispatch_budget_ms": budget,
+            "t_cross_offset_ms": t_cross_offset_ms,
             "write_leg_gap_ms": write_gap,
             "in_window_frames": len(in_window),
             "safe_state": safe_state,
@@ -1847,26 +1902,170 @@ def _median(values: list[float]) -> float:
     return statistics.median(values)
 
 
-def _axis_upper_band_breaches(trials: list[dict[str, Any]], arm: str) -> list[str]:
-    """The two observed-red per-trial UPPER bands of the axis-trials test,
-    re-homed behind the one-shot cell belt (issue #241 slice 3, design
-    §1.2): the dispatch duration and X1 both sit in ``[0, dispatch + 150]``
-    — the breach values are byte-identical to the inline asserts they
-    replace (breach iff NOT ``value <= bound``). Every FLOOR stays inline
-    in the test: host load inflates, it does not deflate, so lower bounds
-    are not the flake class and never gain a re-roll."""
+#: The per-arm wiring the rig scripts for the measured dispatch (issue
+#: #241's plan-reading slice, design §2.3): the budget literal
+#: ``_run_trial_once`` passes to ``deadline_ns`` and the trip offset it
+#: scripts. INDEPENDENT restatements of the rig's own inline literals —
+#: the rig keeps its conditional untouched — so the axis test's wiring
+#: pins red if either side drifts alone (the recorded field comes from the
+#: trial's own locals, never from this table).
+_ARM_DISPATCH_BUDGET = {
+    "capture": CAPTURE_BUDGET_MS,
+    "non_capture": T_ACQ_MIN_MS + 500,
+    "control": SHORT_T_MS,
+}
+_ARM_TRIP_OFFSET = {"capture": 20.0, "non_capture": 40.0, "control": 10.0}
+#: The capture rig's chunk construction — the PRIMITIVE artefact the
+#: capture-side pins read (probe G's fold): an independent restatement of
+#: the adapter's default ``chunks``, so a construction regression (or a
+#: recording seam that misreports it) reds the pin while a deliberate
+#: retune shows as a visible amendment here.
+_CAPTURE_CHUNKS = 100
+
+
+def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
+    """The axis test's per-trial reading (issue #241's plan-reading slice,
+    design §2.3). The absolute wall UPPER bands — duration and X1 against
+    ``dispatch + 150`` — are RETIRED: an absolute ceiling on a
+    load-inflatable quantity is a constant tuned against the host's stall
+    distribution, and the 2026-10-20 main red (run 39358368822) was that
+    shape firing — a sustained runner stretch delivered the capture arm's
+    deadline-max cut 48–165 ms late on BOTH belt generations, past the
+    band, with the fixture pacing tight (four of ten trials at
+    51.3–52.0 ms against the 50 ms budget). What replaces them is
+    load-safe by construction — load INFLATES wall values, and every
+    assert here is either clock-free bookkeeping or a bound in the
+    direction inflation cannot breach:
+
+    * the dispatch posture (UNKNOWN for the capture cut, OK for the
+      non-capture completion) — a budget regressed past natural
+      completion returns OK and reds here;
+    * a duration FLOOR at the arm's budget minus 2 ms — the pacer only
+      overshoots and the cut cannot fire before its deadline, so load
+      (which adds delay) cannot false-red it;
+    * ONE-SIDED couplings ``duration - X1 <= 50`` and ``duration - X3 <=
+      50`` — the serial model's structural content (the blackout spans
+      the dispatch; a tick inside the window or an emission schedule that
+      misses the window start SHRINKS the gap below the duration, which
+      inflation cannot do). The upper sides are NOT asserted, for
+      structural reasons: X1's slice ``tick_times[tick_mark:]`` extends
+      past the dispatch's end, so a stalled tick in the post-dispatch
+      drain widens the max gap without the duration moving, and X3's
+      landing set lands during that same drain, so a drain stall
+      inflates the latency the same way. (The 2026-10-20 fresh trials
+      510/530 are NOT X1 upper-side examples — their X1 EQUALLED the
+      duration; their stalls were X4's post-cut legs, per the record's
+      own §1.2. Review fold LOW-2 corrected the citation this bullet
+      first shipped with);
+    * wiring pins on the recorded driving signals (``dispatch_budget_ms``,
+      ``t_cross_offset_ms``) — deterministic bookkeeping catching the
+      arm/budget wiring regressions the retired ceilings caught
+      incidentally;
+    * the PLAN pins — ``pacing_plan_ms == T_ACQ_MIN_MS`` on BOTH arms,
+      plus the capture arm's chunk COUNT (``capture_chunks ==
+      _CAPTURE_CHUNKS``) — all load-immune bookkeeping, so none can
+      false-red under host load. Review fold MED-1: a doubled read-leg
+      pace (durations ~401–403 ms, X1 ~401–403, plan honestly 400.0)
+      stayed GREEN on every live reader while the retired ceiling reded
+      the same outcomes 10/10 — the write-leg band sees a different leg,
+      the couplings see only the gap, and the range gate reads
+      cross-trial consistency (all plans equal at 400 → spread 0), so
+      the plan VALUE is the only load-safe witness of a read-dispatch
+      scale regression. The arms' pins differ in what they witness, and
+      the asymmetry is the point: the non_capture plan is the read
+      leg's DISPATCH-TIME ASK (the pace call argument — a behavioural
+      seam); the capture arm has no dispatch-time ask — its plan is
+      computed at capture entry from the same attributes the chunk loop
+      iterates — so the capture pins are CONSTRUCTION pins (the count
+      and the product): their claim is "the rig was BUILT to §5's
+      fixture scale and the recording says so", closing probe G's hole
+      (a doubled chunk construction passed every live reader). The
+      accepted cost, named: a deliberate retune of ``chunks``/
+      ``chunk_ms`` must amend ``_CAPTURE_CHUNKS``/the pin — the
+      visible-diff discipline. Artefact choice: the CONSTRUCTION count
+      is recorded; the OBSERVED append count is NOT usable — it is
+      wall-coupled (the cut's delivery time, a wall quantity,
+      determines how many paced chunks complete before the cancel), so
+      pinning it would re-introduce a wall bound in disguise. What
+      stays green BY DESIGN: a cut-status trial with honest
+      construction and an absurd wall duration — the extreme-load
+      class; the wall domain cannot separate it from a defect (this
+      slice's law), and the rig-defect classes that could produce the
+      shape are pinned (a never-cut dispatch completes and reds the
+      posture assert; a doubled construction reds these pins).
+
+    Disclosed residual (design §7 D4): a moderate budget regression
+    between the budget and natural completion has no interior ceiling —
+    caught at its edges (the floor below, the posture at completion,
+    the plan pins on both legs' construction), the interior window on
+    the census's watch list."""
     dispatch_ms = _ARM_DISPATCH_MS[arm]
+    expected_status = "unknown" if arm == "capture" else "ok"
     breaches: list[str] = []
-    for trial in trials:
-        if trial["dispatch_duration_ms"] > dispatch_ms + 150:
+    if trial["status"] != expected_status:
+        breaches.append(
+            f"trial {trial['trial']}: dispatch posture {trial['status']!r}, "
+            f"expected {expected_status!r} — the cut/completion contract "
+            f"changed: {trial}"
+        )
+    if trial["dispatch_duration_ms"] < dispatch_ms - 2:
+        breaches.append(
+            f"trial {trial['trial']}: dispatch_duration_ms "
+            f"{trial['dispatch_duration_ms']:.1f} under the "
+            f"{dispatch_ms:.0f} - 2 ms floor — the pacer only overshoots, "
+            f"a dispatch before its deadline is a wiring regression: {trial}"
+        )
+    for axis_key in ("x1_ms", "x3_ms"):
+        gap = trial["dispatch_duration_ms"] - trial[axis_key]
+        if gap > 50:
             breaches.append(
-                f"dispatch_duration_ms {trial['dispatch_duration_ms']:.1f} exceeds "
-                f"the {dispatch_ms:.0f} + 150 ms band: {trial}"
+                f"trial {trial['trial']}: duration - "
+                f"{axis_key.removesuffix('_ms').upper()} = {gap:.1f} ms over "
+                "the 50 ms serial-model coupling — a tick inside the "
+                "dispatch window or an emission schedule that missed the "
+                f"window start: {trial}"
             )
-        if trial["x1_ms"] > dispatch_ms + 150:
+    if trial["dispatch_budget_ms"] != _ARM_DISPATCH_BUDGET[arm]:
+        breaches.append(
+            f"trial {trial['trial']}: dispatch_budget_ms "
+            f"{trial['dispatch_budget_ms']} is not the arm's "
+            f"{_ARM_DISPATCH_BUDGET[arm]:.0f} ms literal — budget wiring "
+            f"regressed: {trial}"
+        )
+    if trial["t_cross_offset_ms"] != _ARM_TRIP_OFFSET[arm]:
+        breaches.append(
+            f"trial {trial['trial']}: t_cross_offset_ms "
+            f"{trial['t_cross_offset_ms']} is not the arm's "
+            f"{_ARM_TRIP_OFFSET[arm]:.0f} ms script — trip-offset wiring "
+            f"regressed: {trial}"
+        )
+    if arm == "non_capture" and trial["pacing_plan_ms"] != T_ACQ_MIN_MS:
+        breaches.append(
+            f"trial {trial['trial']}: pacing_plan_ms "
+            f"{trial['pacing_plan_ms']:.1f} is not §5's fixture scale "
+            f"({T_ACQ_MIN_MS:.0f} ms) — the read leg's dispatch-time ask "
+            "changed scale (the plan is load-immune bookkeeping, so this "
+            f"is a fixture regression, not host load): {trial}"
+        )
+    if arm == "capture":
+        # Probe G's fold: the capture dispatch must record the
+        # construction it claims. Two pins, both load-immune bookkeeping:
+        # the chunk COUNT (the primitive) and the plan product.
+        if trial["capture_chunks"] != _CAPTURE_CHUNKS:
             breaches.append(
-                f"x1_ms {trial['x1_ms']:.1f} exceeds the "
-                f"{dispatch_ms:.0f} + 150 ms band: {trial}"
+                f"trial {trial['trial']}: capture_chunks "
+                f"{trial['capture_chunks']} is not the rig's "
+                f"{_CAPTURE_CHUNKS}-chunk construction — the capture "
+                "dispatch's chunk plan changed scale (bookkeeping, not a "
+                f"clock — a fixture regression, not host load): {trial}"
+            )
+        if trial["pacing_plan_ms"] != T_ACQ_MIN_MS:
+            breaches.append(
+                f"trial {trial['trial']}: pacing_plan_ms "
+                f"{trial['pacing_plan_ms']:.1f} is not §5's fixture scale "
+                f"({T_ACQ_MIN_MS:.0f} ms) — the capture chunk plan "
+                "(chunks x chunk_ms) changed scale (bookkeeping, not a "
+                f"clock — a fixture regression, not host load): {trial}"
             )
     return breaches
 
@@ -1919,11 +2118,28 @@ def _belt_fresh_generation(
 
 
 def _render_belt_trial(trial: dict[str, Any]) -> str:
-    """One trial line for the belt's both-generations failure render."""
+    """One trial line for the belt's both-generations failure render: the
+    plan beside the wall values (the plan is the reading; the wall values
+    stay as diagnostic context — they classify the host regime for
+    whoever reads the log), and X4's three-way decomposition legs (issue
+    #241's plan-reading slice, design §3) so a render shows WHICH leg
+    moved — the 2026-10-20 fresh-generation 510/530 shape (a stall in a
+    leg AFTER the cut, X4 exceeding the duration by 135.0/140.6 ms while
+    X1 equalled it) was invisible in the old render."""
+
+    def _ms(value: Any) -> str:
+        return "-" if value is None else f"{value:.1f}"
+
     return (
-        f"trial {trial['trial']}: X1={trial['x1_ms']:.1f} X2={trial['x2_ms']:.1f} "
-        f"X3={trial['x3_ms']:.1f} X4={trial['x4_ms']:.1f} "
-        f"(dur {trial['dispatch_duration_ms']:.1f}, retries {trial['retries']})"
+        f"trial {trial['trial']}: X1={_ms(trial['x1_ms'])} "
+        f"X2={_ms(trial['x2_ms'])} X3={_ms(trial['x3_ms'])} "
+        f"X4={_ms(trial['x4_ms'])} "
+        f"(dur {_ms(trial['dispatch_duration_ms'])}, "
+        f"plan {_ms(trial['pacing_plan_ms'])}, "
+        f"onset->obs {_ms(trial['onset_to_observation_ms'])}, "
+        f"obs->enter {_ms(trial['observation_to_enter_call_ms'])}, "
+        f"enter->action {_ms(trial['enter_call_to_action_ms'])}, "
+        f"retries {trial['retries']})"
     )
 
 
@@ -1942,12 +2158,19 @@ def _certified_cell(
     breaches re-measure: ``evaluate`` returns a breach list and the belt
     never inspects exception types, so a structural failure raised inside
     an evaluator propagates immediately with zero fresh generations
-    (pinned below). The disclosed price (design §1.2): for a fixture loose
-    enough to pass any single 5-trial draw with per-generation probability
-    p, the belt raises the per-execution pass probability to 1-(1-p)^2 —
-    immaterial for looseness that matters against an 8.3x quiet margin
-    (trimmed spread 6.0 ms vs the 50 ms bound, 384 readings, slice-2
-    Evidence C.4) and proven toothy by the forced-loose pin."""
+    (pinned below).
+
+    After the plan-reading slice (issue #241, 2026-10-20 design §2.4) the
+    belt's evaluators read only the DRIVING-SIGNAL plan domain, so the
+    re-roll price is the honest one: a transient breach (a fluke in the
+    recording seam) is absorbed by the one re-measure exactly as designed,
+    and a both-generations plan breach is REALLY a systematically-loose
+    fixture — the plan is deterministic bookkeeping with no clock in its
+    path, host load cannot stretch it, and a quiet-host cell records one
+    value five times (trimmed spread 0.0). Sustained host load — the
+    2026-10-20 class that reddened both belt readers on main — no longer
+    reaches the belt's input at all, which is the only honest meaning of
+    "removing the load sensitivity"."""
     key = (arm, device_class)
     trials = _cell(tmp_path, arm, device_class)
     breaches = evaluate(trials)
@@ -1964,19 +2187,20 @@ def _certified_cell(
         )
         print(
             f"\n{arm}/{device_class} belt: gen-1 breached a re-measurable "
-            "band — certifying the one fresh generation (trials 51-55)"
+            "plan band — certifying the one fresh generation (trials 51-55)"
         )
     fresh = _BELT_FRESH_GENERATIONS[key]
     fresh_breaches = evaluate(fresh)
     if fresh_breaches:
         raise AssertionError(
             f"{arm}/{device_class}: the one-shot cell belt re-measured "
-            "(trials 51-55) and the breach held on BOTH generations. "
-            "Read the breach lines for the cause: a scatter at nominal "
-            "pacing is a loose fixture, while host-starved trials are "
-            "excluded from the reading and named as such; §5's honest "
-            "verdict on either is this red (underpowered, decide "
-            "nothing).\n"
+            "(trials 51-55) and the PLAN breach held on BOTH generations "
+            "— the pacing schedule scattered on both: a systematically-"
+            "loose fixture. The plan is load-immune bookkeeping (host "
+            "load cannot stretch it), so this red is §5's honest verdict: "
+            "fix fixture pacing, decide nothing. The wall values below "
+            "are diagnostic context — they classify the host regime, not "
+            "the verdict.\n"
             "gen-1 breaches:\n  " + "\n  ".join(breaches) + "\n"
             "fresh-generation breaches:\n  " + "\n  ".join(fresh_breaches) + "\n"
             "gen-1 trials:\n  "
@@ -2002,52 +2226,43 @@ def test_axis_trials_complete_all_four_axes(
     tmp_path: Path, arm: str, device_class: str
 ) -> None:
     """§5.1: every (arm, class) produces 5/5 completed trials with all four
-    axes recorded; §5.3: X1's max tick gap sits in the per-arm blackout
-    band [dispatch - 50, dispatch + 150] (the reference is the arm's own
-    in-flight duration — the capture arm CUTS at its budget, the
-    non-capture arm COMPLETES at T_acq_min; if this ever fails the serial
-    model changed and the disclosure is stale). The write leg's gap is
-    recorded on the non-capture arm (§2.2's second leg). The retry cap is
-    part of the acceptance: a trial runs a fixed three-attempt budget (the
-    initial attempt plus two retries — exhaustion builds exactly three
-    rigs, pinned ``len(rigs) == 3``), and a chronically starved host must
-    not ship all-green on the retry crutch —
-    the assert trips if the retry loop is ever widened without amending
-    the acceptance rule.
+    axes recorded; §5.3: the per-trial reading is the load-safe set
+    documented at ``_axis_per_trial_breaches`` (issue #241's plan-reading
+    slice, design §2.3) — the serial model's content is pinned by the
+    one-sided couplings and the floor, not by the retired absolute wall
+    ceilings. The write leg's gap is recorded on the non-capture arm
+    (§2.2's second leg). The retry cap is part of the acceptance: a trial
+    runs a fixed three-attempt budget (the initial attempt plus two
+    retries — exhaustion builds exactly three rigs, pinned ``len(rigs) ==
+    3``), and a chronically starved host must not ship all-green on the
+    retry crutch — the assert trips if the retry loop is ever widened
+    without amending the acceptance rule.
 
-    The two per-trial UPPER bands — the dispatch duration and X1 against
-    ``dispatch + 150`` — read through the one-shot cell belt (issue #241
-    slice 3, design §1.2): a gen-1 breach re-measures the cell once, so
-    the multi-stall host shape among tight trials is absorbed without
-    touching the reading, and a fresh breach reds with both generations
-    rendered. The floors and every structural assert stay inline and hard
-    and never trigger a re-roll themselves — but they evaluate whichever
-    generation the belt returns: an absorbed gen-1 band breach skips
-    gen-1's floor/structural verdicts, EXCEPT the load-safe X1 floor,
-    which asserts on BOTH generations (refute fold A; load inflates X1,
-    so its lower bound cannot false-red). The retry cap, in_window_frames,
-    and the write-leg gap band stay return-generation-only — re-asserting
-    gen-1's load-inflated upper quantities would reintroduce the flake
-    class this slice retires.
+    NO belt on this path (design §2.3): nothing this test still asserts
+    is a re-measurable band — the couplings, floors, posture and wiring
+    pins are all load-safe or deterministic, so a breach is a structural
+    finding that a re-roll would launder, not a transient to absorb. The
+    X1 floor asserts on the cell this test reads (the one generation
+    there is now); the load-shape replay control pins that the 2026-10-20
+    CI shape — wall values stretched up to 4.3x with tight plans —
+    evaluates CLEAN through this reading with the belt never reached.
 
     The named residual families (issue #241 slice 4's register — the
     §5.2 accounting tolerates these BY NAME, and a red without the
-    family's signature is NOT in one): chronic-starvation exhaustion —
-    a trial's fixed three-attempt budget exhausts on infrastructure
-    sites, the composition rendered in the red; sustained-stretch —
-    three distinct band families breaching in one execution, the belt
-    reding on both generations by design (underpowered, decide
-    nothing)."""
-    trials = _certified_cell(
-        tmp_path, arm, device_class, lambda cell: _axis_upper_band_breaches(cell, arm)
-    )
+    family's signature is NOT in one): chronic-starvation exhaustion — a
+    trial's fixed three-attempt budget exhausts on infrastructure sites,
+    the composition rendered in the red. The sustained-stretch family is
+    RETIRED by this slice: sustained host load can no longer reach either
+    belt reader (the range gate reads the load-immune plan; this test
+    asserts only load-safe forms), so a both-generations belt red after
+    this slice means a genuinely-loose fixture or a broken recording
+    seam — §5.2's pre-committed kill direction."""
+    trials = _cell(tmp_path, arm, device_class)
     assert len(trials) == 5
-    # gen-1's X1 floor is always audited — a cached read, never a
-    # re-measure — then the certified generation's (identical when the
-    # belt returned gen-1).
-    _assert_x1_floor(_cell(tmp_path, arm, device_class), arm)
     _assert_x1_floor(trials, arm)
     for trial in trials:
+        breaches = _axis_per_trial_breaches(trial, arm)
+        assert not breaches, "\n  ".join(breaches)
         for axis in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
             assert trial[axis] is not None, (arm, device_class, trial["trial"], axis)
         assert trial["in_window_frames"] >= 1, trial
@@ -2163,89 +2378,66 @@ def _range_gate_evaluation(
     return lambda cell: _range_gate_breaches(cell, arm, device_class)
 
 
-def _arm_dispatch_budget_ms(arm: str) -> float:
-    """The dispatch budget the rig arms for this arm (mirrors the budget
-    ``_run_trial_once`` builds the schedule with)."""
-    if arm == "control":
-        return SHORT_T_MS
-    return CAPTURE_BUDGET_MS if arm == "capture" else T_ACQ_MIN_MS + 500
-
-
-#: A trial whose measured dispatch outruns its own arm budget by this factor
-#: was STARVED by the host, not paced by the fixture: on 2026-10-20 a
-#: `capture` cell (50 ms budget) recorded dispatches of 52, 52, 52, 98.8 and
-#: 200.2 ms in CI, and the two starved trials alone put the cross-trial range
-#: over the 50 ms reading. Reading those as instrument precision measures the
-#: runner, which is the opposite of §5's clause. 1.5x sits above the ordinary
-#: pacing overshoot (the capture cells pace at ~52 ms, 1.04x) and far below
-#: the starvation shapes observed (1.98x and 4.0x).
-STARVED_DISPATCH_FACTOR = 1.5
-#: The clause needs a cell to read; below this many unstarved trials the row
-#: is UNDER-EXAMINED and says so instead of pretending to a spread.
-_RANGE_GATE_MIN_TRIALS = 3
-
-
 def _range_gate_breaches(
     trials: list[dict[str, Any]], arm: str, device_class: str
 ) -> list[str]:
     """The §5 spread loop of the range-gate test, re-homed behind the
-    one-shot cell belt (issue #241 slice 3, design §1.2): ``_underpowered_
-    range_ms`` over each axis's values against 25% of the dispatch duration,
-    with HOST-STARVED trials excluded first.
+    one-shot cell belt (issue #241 slice 3, design §1.2) and re-derived
+    onto the DRIVING-SIGNAL plan (issue #241's plan-reading slice,
+    2026-10-20 design §2.2): the trim (``_underpowered_range_ms``,
+    byte-identical) and the 25%-of-200 ms bound are untouched; the
+    READING moves from the four wall axes to the cell's ``pacing_plan_ms``
+    values — what the rig asked the pacing to do, recorded per trial with
+    no clock in the path, so host load cannot reach it.
 
-    Starvation exclusion (2026-10-20 main red): the belt's one fresh
-    generation recovered a single stalled trial, but its own docstring
-    assumed the stall class was rare. On the main red the same cell carried
-    two starved dispatches in gen-1 (98.8 and 200.2 ms against a 50 ms
-    budget) and three in the fresh generation, so the re-measure reproduced
-    the breach and the belt reported "a systematically-loose fixture". That
-    verdict was false: the fixture paced three of five trials at ~52 ms.
-    A trial that ran 2x to 4x its own budget is the runner starving the
-    fixture, which this clause explicitly does not measure, so those trials
-    are excluded from the reading and named in the message. What remains is
-    the instrument-precision reading the clause commits to: a fixture that
-    scatters at its nominal pacing still breaches, and a host that starves
-    most of a cell produces an UNDER-EXAMINED refusal instead of a false
-    looseness verdict."""
-    budget = _arm_dispatch_budget_ms(arm)
-    starved = [
-        trial
-        for trial in trials
-        if trial["dispatch_duration_ms"] > budget * STARVED_DISPATCH_FACTOR
-    ]
-    usable = [trial for trial in trials if trial not in starved]
-    if starved:
-        starved_render = ", ".join(
-            f"trial {trial['trial']} at {trial['dispatch_duration_ms']:.1f} ms"
-            for trial in starved
-        )
-    if len(usable) < _RANGE_GATE_MIN_TRIALS:
-        return [
-            f"{arm}/{device_class}: cell UNDER-EXAMINED — "
-            f"{len(starved)} of {len(trials)} trials were host-starved "
-            f"(budget {budget:.0f} ms, starvation factor "
-            f"{STARVED_DISPATCH_FACTOR:.1f}x: {starved_render}) and "
-            f"{len(usable)} unstarved trials cannot carry the range reading "
-            f"(need {_RANGE_GATE_MIN_TRIALS}). This is the runner, not the "
-            "fixture: re-run the lane; if it repeats, the host needs "
-            "capacity, and §5's verdict stays 'underpowered, decide nothing'."
-        ]
+    Why the wall reading had to move (run 39358368822, the 2026-10-20
+    main red): per-trial, fixture pacing scatter and host-load stretch
+    enter the recorded wall values through the SAME door — both inflate
+    the duration and every duration-coupled axis common-mode — so no
+    wall-domain statistic (spread, ratio, duration threshold, exclusion
+    factor) can tell a loose fixture from a loaded host within one
+    generation, and across the belt's two draws the two causes differ
+    only in persistence, which sustained load erases. The observed red
+    was a sustained runner stretch delivering the capture arm's
+    deadline-max cut 48–165 ms late on BOTH belt generations (trials
+    stretched to ~100–215 ms against a 50 ms budget, every stretched
+    trial ``status: unknown`` with ``retries: 0`` — nothing failed, the
+    wall values were inflated), so the belt's kill direction fired on a
+    shape it could not discriminate. The intermediate fix on main
+    (PR #504, the 1.5x starvation exclusion) was a wall-magnitude
+    constant tuned between two observed samples — the row-12 attempt-1
+    shape — and it left the FIRST-failing reader (the axis test's
+    absolute ceilings) exposed; this reading replaces it, and the
+    uniform-stretch plant of the replay control pins why no threshold
+    can hold.
+
+    The single-axis collapse is deliberate (design §2.2): the four wall
+    axes were four noisy views of ONE fixture property (the driving
+    signals' cross-trial consistency) plus views of properties better
+    pinned elsewhere — X1/X3's serial-model structure by the axis test's
+    one-sided couplings, X2's class separation by the §5.2 separation
+    test, X4's fixture-scripted parts by the wiring pins. Teeth, pinned
+    by the forced-loose pin: a parameter-scattered fixture (per-rig
+    ``acq_ms``/``chunk_ms`` scatter, or call-argument scatter) lands in
+    the recording by construction and breaches on both generations. The
+    residual blind spot — right arguments, wrong sleeps — is bounded by
+    the axis test's floors/couplings/posture and disclosed as the
+    design's D4."""
+    values = [trial["pacing_plan_ms"] for trial in trials]
     breaches: list[str] = []
-    excluded = f"; host-starved trials excluded: {starved_render}" if starved else ""
-    for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
-        values = [trial[axis_key] for trial in usable]
-        spread = _underpowered_range_ms(values)
-        if spread > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
-            breaches.append(
-                f"{arm}/{device_class} {axis_key.upper()}: trial range "
-                f"{spread:.1f} ms (raw {max(values) - min(values):.1f}) "
-                f"over {len(values)} unstarved trials exceeds 25% of "
-                f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
-                "duration — §5's UNDERPOWERED reading (fix fixture "
-                "pacing, decide nothing; the reading is trimmed of the "
-                "single most extreme trial, one host stall tolerated); "
-                f"values: {[round(v, 1) for v in values]}{excluded}"
-            )
+    spread = _underpowered_range_ms(values)
+    if spread > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
+        breaches.append(
+            f"{arm}/{device_class} PLAN: pacing-plan range "
+            f"{spread:.1f} ms (raw {max(values) - min(values):.1f}) "
+            f"over {len(values)} trials exceeds 25% of "
+            f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
+            "duration — §5's UNDERPOWERED reading on the driving-signal "
+            "plan (fix fixture pacing, decide nothing; the reading is "
+            "trimmed of the single most extreme trial, and host load "
+            "cannot reach the plan, so a breach is the fixture's own "
+            f"pacing schedule): values: {[round(v, 1) for v in values]}"
+        )
     return breaches
 
 
@@ -2263,12 +2455,19 @@ def test_instrument_range_gate_per_axis_per_cell(tmp_path: Path) -> None:
     flake generator rather than a quality gate.
 
     The spread loop reads through the one-shot cell belt (issue #241
-    slice 3, design §1.2): the READING is untouched — 25% of the dispatch
-    duration, trimmed of one trial — a gen-1 breach re-measures the cell
-    ONCE (a 2–3-stall host shape among tight trials is the runner, not
-    the fixture; every in-lane range-gate red since slice 2 was that
-    shape), and a fresh breach reds with both generations rendered — a
-    systematically-loose fixture is still caught, twice."""
+    slice 3, design §1.2) over the DRIVING-SIGNAL plan (issue #241's
+    plan-reading slice, 2026-10-20 design §2.2): the trim and the 25% of
+    the 200 ms dispatch duration are untouched, the values read are the
+    cell's ``pacing_plan_ms`` — a gen-1 breach re-measures the cell ONCE
+    (a fluke in the recording seam is the transient class the belt
+    absorbs), and a fresh breach reds with both generations rendered — a
+    systematically-loose fixture is still caught, twice. The corrected
+    diagnosis of the 2026-10-20 main red (run 39358368822): a sustained
+    runner stretch delivering the capture arm's deadline-max cut 48–165
+    ms late on both generations — a loaded-host measurement, not a
+    property of the fixture and not of the merge (whose diff touched no
+    timing path); serial local runs on the same commit exit 0. Host load
+    cannot reach the plan, so that class no longer reddens this gate."""
     for arm in ("capture", "non_capture"):
         for device_class in ("buffered", "unbuffered"):
             trials = _certified_cell(
@@ -2290,45 +2489,45 @@ def test_belt_forced_loose_fixture_reds_on_both_generations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """AR-1.1, the kill direction for "re-roll until green": a
-    systematically-loose fixture — ``_pace`` re-scaled per rig by a
-    deterministic factor ladder, so every trial scatters — breaches gen-1
-    AND the belt's one fresh generation, and the belt FAILS rendering
-    BOTH generations. RED on the pre-belt line is the standing behavior
-    (the same scattered fixture reds today's gate on gen-1 alone; shown
-    at build with the belt neutralized to the pre-belt shape — fail on
-    first breach, no re-run). The ladder keeps every trial INSIDE the
-    inline floors (X1 in [160, 280] ms against the 150 ms floor on the
-    200 ms class), so the red is the range gate's spread reading, on both
-    generations of it. The module caches are snapshotted and restored
-    around the arm: the scattered cell must never leak into the
-    measurement tests' gen-1 cache."""
-    # Outcome-mode scatter (the 2026-10-10 main-red fix): the original
-    # shape scaled _pace (the INPUT), but CI-load wall-time stretch is
-    # roughly UNIFORM across trials, compressing the relative spread the
-    # range gate reads — under load the planted ±40% drowns and the gate
-    # sees no breach (observed three CI appearances: #437 rollup, two
-    # consecutive main runs). Scaling the RECORDED x-values post-hoc
-    # plants the scatter in the gate's own domain: whatever wall times
-    # the rig produces, the recorded values carry the ladder's ±40% —
-    # deterministic under any load. The belt, gate, and rendering are
-    # untouched: they consume the recorded values.
+    systematically-loose fixture — the PACING CALL scattered per rig by a
+    deterministic factor ladder, so every trial's driving signal
+    scatters — breaches gen-1 AND the belt's one fresh generation on the
+    PLAN reading, and the belt FAILS rendering BOTH generations' plan
+    vectors.
+
+    Re-planted at the call seam by the plan-reading slice (design §4.3,
+    the #439 pairing rule in its corrected form: the reading is now
+    driving-signal-domain, so the pin plants the INPUT domain —
+    deterministic NOW because ``pace_log`` records the call argument,
+    which no host load touches). The pre-slice pin scattered the
+    RECORDED wall x-values post-hoc (outcome domain) because the
+    wall-domain reading drowned under CI-load uniform stretch; that shape
+    no longer reaches the reading at all. The ladder indexes by PACED
+    order (slice 4's lesson): an infrastructure retry's rig is discarded
+    before its acquisition and never paces, so it consumes no slot —
+    five consecutive measured trials draw one of each factor on BOTH
+    generations (trimmed plan spread 80 ms vs the 50 ms bound at every
+    rotation), whatever retries interleave. The neutralized-recording
+    control (design AR-1.3, shown at build) proves the pin reads the
+    plan seam: with the recording fed constants the red disappears. The
+    module caches are snapshotted and restored around the arm: the
+    scattered cell must never leak into the measurement tests' gen-1
+    cache."""
     ladder = (0.8, 1.0, 1.2, 0.9, 1.4)
-    scatter_counter = [0]
-    original_run_trial = run_trial
+    paced: list[ARigAdapter] = []
+    original_pace = ARigAdapter._pace
 
-    def scattered_trial(
-        tmp_path: Path, **kwargs: Any
-    ) -> dict[str, Any]:
-        trial = original_run_trial(tmp_path, **kwargs)
-        factor = ladder[scatter_counter[0] % len(ladder)]
-        scatter_counter[0] += 1
-        for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
-            trial[axis_key] = trial[axis_key] * factor
-        return trial
+    async def scattered_pace(self: ARigAdapter, total_ms: float) -> None:
+        # The call seam: the factor scales the ARGUMENT, so the recording
+        # (which appends ``total_ms`` at ``_pace`` entry) carries the
+        # ladder — and the actual pacing scales with it, keeping the wall
+        # domain consistent with the plan (a real scattered fixture, not
+        # a bookkeeping-only plant).
+        if self not in paced:
+            paced.append(self)
+        await original_pace(self, total_ms * ladder[paced.index(self) % len(ladder)])
 
-    monkeypatch.setattr(
-        sys.modules[__name__], "run_trial", scattered_trial
-    )
+    monkeypatch.setattr(ARigAdapter, "_pace", scattered_pace)
     saved_cells = dict(_TRIAL_CELLS)
     saved_fresh = dict(_BELT_FRESH_GENERATIONS)
     saved_runs = dict(_BELT_GENERATION_RUNS)
@@ -2346,6 +2545,9 @@ def test_belt_forced_loose_fixture_reds_on_both_generations(
         assert _BELT_GENERATION_RUNS[("non_capture", "buffered")] == 1, (
             "the belt must have re-measured exactly once before redding"
         )
+        # The red renders the plan vectors (the reading's domain), not
+        # only the wall values it retired.
+        assert "PLAN: pacing-plan range" in str(raised.value), str(raised.value)
         assert "fresh-generation breaches" in str(raised.value), str(raised.value)
     finally:
         _TRIAL_CELLS.clear()
@@ -2433,30 +2635,27 @@ def test_belt_never_re_runs_a_structural_failure(
 def test_belt_swap_still_audits_gen1_x1_floor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Refute fold A (adv-F1 / mech-F3, MEDIUM): when gen-1 breaches a
-    belt band and the fresh draw is clean, the belt hands back the FRESH
-    cell — and the axis test's inline asserts then evaluated the fresh
-    cell only, so a gen-1 X1-floor violation (the serial-model disclosure
-    pin) shipped green (the adversary's A/B: the poisoned shape passed at
-    the pre-fold tip where origin/main reds). The fix asserts the
-    load-safe X1 floor on BOTH generations; this pin drives the REAL
-    axis test — first five adapters scattered by a factor ladder (one
-    trial below the 150 ms floor, one past the 350 ms upper band), every
-    later adapter healthy, so gen-1 breaches a band AND violates the
-    floor while the belt's fresh generation is clean — and the floor must
-    RED on gen-1 through the swapped verdict. RED-shown at build against
-    the pre-fix shape (the gen-1 floor call neutralized out of the axis
-    test): the poisoned cell then passes — the exact defect.
+    """Refute fold A (adv-F1 / mech-F3, MEDIUM), re-homed by the
+    plan-reading slice: when gen-1 breaches a belt band and the fresh
+    draw is clean, the belt hands back the FRESH cell — and a reader that
+    evaluated only the returned generation would skip gen-1's X1-floor
+    violation (the serial-model disclosure pin). The axis test no longer
+    belts at all (its reading is load-safe; design §2.3), so its floor
+    now audits gen-1 unconditionally — structurally stronger than the
+    through-swap audit this pin was built for. What this pin still pins,
+    with the real mechanisms: under a scattered gen-1 (ladder on the
+    pacing call: one trial's plan below the reading's pack, one above —
+    a PLAN breach; the low trial's wall X1 under the 150 ms floor), the
+    belt's range-gate read certifies exactly one fresh generation (the
+    swap) and absorbs the breach, AND gen-1's floor still reds on the
+    cached cell afterwards. A future re-belting of the axis path that
+    re-introduces return-generation-only floors reds here first.
 
     Slice 4 (run 36867869659): the ladder indexes by PACED order — an
     infrastructure retry's rig is discarded before its acquisition (never
-    paces), so construction-order indexing shifted the ladder under load:
-    the discarded rig consumed a poisoning slot, gen-1 drew floor-only,
-    the belt correctly certified nothing (the observed empty map), and
-    the floor audit reded through the pin's own swap post-condition — or
-    the mirrored shift silently vacated the pin. The pace hook appends an
-    adapter on its first pace call; the counting __init__ stays as the
-    construction registry."""
+    paces), so construction-order indexing shifted the ladder under load.
+    The pace hook appends an adapter on its first pace call; the counting
+    __init__ stays as the construction registry."""
     ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
     adapters: list[ARigAdapter] = []
     original_init = ARigAdapter.__init__
@@ -2494,20 +2693,29 @@ def test_belt_swap_still_audits_gen1_x1_floor(
     _BELT_FRESH_GENERATIONS.clear()
     _BELT_GENERATION_RUNS.clear()
     try:
-        with pytest.raises(AssertionError, match="X1 floor") as raised:
-            # The REAL axis test, not a reimplementation: its belt read,
-            # its swap, and its both-generations floor are what is under
-            # test. Parametrize args are plain function arguments here.
-            test_axis_trials_complete_all_four_axes(
-                tmp_path, "non_capture", "buffered"
-            )
-        assert "x1_ms" in str(raised.value), str(raised.value)
-        # The belt really swapped: the fresh generation was certified for
-        # the key (a band breach was absorbed), so the red came through
-        # the swapped verdict, not from a gen-1-only read.
+        # The REAL belt read over the REAL range-gate evaluator (the axis
+        # path no longer belts — the swap now lives on the range side,
+        # certified by a PLAN breach; design §4.3): gen-1's ladder plans
+        # (110, 200, 380, 150, 290) breach the plan reading, the fresh
+        # generation (paced indices >= 5, healthy) clears it.
+        certified = _certified_cell(
+            tmp_path,
+            "non_capture",
+            "buffered",
+            _range_gate_evaluation("non_capture", "buffered"),
+        )
+        # The belt really swapped: one certification, and the returned
+        # cell is the fresh generation.
         assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
             _BELT_GENERATION_RUNS
         )
+        assert certified is _BELT_FRESH_GENERATIONS[("non_capture", "buffered")]
+        # The gen-1 floor still audits — on the cached cell the belt
+        # never rewrote: the 0.55-paced trial's wall X1 sits under the
+        # 150 ms floor while the belt had absorbed the breach.
+        with pytest.raises(AssertionError, match="X1 floor") as raised:
+            _assert_x1_floor(_cell(tmp_path, "non_capture", "buffered"), "non_capture")
+        assert "x1_ms" in str(raised.value), str(raised.value)
     finally:
         _TRIAL_CELLS.clear()
         _TRIAL_CELLS.update(saved_cells)
@@ -2520,17 +2728,20 @@ def test_belt_swap_still_audits_gen1_x1_floor(
 def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Issue #241 slice 4, AR-1's green arm: the belt-swap pin's designed
-    ladder allocation must survive one infrastructure retry that discards
-    its rig BEFORE the acquisition — the merge-run red (run 36867869659)
-    was this shape: the discarded rig consumed a poisoning slot, gen-1
-    drew floor-only, the belt correctly certified nothing, and the floor
-    audit reded through the pin's own swap post-condition on an empty
-    map. With the pace hook indexing by PACED order, the same injected
-    discard changes nothing: a pre-acquisition discard never paces, so
-    gen-1's measured five draw the designed ladder, the 1.9-paced trial
-    breaches the upper band, the belt certifies exactly one fresh
-    generation, and gen-1's floor red lands through the swapped verdict.
+    """Issue #241 slice 4, AR-1's green arm, re-homed by the plan-reading
+    slice (design §4.3): the belt-swap pin's designed ladder allocation
+    must survive one infrastructure retry that discards its rig BEFORE
+    the acquisition — the merge-run red (run 36867869659) was this shape:
+    the discarded rig consumed a poisoning slot, gen-1 drew floor-only,
+    the belt correctly certified nothing, and the floor audit reded
+    through the pin's own swap post-condition on an empty map. With the
+    pace hook indexing by PACED order, the same injected discard changes
+    nothing: a pre-acquisition discard never paces, so gen-1's measured
+    five draw the designed ladder, the 1.9-paced trial's PLAN (380 ms)
+    breaches the plan reading, the belt certifies exactly one fresh
+    generation (the belt certification now comes via a plan breach; the
+    ladder is call-time, so it lands in ``pace_log`` by construction),
+    and gen-1's floor red lands on the cached cell.
 
     Mutation-RED at build (AR-1): with the hook reverted to
     construction-order indexing under the same injected discard, the 0.55
@@ -2581,10 +2792,20 @@ def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
     _BELT_FRESH_GENERATIONS.clear()
     _BELT_GENERATION_RUNS.clear()
     try:
+        # The REAL belt read over the REAL range-gate evaluator — the
+        # certification path the axis test's belt read used to carry
+        # (re-homed, design §4.3): the designed ladder breaches gen-1's
+        # plan, the belt certifies and absorbs, and gen-1's floor red
+        # lands on the cached cell the belt never rewrote.
+        certified = _certified_cell(
+            tmp_path,
+            "non_capture",
+            "buffered",
+            _range_gate_evaluation("non_capture", "buffered"),
+        )
+        assert certified is _BELT_FRESH_GENERATIONS[("non_capture", "buffered")]
         with pytest.raises(AssertionError, match="X1 floor") as raises:
-            test_axis_trials_complete_all_four_axes(
-                tmp_path, "non_capture", "buffered"
-            )
+            _assert_x1_floor(_cell(tmp_path, "non_capture", "buffered"), "non_capture")
         assert "x1_ms" in str(raises.value), str(raises.value)
         # The discard fired exactly once and consumed a construction...
         assert len(discarded) == 1, (len(discarded), len(constructions), len(paced))
@@ -2599,8 +2820,7 @@ def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
         # bare-arithmetic form; a derived never-paced count is a
         # tautology, so the kept guards are the membership, the
         # recorded-discard count, and the belt-map post-condition.)
-        # The belt really swapped: a band breach was absorbed for the key,
-        # so the floor red came through the swapped verdict.
+        # The belt really swapped: one certification for the key.
         assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
             _BELT_GENERATION_RUNS
         )
@@ -2611,6 +2831,206 @@ def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
         _BELT_FRESH_GENERATIONS.update(saved_fresh)
         _BELT_GENERATION_RUNS.clear()
         _BELT_GENERATION_RUNS.update(saved_runs)
+
+
+def test_issue241_load_shape_replay_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-1.4, the committed load-shape replay control (issue #241's
+    plan-reading slice, design §5.1): the EXACT CI red — run 39358368822,
+    key ``capture/unbuffered``, the 2026-10-20 both-generations belt red —
+    replayed as synthetic vectors. The trials carry tight plans (200.0 ms,
+    the rig's 100 x 2.0 ms chunk plan) with wall values stretched up to
+    4.3x (214.8 ms dispatch against the 50 ms budget) and every stretched
+    trial recording ``status: unknown`` and ``retries: 0`` — nothing
+    failed, the wall values were inflated by a sustained runner stretch.
+    The control asserts these vectors evaluate CLEAN through both new
+    evaluators, and that the host class never reaches the belt (a
+    tripwire stands in for the fresh generation; zero certifications).
+    This is the matched control fluff cannot pass: it is the exact CI
+    red, replayed.
+
+    Two named RED plants inside, per the design review's request:
+
+    * **uniform stretch** — every wall duration and axis value scaled by
+      one factor (4x here): the wall value INFLATES against the constant
+      band, so the RETIRED wall-domain readers red (the axis band and
+      the four-axis spread), while the new evaluators stay clean (the
+      plan is untouched by definition; the couplings scale with the
+      duration). This is the shape no wall-domain threshold can hold —
+      the row-12 attempt-1 kill, and the reason PR #504's 1.5x exclusion
+      factor was replaced rather than kept.
+    * **the episodic CI shape itself** — which additionally reds the
+      REJECTED ratio reading (design §2.5: trimmed spread vs 25% of the
+      cell's own measured duration) on BOTH generations: the stretch is
+      episodic per trial, so the denominator keeps an on-time majority
+      while the spread carries a stretched trial past the trim — a ratio
+      cancels uniform dilation and AMPLIFIES episodic dilation. The
+      control pins that the plan reading is immune to the shape that
+      defeats both wall-domain alternatives.
+
+    The retired readers are re-planted here verbatim (the axis band from
+    the pre-slice line; the four-axis spread from the pre-#504 line) as
+    the control's RED arms — they are NOT the live readers; the live
+    ones are imported from the module."""
+    arm, device_class = "capture", "unbuffered"
+
+    def ci_trial(
+        index: int, x1: float, x3: float, x4: float, dur: float
+    ) -> dict[str, Any]:
+        return {
+            "trial": index,
+            "x1_ms": x1,
+            "x2_ms": 1.0,  # the unbuffered class's immediate conversion
+            "x3_ms": x3,
+            "x4_ms": x4,
+            "dispatch_duration_ms": dur,
+            "pacing_plan_ms": 200.0,  # the rig's 100 x 2.0 ms chunk plan
+            "capture_chunks": 100,  # the rig's chunk construction
+            "dispatch_budget_ms": 50.0,  # CAPTURE_BUDGET_MS
+            "t_cross_offset_ms": 20.0,  # the capture arm's script
+            "status": "unknown",  # the deadline-max cut, in every trial
+            "retries": 0,
+            "in_window_frames": 3,
+            "retry_sites": [],
+        }
+
+    gen1 = [
+        ci_trial(10, 51.8, 48.5, 78.0, 52.0),
+        ci_trial(20, 51.7, 48.4, 78.0, 51.8),
+        ci_trial(30, 51.4, 48.2, 77.7, 51.6),
+        ci_trial(40, 98.5, 95.3, 129.0, 98.8),
+        ci_trial(50, 199.9, 199.6, 226.4, 200.2),
+    ]
+    fresh = [
+        ci_trial(510, 106.6, 103.3, 241.8, 106.8),
+        ci_trial(520, 125.0, 121.7, 150.7, 125.2),
+        ci_trial(530, 101.3, 102.4, 242.7, 102.1),
+        ci_trial(540, 51.3, 51.6, 77.4, 51.5),
+        ci_trial(550, 214.6, 211.6, 241.2, 214.8),
+    ]
+    # Vector honesty: the vectors' wiring literals ARE the rig's.
+    assert gen1[0]["dispatch_budget_ms"] == _ARM_DISPATCH_BUDGET[arm]
+    assert gen1[0]["t_cross_offset_ms"] == _ARM_TRIP_OFFSET[arm]
+    assert gen1[0]["capture_chunks"] == _CAPTURE_CHUNKS
+
+    def stretched(cell: list[dict[str, Any]], factor: float) -> list[dict[str, Any]]:
+        scaled = []
+        for trial in cell:
+            copy_trial = dict(trial)
+            for key in ("dispatch_duration_ms", "x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+                copy_trial[key] = trial[key] * factor
+            scaled.append(copy_trial)
+        return scaled
+
+    def old_axis_band_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The RETIRED axis upper band (pre-slice line), verbatim.
+        dispatch_ms = _ARM_DISPATCH_MS[arm]
+        out: list[str] = []
+        for trial in cell:
+            if trial["dispatch_duration_ms"] > dispatch_ms + 150:
+                out.append(f"dispatch_duration_ms {trial['dispatch_duration_ms']:.1f}")
+            if trial["x1_ms"] > dispatch_ms + 150:
+                out.append(f"x1_ms {trial['x1_ms']:.1f}")
+        return out
+
+    def old_range_spread_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The RETIRED four-axis spread loop (pre-#504 line), verbatim in
+        # form — the live trim, no exclusion.
+        out: list[str] = []
+        for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+            values = [trial[axis_key] for trial in cell]
+            if _underpowered_range_ms(values) > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
+                out.append(f"{axis_key} spread")
+        return out
+
+    def ratio_reading_breaches(cell: list[dict[str, Any]]) -> list[str]:
+        # The REJECTED ratio reading (design §2.5): trimmed spread vs 25%
+        # of the SAME cell's measured duration, mean and median variants.
+        durations = [trial["dispatch_duration_ms"] for trial in cell]
+        bases = {
+            "mean": sum(durations) / len(durations),
+            "median": statistics.median(durations),
+        }
+        out: list[str] = []
+        for basis_name, basis in bases.items():
+            for axis_key in ("x1_ms", "x4_ms"):
+                spread = _underpowered_range_ms([trial[axis_key] for trial in cell])
+                if spread > 0.25 * basis:
+                    out.append(f"25%-of-{basis_name} {axis_key}")
+        return out
+
+    # --- the control's CLEAN arm: the exact CI vectors, new readers -----
+    for cell in (gen1, fresh):
+        assert _range_gate_breaches(cell, arm, device_class) == [], (
+            "the load shape must not breach the plan reading"
+        )
+        for trial in cell:
+            assert _axis_per_trial_breaches(trial, arm) == [], (
+                "the load shape must not breach the load-safe axis reading"
+            )
+            for axis in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+                assert trial[axis] is not None
+            assert trial["in_window_frames"] >= 1
+            assert trial["retries"] <= 2
+
+    # --- the belt tripwire: the host class never reaches the belt -------
+    def tripwire(*args: Any) -> list[dict[str, Any]]:
+        raise AssertionError(
+            "the 2026-10-20 load shape reached the belt — the plan reading "
+            "was supposed to be load-immune (broken recording seam)"
+        )
+
+    monkeypatch.setitem(globals(), "_cell", lambda *args: gen1)
+    monkeypatch.setitem(globals(), "_belt_fresh_generation", tripwire)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        certified = _certified_cell(
+            tmp_path, arm, device_class, _range_gate_evaluation(arm, device_class)
+        )
+        assert certified is gen1, "a clean evaluation returns gen-1, no re-roll"
+        assert _BELT_GENERATION_RUNS == {}, (
+            "zero certifications: the host class never reaches the belt"
+        )
+    finally:
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
+
+    # --- plant (a): uniform stretch reds the OLD readers, new stay clean
+    for cell in (gen1, fresh):
+        uniform = stretched(cell, 4.0)
+        assert old_axis_band_breaches(uniform), (
+            "uniform stretch must red the retired absolute band"
+        )
+        assert old_range_spread_breaches(uniform), (
+            "uniform stretch must red the retired constant-bound spread"
+        )
+        assert _range_gate_breaches(uniform, arm, device_class) == [], (
+            "uniform wall stretch cannot touch the plan reading"
+        )
+        for trial in uniform:
+            assert _axis_per_trial_breaches(trial, arm) == [], (
+                "uniform wall stretch cannot breach the load-safe axis "
+                "reading (the couplings scale with the duration)"
+            )
+
+    # --- plant (b): the episodic CI shape reds BOTH wall alternatives --
+    for cell in (gen1, fresh):
+        assert old_axis_band_breaches(cell), (
+            "the CI shape reddened the axis band on main (200.2/214.8)"
+        )
+        assert old_range_spread_breaches(cell), (
+            "the CI shape reddened the pre-#504 spread on main (51.3/92.0)"
+        )
+        assert ratio_reading_breaches(cell), (
+            "the CI shape reds the §2.5 ratio form too — episodic stretch "
+            "survives the one-trial trim and the denominator stays on-time"
+        )
+        # ...and both NEW readers stay clean on it (asserted above, and
+        # here once more next to its defeated alternatives).
+        assert _range_gate_breaches(cell, arm, device_class) == []
+        assert all(_axis_per_trial_breaches(trial, arm) == [] for trial in cell)
 
 
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
