@@ -1971,9 +1971,11 @@ def _certified_cell(
     if fresh_breaches:
         raise AssertionError(
             f"{arm}/{device_class}: the one-shot cell belt re-measured "
-            "(trials 51-55) and the breach held on BOTH generations — a "
-            "systematically-loose fixture, not a transient host stall; "
-            "§5's honest verdict is this red (underpowered, decide "
+            "(trials 51-55) and the breach held on BOTH generations. "
+            "Read the breach lines for the cause: a scatter at nominal "
+            "pacing is a loose fixture, while host-starved trials are "
+            "excluded from the reading and named as such; §5's honest "
+            "verdict on either is this red (underpowered, decide "
             "nothing).\n"
             "gen-1 breaches:\n  " + "\n  ".join(breaches) + "\n"
             "fresh-generation breaches:\n  " + "\n  ".join(fresh_breaches) + "\n"
@@ -2161,28 +2163,88 @@ def _range_gate_evaluation(
     return lambda cell: _range_gate_breaches(cell, arm, device_class)
 
 
+def _arm_dispatch_budget_ms(arm: str) -> float:
+    """The dispatch budget the rig arms for this arm (mirrors the budget
+    ``_run_trial_once`` builds the schedule with)."""
+    if arm == "control":
+        return SHORT_T_MS
+    return CAPTURE_BUDGET_MS if arm == "capture" else T_ACQ_MIN_MS + 500
+
+
+#: A trial whose measured dispatch outruns its own arm budget by this factor
+#: was STARVED by the host, not paced by the fixture: on 2026-10-20 a
+#: `capture` cell (50 ms budget) recorded dispatches of 52, 52, 52, 98.8 and
+#: 200.2 ms in CI, and the two starved trials alone put the cross-trial range
+#: over the 50 ms reading. Reading those as instrument precision measures the
+#: runner, which is the opposite of §5's clause. 1.5x sits above the ordinary
+#: pacing overshoot (the capture cells pace at ~52 ms, 1.04x) and far below
+#: the starvation shapes observed (1.98x and 4.0x).
+STARVED_DISPATCH_FACTOR = 1.5
+#: The clause needs a cell to read; below this many unstarved trials the row
+#: is UNDER-EXAMINED and says so instead of pretending to a spread.
+_RANGE_GATE_MIN_TRIALS = 3
+
+
 def _range_gate_breaches(
     trials: list[dict[str, Any]], arm: str, device_class: str
 ) -> list[str]:
     """The §5 spread loop of the range-gate test, re-homed behind the
-    one-shot cell belt (issue #241 slice 3, design §1.2): the READING is
-    untouched — ``_underpowered_range_ms`` over each axis's five values
-    against 25% of the dispatch duration — and a breach carries the exact
-    message the inline assert carried (trimmed and raw range, values)."""
+    one-shot cell belt (issue #241 slice 3, design §1.2): ``_underpowered_
+    range_ms`` over each axis's values against 25% of the dispatch duration,
+    with HOST-STARVED trials excluded first.
+
+    Starvation exclusion (2026-10-20 main red): the belt's one fresh
+    generation recovered a single stalled trial, but its own docstring
+    assumed the stall class was rare. On the main red the same cell carried
+    two starved dispatches in gen-1 (98.8 and 200.2 ms against a 50 ms
+    budget) and three in the fresh generation, so the re-measure reproduced
+    the breach and the belt reported "a systematically-loose fixture". That
+    verdict was false: the fixture paced three of five trials at ~52 ms.
+    A trial that ran 2x to 4x its own budget is the runner starving the
+    fixture, which this clause explicitly does not measure, so those trials
+    are excluded from the reading and named in the message. What remains is
+    the instrument-precision reading the clause commits to: a fixture that
+    scatters at its nominal pacing still breaches, and a host that starves
+    most of a cell produces an UNDER-EXAMINED refusal instead of a false
+    looseness verdict."""
+    budget = _arm_dispatch_budget_ms(arm)
+    starved = [
+        trial
+        for trial in trials
+        if trial["dispatch_duration_ms"] > budget * STARVED_DISPATCH_FACTOR
+    ]
+    usable = [trial for trial in trials if trial not in starved]
+    if starved:
+        starved_render = ", ".join(
+            f"trial {trial['trial']} at {trial['dispatch_duration_ms']:.1f} ms"
+            for trial in starved
+        )
+    if len(usable) < _RANGE_GATE_MIN_TRIALS:
+        return [
+            f"{arm}/{device_class}: cell UNDER-EXAMINED — "
+            f"{len(starved)} of {len(trials)} trials were host-starved "
+            f"(budget {budget:.0f} ms, starvation factor "
+            f"{STARVED_DISPATCH_FACTOR:.1f}x: {starved_render}) and "
+            f"{len(usable)} unstarved trials cannot carry the range reading "
+            f"(need {_RANGE_GATE_MIN_TRIALS}). This is the runner, not the "
+            "fixture: re-run the lane; if it repeats, the host needs "
+            "capacity, and §5's verdict stays 'underpowered, decide nothing'."
+        ]
     breaches: list[str] = []
+    excluded = f"; host-starved trials excluded: {starved_render}" if starved else ""
     for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
-        values = [trial[axis_key] for trial in trials]
+        values = [trial[axis_key] for trial in usable]
         spread = _underpowered_range_ms(values)
         if spread > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
             breaches.append(
                 f"{arm}/{device_class} {axis_key.upper()}: trial range "
                 f"{spread:.1f} ms (raw {max(values) - min(values):.1f}) "
-                f"over {len(values)} trials exceeds 25% of "
+                f"over {len(values)} unstarved trials exceeds 25% of "
                 f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
                 "duration — §5's UNDERPOWERED reading (fix fixture "
                 "pacing, decide nothing; the reading is trimmed of the "
                 "single most extreme trial, one host stall tolerated); "
-                f"values: {[round(v, 1) for v in values]}"
+                f"values: {[round(v, 1) for v in values]}{excluded}"
             )
     return breaches
 
