@@ -572,3 +572,31 @@ directions with a matched control built from the exact CI red. DON'T-BUILD would
 right only under the §9.2 owner decision to keep the wall reading and accept the red
 class by name — a defensible call this design does not recommend, with two main reds
 in two days as the price already paid.
+
+## 11. Post-review fold amendments (2026-10-20, after the adversarial review)
+
+The body above is frozen history (pushed commits); this section records the
+review fold's corrections. One MED executable, two LOW claim defects;
+everything else null and freshly enumerated.
+
+1. **MED-1 — §2.3's edges claim was falsified on one class; the plan VALUE
+   pin closes it.** §2.3 claimed the scale the couplings leave unguarded
+   from above is "caught at its edges — the floor below, the status assert
+   at completion". The adversary's probe doubled the read-leg pacing only
+   (first `_pace` per adapter, write leg untouched): durations 401.2–403.0
+   ms, X1 ~400–403, plan honestly recorded 400.0 — and BOTH live readers
+   stayed green (the posture still completes OK under the 700 ms budget,
+   the floor passes, the couplings see only the ~0–3 ms gap, the range
+   gate reads cross-trial consistency and all five plans sat equal at
+   400), while the retired ceiling reded the same outcomes 10/10. The
+   write-leg band cannot see it (a different leg); the disclosed D4 window
+   covers a moderate budget regression, not a read-dispatch scale
+   regression. The fold pins the plan VALUE (`pacing_plan_ms ==
+   T_ACQ_MIN_MS`, non_capture only — load-immune by this slice's own
+   construction, so it cannot false-red under host load and reds the
+   doubled shape deterministically). Capture-side is not value-pinned and
+   the asymmetry is explained in the pin's docstring:
+   `capture_plan_ms` is computed at capture entry from the same
+   attributes the chunk loop iterates — there is no dispatch-time ask
+   distinct from the construction parameters, so a value pin there would
+   pin the constructor, not witness the dispatch.

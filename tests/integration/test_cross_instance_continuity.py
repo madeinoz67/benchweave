@@ -1938,12 +1938,31 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
     * wiring pins on the recorded driving signals (``dispatch_budget_ms``,
       ``t_cross_offset_ms``) — deterministic bookkeeping catching the
       arm/budget wiring regressions the retired ceilings caught
-      incidentally.
+      incidentally;
+    * the PLAN VALUE pin (non_capture only): ``pacing_plan_ms ==
+      T_ACQ_MIN_MS`` — the read leg's dispatch-time ask is §5's fixture
+      scale, and the plan is load-immune bookkeeping, so the pin cannot
+      false-red under host load. Review fold MED-1: a doubled read-leg
+      pace (durations ~401–403 ms, X1 ~401–403, plan honestly 400.0)
+      stayed GREEN on every live reader while the retired ceiling reded
+      the same outcomes 10/10 — the write-leg band sees a different leg,
+      the couplings see only the gap, and the range gate reads
+      cross-trial consistency (all plans equal at 400 → spread 0), so
+      the plan VALUE is the only load-safe witness of a read-dispatch
+      scale regression. Capture-side is NOT value-pinned:
+      ``capture_plan_ms`` is computed at capture entry from the same
+      attributes the chunk loop iterates — there is no dispatch-time ask
+      distinct from the construction parameters, so a value pin there
+      would pin the constructor (redding any deliberate retune of
+      ``chunks``/``chunk_ms``) rather than witness the dispatch; the
+      capture side's scale regressions stay bounded by the posture
+      assert and the floor.
 
     Disclosed residual (design §7 D4): a moderate budget regression
     between the budget and natural completion has no interior ceiling —
-    caught at its edges (the floor below, the posture at completion), the
-    interior window on the census's watch list."""
+    caught at its edges (the floor below, the posture at completion, the
+    plan value on the read leg), the interior window on the census's
+    watch list."""
     dispatch_ms = _ARM_DISPATCH_MS[arm]
     expected_status = "unknown" if arm == "capture" else "ok"
     breaches: list[str] = []
@@ -1983,6 +2002,14 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
             f"{trial['t_cross_offset_ms']} is not the arm's "
             f"{_ARM_TRIP_OFFSET[arm]:.0f} ms script — trip-offset wiring "
             f"regressed: {trial}"
+        )
+    if arm == "non_capture" and trial["pacing_plan_ms"] != T_ACQ_MIN_MS:
+        breaches.append(
+            f"trial {trial['trial']}: pacing_plan_ms "
+            f"{trial['pacing_plan_ms']:.1f} is not §5's fixture scale "
+            f"({T_ACQ_MIN_MS:.0f} ms) — the read leg's dispatch-time ask "
+            "changed scale (the plan is load-immune bookkeeping, so this "
+            f"is a fixture regression, not host load): {trial}"
         )
     return breaches
 
