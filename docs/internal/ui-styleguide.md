@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`, `class-smu.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -399,6 +399,43 @@ the direction-pin arm (`test_the_direction_pin_*`) makes both
 dangerous simplifications — the ungated engage or the gated disengage
 — visible reds. No control surface derives: the input control is the
 named deviation and no staged draw is fabricated.
+
+The `class-smu` pattern-library page composes the `otdp.smu`
+output-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-smu.json`,
+the L16 class — the PSU's shape over a THIRD channel role,
+`source_measure`; zero vocabulary motion, L12's zero-surface result
+second application and stronger) expanded against the OTDP reference
+descriptor (`standards/otdp/0.2.3/examples/class-smu.json`), rendered
+from the §E.1 partials the renderer already ships — one `reading-tile`
+per (channel, quantity) of the example's two declared source_measure
+channels (2 × 3), one `time_series` `engineering-plot` over the
+measure slot, one `data-table` with a row per pair, and one
+`alert-bubble` carrying the compliance-active condition. The drift
+guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_smu.py`) re-derive the page's structure
+from those corpus files and pin the styleguide mockup's §E.1
+component-hook counts to the reference's resolved expectation: a
+corpus edit reddens the page data until it is regenerated, and a
+mockup edit that changes a hook count reds against the reference. The
+mockup paints the non-contract idioms (the staged-source card with its
+function-selected face, the trend's dashed compliance bound) with no
+`bw-` hook — they are `cannot_derive` (`source-settings`,
+`compliance-overlay`), so they never present as contract components.
+The class's own question — the profile's five-action sweep block — is
+DEFERRED BY NAME (RC-L16-1), and the deferral is a live assertion,
+not prose: the sweep-absence arm expands the committed example (which
+declares all eight profile actions) over the birth reference and
+asserts the derivation succeeds, derives no sweep component anywhere
+in the triple, and resolves the declared sweep URNs' controls on the
+Device features page (the `vendor_actions` coverage home) — with the
+fifth (configure_sweep, its channel field pattern-narrowed) pinned L0
+and rendering nothing by name. No control surface derives: the output
+control is the inherited directional deviation (L11's verdict, with
+the smu's own wrinkle recorded for the safety-behaviours slice — the
+energise confirm's values pair by the sourced function, level with
+the opposite-quantity compliance, never a flattened pair), and no run
+panel is fabricated for the deferred block.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 

@@ -1043,6 +1043,174 @@ def render_electronic_load_input_page() -> str:
     )
 
 
+# --- the smu output page (L16; design record 2026-10-19) -------------------------
+#
+# The PSU's shape worn over a THIRD channel role, seventh composer, same
+# standing shape (the readings 12 raised / trend 7 recessed / table 5
+# raised ratio — the class's difference from dc_psu is content, not
+# geometry), and its counts derive from the committed corpus pair the
+# same way: one reading tile per (channel, quantity) of the OTDP
+# example's declared source_measure channels (2 x 3), one engineering
+# plot over the measure dataset (voltage and current of the first
+# declared channel — the mockup's two traces, the disclosed author
+# channel_hints choice, dc_psu's own posture), one data table with a
+# row per pair. Tile values, severities and the table's quality wording
+# are fixture choices in the fixtures.py sense (the mockup's own
+# illustrative data — the internally consistent story: the channel
+# sources 3.000 V with a 100 mA compliance and the DUT demands past it,
+# so the unit holds the delivered current AT the configured compliance
+# while the sourced voltage sags to 2.998 V — the compliance-active
+# alert's condition painted in its threshold-neighbourhood; ch2 is open,
+# holding the full programmed voltage at zero current); the labels and
+# trace ids are corpus strings (channel labels x declared quantities).
+# No control surface derives at birth: the output toggle is the class's
+# named directional deviation (inherited from L11 verbatim) and the
+# staged-source idiom is cannot_derive (source-settings) — the page
+# fabricates neither. The sweep block is DEFERRED BY NAME (RC-L16-1):
+# no run panel, no second plot, no sweep surface at all — the honest
+# birth surface, and the sweep-absence arm in
+# tests/ui_html/test_classref_smu.py is what makes that absence a live
+# assertion rather than prose. The trend's dashed compliance bound is
+# cannot_derive (compliance-overlay, a runtime join against the active
+# configuration) and composes nothing here.
+
+
+def _smu_tiles() -> tuple[ReadingData, ...]:
+    """One tile per (channel, quantity) pair of the OTDP example's
+    source_measure channels; the ch1 current tile renders the mockup's
+    warning variant (structure renders the variant, data decides it)."""
+    first: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("2.998", "V", "success"),
+        "current": ("0.100", "A", "warning"),
+        "power": ("0.300", "W", "success"),
+    }
+    second: dict[str, tuple[str, str, Severity]] = {
+        "voltage": ("3.000", "V", "success"),
+        "current": ("0.000", "A", "success"),
+        "power": ("0.000", "W", "success"),
+    }
+    channels = (("Reference channel 1", first), ("Reference channel 2", second))
+    tiles: list[ReadingData] = []
+    for label, quantities in channels:
+        for quantity, (value, unit, severity) in quantities.items():
+            tiles.append(
+                ReadingData(
+                    label=f"{label} · {quantity}",
+                    severity=severity,
+                    value=value,
+                    unit=unit,
+                )
+            )
+    return tuple(tiles)
+
+
+#: The compliance-active alert (cannot_derive compliance-alert renders
+#: from host-observed conditions; the composition carries the mockup's
+#: illustrative one, not dismissible — a persistent condition).
+_SMU_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Compliance active",
+    message="Current held at configured compliance",
+    live_region="status",
+    dismissible=False,
+)
+
+
+def _smu_plot() -> ComposedPlot:
+    """The trend: one time-series engineering plot over the measure
+    dataset — voltage and current of the first declared source_measure
+    channel (the mockup's two traces; the author channel_hints choice,
+    disclosed, dc_psu's own posture)."""
+    return compose_plot(
+        title="Output",
+        description=(
+            "Sourced voltage and measured current over the trend window "
+            "for the first declared source_measure channel."
+        ),
+        traces=(
+            TraceSpec(
+                "Reference channel 1 · voltage",
+                "V",
+                samples=(3.000, 3.000, 3.000, 2.999, 2.998, 2.998),
+                acquired=60,
+            ),
+            TraceSpec(
+                "Reference channel 1 · current",
+                "A",
+                samples=(0.021, 0.038, 0.061, 0.088, 0.100, 0.100),
+                acquired=60,
+            ),
+        ),
+        hints={},
+    )
+
+
+def _smu_table() -> TableData:
+    """One row per (channel, quantity) pair — the tiles' own derivation;
+    the quality column carries the mockup's wording."""
+    rows = []
+    for tile in _smu_tiles():
+        quality = "At compliance" if tile.severity == "warning" else "Verified"
+        rows.append(
+            TableDataRow(
+                key=tile.label,
+                cells=(tile.label, f"{tile.value} {tile.unit}", quality),
+            )
+        )
+    return TableData(
+        caption="Output readings",
+        headers=("Channel", "Reading", "Quality"),
+        rows=tuple(rows),
+    )
+
+
+_SMU_OUTPUT_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="readings"
+  data-surface="raised" data-bw-span="12" aria-label="Readings">
+<h3>Readings</h3>
+<div class="bw-readings-grid">
+{% for tile in tiles %}{{ tile | safe }}
+{% endfor %}</div>
+</section>
+</div>
+{{ alert | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="trend"
+  data-surface="recessed" data-bw-span="7" aria-label="Trend">
+<h3>Trend</h3>
+{{ plot | safe }}
+</section>
+<section class="bw-classref-section" data-bw-section-id="table"
+  data-surface="raised" data-bw-span="5" aria-label="Table">
+<h3>Table</h3>
+{{ table | safe }}
+</section>
+</div>
+</div>"""
+
+
+def smu_readings() -> tuple[ReadingData, ...]:
+    """The composition's reading tiles (the drift guard's count arm)."""
+    return _smu_tiles()
+
+
+def render_smu_output_page() -> str:
+    """The smu output-page composition: mode banner, the Readings
+    section (one §E.1 tile per channel/quantity pair), the
+    compliance-active alert, the Trend section (one engineering plot)
+    and the Table section (one §E.1 data table) — the reference layout
+    block's own surfaces and spans."""
+    return ENV.from_string(_SMU_OUTPUT_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        tiles=[render_reading(tile) for tile in _smu_tiles()],
+        alert=render_alert_bubble(_SMU_ALERT),
+        plot=render_plot(_smu_plot()),
+        table=render_data_table(_smu_table()),
+    )
+
+
 __all__ = [
     "capture_lanes",
     "dmm_readings",
@@ -1054,4 +1222,6 @@ __all__ = [
     "render_function_generator_configuration_page",
     "render_oscilloscope_capture_page",
     "render_output_page",
+    "render_smu_output_page",
+    "smu_readings",
 ]

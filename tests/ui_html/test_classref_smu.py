@@ -73,8 +73,8 @@ from classref_census import (
 )
 
 from benchweave.presentation.classref import (
-    ClassRefusal,
     LAYOUT_EXTENSION_KEY,
+    ClassRefusal,
     derive_attachment,
     validate_reference_document,
 )
@@ -620,10 +620,13 @@ def test_the_sweep_absence_holds_over_the_committed_pair() -> None:
        derives NO control because its pattern-narrowed channel field
        pins it at L0 — the closed vocabulary's honest answer, asserted
        by name so its later landing is a visible change.
-    4. THE SIGNATURE PAGE IS UNTOUCHED: the output page binds the
-       observation only, and the layout block carries exactly one plot
-       (the time_series over the measure slot) — no run panel, no
-       second plot."""
+    4. THE SIGNATURE PAGE IS UNTOUCHED: the output page row binds
+       nothing (the family's standing readings-page shape — the
+       observation is page-covered via the plot figure, the L4 arm,
+       exactly as dc_psu and electronic_load derive), the layout's
+       authored children bind the measure slot only, and the layout
+       block carries exactly one plot (the time_series over the measure
+       slot) — no run panel, no second plot."""
     derived = _derive_over_committed_pair()
     assert _sweep_absence_violations(derived) == []
     feature_ids = _device_features_binding_ids(derived)
@@ -632,7 +635,19 @@ def test_the_sweep_absence_holds_over_the_committed_pair() -> None:
     output_page = next(
         p for p in derived.manifest["pages"] if p["id"] == "output"
     )
-    assert output_page["bindings"] == ["measure"]
+    assert output_page["bindings"] == []
+    output_layout = next(
+        p
+        for p in derived.manifest["extensions"][LAYOUT_EXTENSION_KEY]["pages"]
+        if p["page_id"] == "output"
+    )
+    binding_ids = {
+        str(child["binding_id"])
+        for section in output_layout["sections"]
+        for child in section.get("children", [])
+        if "binding_id" in child
+    }
+    assert binding_ids == {"measure"}, binding_ids
     plots = [
         child
         for layout_page in derived.manifest["extensions"][LAYOUT_EXTENSION_KEY][

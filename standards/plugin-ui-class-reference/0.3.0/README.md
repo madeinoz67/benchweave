@@ -113,6 +113,35 @@ staging path
 `docs/plugin-ui-class-reference-v2/class-electronic_load.json` (removed
 in the same pull request — the founding convention).
 
+## L16 note (in-window: the `smu` class, nothing widened — and the sweep block DEFERRED BY NAME)
+
+The 0.3.0 window was still open when the `smu` class landed, so the
+seventh class file joined the same bump with ZERO vocabulary motion —
+L12's zero-surface result, second application and stronger: not even a
+settlement-class schema edit rides here, because the post-batch
+vocabulary expresses the whole birth surface. The class is the PSU's
+shape over a THIRD channel role (`source_measure` — `where_role` is a
+free string, so the role widens nothing; the generic slot key
+`channels` names a role that both sources and measures), its
+required-three is dc_psu's action set verbatim, and its page is
+dc_psu's own composition. The class's one hard question is the
+profile's five-action SWEEP BLOCK (configure_sweep/arm/trigger/fetch/
+abort), and it is deferred AS A UNIT with the deferral named in the
+reference's own deviation ledger (`sweep-surfaces`): the fetch dataset
+is `table`-kind — a derivation arm this train has designed nowhere;
+the signature I-V presentation needs a plot kind whose x axis is a
+measured variable, which plugin-ui 0.4.0 does not carry; and the
+block's composition is procedure-owned by device-classes §10's own
+sentence (completion and abort must execute the commissioned
+source-safe transition). Until the sweep landing slice, the declared
+sweep actions of a full descriptor surface via the Device features
+page (the `vendor_actions` coverage home) — REPORTED, never silent —
+and the sweep-absence arm in `tests/ui_html/test_classref_smu.py`
+makes the absence a live assertion over the real expansion. Its row
+cites the authoring staging path
+`docs/plugin-ui-class-reference-v2/class-smu.json` (removed in the
+same pull request — the founding convention).
+
 ## Files
 
 | File | What it is |
@@ -125,6 +154,7 @@ in the same pull request — the founding convention).
 | `class-oscilloscope.json` | The reference for the `otdp.oscilloscope/1.0.0` class (L13) |
 | `class-function_generator.json` | The reference for the `otdp.function_generator/1.0.0` class (L14) |
 | `class-electronic_load.json` | The reference for the `otdp.electronic_load/1.0.0` class (L15) |
+| `class-smu.json` | The reference for the `otdp.smu/1.0.0` class (L16) |
 
 ## The structure rule (D2)
 
@@ -257,5 +287,5 @@ derivation per bump (design record R2).
 ## Names
 
 All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01",
-"FGEN-01", "ELOAD-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
+"FGEN-01", "ELOAD-01", "SMU-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
 products, vendors, or benches.

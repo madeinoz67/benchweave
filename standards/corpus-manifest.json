@@ -1501,6 +1501,11 @@
       "path": "plugin-ui-class-reference/0.3.0/class-electronic_load.json",
       "source": "docs/plugin-ui-class-reference-v2/class-electronic_load.json",
       "sha256": "6d4fa64bae1f79082fed407bbb7ec601f941aae56e4efacad6e063c73351a173"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-smu.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-smu.json",
+      "sha256": "48cc55c24c08423251ab878a092ffe472ef594c5c69f5ae51aeb2f92ba5dfe3a"
     }
   ]
 }

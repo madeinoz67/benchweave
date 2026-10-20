@@ -434,6 +434,26 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The smu class page (L16 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the PSU's shape over a third channel
+    # role — the output-page composition (one tile per
+    # channel/quantity pair of the declared source_measure channels,
+    # the compliance-active alert, the trend, the table), with the
+    # profile's five-action sweep block DEFERRED BY NAME (RC-L16-1 —
+    # no run panel, no second plot; the declared sweep actions surface
+    # via Device features) — rendered from the committed
+    # reference/descriptor expansion (classref.py — host composition
+    # of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-smu",
+            fixture_id="readings",
+            kind="class-page",
+            page="class-smu",
+            render=classref.render_smu_output_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -464,6 +484,7 @@ _PAGE_TITLES: dict[str, str] = {
     "class-input": "Electronic load input (class reference)",
     "class-output": "DC power supply output (class reference)",
     "class-readings": "Digital multimeter readings (class reference)",
+    "class-smu": "Source-measure unit output (class reference)",
     "class-waveform": "Oscilloscope capture (class reference)",
 }
 
@@ -479,6 +500,7 @@ def pages() -> tuple[str, ...]:
     ordered.append("class-input")
     ordered.append("class-output")
     ordered.append("class-readings")
+    ordered.append("class-smu")
     ordered.append("class-waveform")
     return tuple(ordered)
 
