@@ -888,11 +888,12 @@ class TestZeroModeOverRealTrees:
             "in the same commit as the tree change, or refresh the snapshot "
             "deliberately"
         )
-        assert payload["scopes"]["scripts"]["scanned"] == 19, (
-            "the scripts class set moved (19 .py minus the self-exempted "
+        assert payload["scopes"]["scripts"]["scanned"] == 20, (
+            "the scripts class set moved (20 .py minus the self-exempted "
             "counter — the sdk-drift gate joined at #347 WS1, the win-core "
-            "manifest ratchet joined at #471) — update this pin in the same "
-            "commit as the tree change (the ratchet discipline)"
+            "manifest ratchet joined at #471, the train preflight joined at "
+            "#459) — update this pin in the same commit as the tree change "
+            "(the ratchet discipline)"
         )
         if "sdk" in payload["scopes"]:
             # 20 at the 0.6.0 pin; 19 at 0.7.x (gateway #308: preview_server.py
@@ -1597,13 +1598,15 @@ class TestScriptsScope:
         check_registry grew 1 -> 3 and check_devices 1 -> 3, sum 22 -> 26),
         the 3 former literals DERIVED (no site — textual or assembled —
         in the adc control or the docs site), the counter self-exempted
-        (census 18 since the #347 drift gate joined; the file set below
-        is unchanged)."""
+        (census 20 since the #347 drift gate joined and the #459 train
+        preflight followed; the preflight's expectations are manifest-
+        derived, so it carries zero literals and the file set below is
+        unchanged)."""
         result = _counter_run("--scope", "scripts", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
-        assert report["scanned"] == 19
+        assert report["scanned"] == 20
         assert report["count"] == 26
         carried = {row["file"] for row in report["sites"]}
         assert carried == {

@@ -127,8 +127,15 @@ gap-window clause above.
 advance the `packages/sdk` gitlink to the release tag, regenerate the
 SDK lock, move the `sdk_compatibility` mirror, re-render
 `docs/compatibility-matrix.md`, one merge (obligation 7's loop).
-`make check-sdk-standards` is the mechanical half; `sdk-drift` exiting
-green is the proof the window closed.
+Before pushing the pointer commit, run the standards-train pre-flight
+locally (issue #459): `UV_PROJECT_ENVIRONMENT=venv uv run python
+scripts/standards/train_preflight.py` — one command over five surfaces
+(the drift checker, `standards check`, `matrix --check`, the version-
+literal counter, the docs claim register) whose `[UNMOVED]` rows name
+exactly what the train left behind; it is the pre-push aggregate that
+previously existed only as five hand-ordered commands across two
+repositories. `make check-sdk-standards` is the mechanical half;
+`sdk-drift` exiting green is the proof the window closed.
 
 **After a gateway release** — nothing. The gateway is the sink: no line
 consumes it as a released dependency today (deployed from checkout; a
@@ -325,6 +332,7 @@ skipped step.
 | 5 | contributor window | `git log <range> --format='%an'` minus bots + owner | unacknowledged new human contributor; empty = recorded result |
 | 6 | the SDK pairing | `sdk-drift` green AND no trailing-pin annotation on the lane; the compatibility matrix render | cut made over a red gitlink; a cut shipped over a trailing pin whose warning went unread |
 | 7 | ui-html workspace member | same-commit motion (path dependency) | (recorded n/a — the row exists so the walk never wonders) |
+| 8 | the standards-train pre-flight | `scripts/standards/train_preflight.py` over the real tree before the pointer commit (the four delegated gates plus the docs claim register; `--claims-only` is the CI-borne half) | a surface the train left `[UNMOVED]`, discovered by red CI after push instead — the exact two-day-train class the preflight retires |
 
 ## The family check (cross-line rows, every cut, whichever line)
 

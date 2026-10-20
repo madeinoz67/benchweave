@@ -14,7 +14,7 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema were reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version in `otdp/0.2.2/`. Version 0.2.2 is active; version 0.2.0 remains served. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema were reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version in `otdp/0.2.2/`. Version 0.2.3 is active; version 0.2.0 remains served. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
 OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; a change to a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
@@ -276,7 +276,7 @@ The commissioning record names the accountable owners for D01–D10 and captures
 
 ## 16. Device-class coverage in v1.1
 
-The OTDP package defines 12 composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Version 0.2.2 is active; version 0.2.0 remains served. 50 versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
+The OTDP package defines 12 composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Version 0.2.3 is active; version 0.2.0 remains served. 50 versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
 
 Profile actions use validated invoke dispatch with scoped configuration and acquisition identities. Required actions establish class membership; optional features and actual model limits are explicit. Multi-profile instruments retain shared resource ownership. Sources, sinks, switching and measurements that produce stimulus remain subject to the same bench policy and protection requirements.
 
