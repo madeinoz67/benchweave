@@ -594,7 +594,7 @@
     },
     "tests/standards/test_docs_claims.py": {
       "core": 0,
-      "total": 5
+      "total": 12
     },
     "tests/standards/test_execution_promotion.py": {
       "core": 0,

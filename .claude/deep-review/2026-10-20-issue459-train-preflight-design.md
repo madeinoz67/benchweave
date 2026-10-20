@@ -328,3 +328,117 @@ the A1 differential control.
   `_pin_standard_ids` (stdlib manifest read, derivation from committed
   authority); `test_zero_literal_gate`'s subprocess-over-the-real-tree
   pytest shape.
+
+---
+
+## Addendum — the build and the 2026-10-20 fold wave
+
+Written after the slice landed (`feat/459-train-preflight`) and after the
+adversary/governor fold. It corrects this record where the build's
+measured evidence disagrees with §5's text, records the acceptance arms'
+outcomes, and carries the fold's rows. Commit bodies hold the per-row RED
+evidence; this addendum is the durable index.
+
+### A. The A5 protocol, as actually required
+
+§5's A5 line says "Edit `.gitmodules` `pin` to a different tag" — a
+working-tree edit. **As written it produces an exit-0 kill-condition.**
+`scripts/check_sdk_submodule_drift.py` reads the declared pin from
+HEAD's blob (`git config --blob HEAD:.gitmodules`, the L-3 repro fix), so
+a working-tree pin edit is structurally invisible to it: run directly
+over a planted working tree the checker exits 0. The A5 plant must be
+COMMITTED (which is also the real miss shape — a pushed pointer PR whose
+pin disagrees with its gitlink); the arm then holds:
+
+- A5 (committed plant, pin v0.15.0 vs gitlink 9e0449ef): preflight exit 1,
+  `[UNMOVED] packages/sdk pointer pin ↔ gitlink` + `sdk-drift DRIFT: …
+  is not the declared pin v0.15.0 (fca9c415…)`; `git reset --hard
+  HEAD~1` → exit 0, 5 surfaces, 0 unmoved.
+
+### B. The acceptance arms' outcomes (A1-A6, all held)
+
+- A1 (the differential control): the replanted 9b879cf8 miss + a
+  `--refresh-docs-baseline` blessing — the counter's docs scope ALONE
+  exits 0 (`docs: 0 outside register (226 sites, 33 files scanned, ok)`);
+  `--claims-only` exits 1 naming the file, line and truth
+  (`docs_claim_stale: docs/develop-your-device.md:7 claims otdp 0.2.2
+  active, standards-manifest.json says 0.2.3 — sweep the claim in-arc`).
+  Revert → both 0. The register is not redundant; §3 shipped.
+- A2: clean tree, all rows verified — 18/18 at the slice, 24/24 after the
+  fold's H1 growth (the acceptance rule's denominator moved by the
+  governor's own condition; "all 18 rows" reads "all rows" hereafter).
+- A3 (mirror, manifest sdk 0.16.0→0.15.0): exit 1, the mirror surface
+  `[UNMOVED]` with `sdk_compatibility_drift:` indented; the other four
+  surfaces green (isolated — the matrix does not render the sdk block).
+  Revert → 0.
+- A4 (matrix, one byte in the otdp row's cell): exit 1,
+  `stale_matrix:` under the matrix surface; the counter stayed green
+  (compatibility-matrix.md is ratchet-excluded, as §2 row 5 premised).
+  Revert → 0.
+- A6 (literal, `"9.9.9"` planted in `src/benchweave/__main__.py`): exit
+  1, the counter's `gateway: 1 outside register … unregistered literal:
+  src/benchweave/__main__.py:8 [BARE] 9.9.9`. Revert → 0.
+
+### C. A surface §6's scope list missed: the win-core manifest
+
+The first full battery redded `tests/contract/
+test_win_core_partition.py::test_committed_manifest_is_check_green`
+("file not in manifest: tests/standards/test_docs_claims.py (total 5)")
+— the Windows-core ratchet (`scripts/ci/win_core_manifest.py`) pins
+per-file (total, core) counts for the whole collection; a new tests/ file
+moves it same-commit. Refreshed (`--refresh`, one row: core 0, total 5),
+landed with the slice via fixup. Fast lanes that focus only the touched
+module cannot see this coupling; only the full battery catches it.
+
+### D. The fold wave's rows (2026-10-20, one commit each)
+
+- MED-1 + governor L1 (anchor hijack): a decoy `**Baseline:**` line above
+  the real one laundered the declared row — first-match verified the
+  decoy's TRUE literal while the staled real line went unchecked
+  (`--claims-only` exit 0). Fix: an anchor matches exactly one site or
+  refuses `docs_claim_anchor_ambiguous:` naming every matching line.
+- MED-3: the green path swallowed `::`-annotated lines — the pairing
+  warning (`::warning::pin … trails latest … — pairing pending`) vanished
+  through the preflight while the standalone checker printed it. Fix:
+  `print_row` forwards `::` lines on green (indented) and everything on
+  refusal; the verdict is unchanged (a trailing pin stays green, F3).
+- Governor M1: the derivation now reads the manifest's status field — a
+  standard deprecated at the same version refuses
+  `docs_claim_status_nonstable:` instead of greening every is-active row.
+- Governor H1: the architecture doc's two stale "Version 0.2.2 is active"
+  claims (:17, :279 — eight days false) swept to 0.2.3; the register grew
+  18 → 24 (the guide's versions-and-identity row :133, the architecture
+  doc's D11 row :271, each active + two served); the docs snapshot
+  refreshed with exactly the sweep's motion (arch doc 0.2.2: 4→2,
+  0.2.3: 2→4).
+- LOW-4: §4's "every delegated check is offline" is FALSE — step 1
+  resolves tag pins over `git ls-remote`; an unreadable remote reads
+  INDETERMINATE (exit 2) and the preflight reds on that step; SHA pins
+  decide locally. The script docstring now states this at the point of
+  use (this record's §4 line stands corrected by this addendum).
+- LOW-6: `--claims-only --json` exited 0 over a stale tree without
+  reading it; it now performs the check and carries verified/refusals.
+- NIT: the test module's "two halves" prose and the script's exit-status
+  line (argparse exits 2 on usage errors) aligned.
+
+### E. Deferral D5 and the known residuals
+
+- **D5 — publishing-guide.md:8** (deferred, home: this addendum's
+  ledger): the "**Baseline:** registry standard 0.1.2" claim is true only
+  of the live release manifest the signed review block pins — one
+  publish from stale — and this tree carries no machine-readable source
+  to derive it from. Reopen trigger: the next publish whose review block
+  carries a different registry standard, or the landing of a
+  machine-readable lane baseline, whichever comes first.
+- **Unregistered true claims, riding D2's widening** (recorded so the
+  next governor pass finds them named): the guide's short-form claims at
+  :268 and :867, and the architecture doc's swept :17/:279 sentences —
+  all currently TRUE, all snapshot-ratchet-pinned for motion, none
+  truth-registered.
+- **LOW-5, not folded** (message quality on a non-claim sentence — an
+  archival note can read as a claim site to a human; the register does
+  not parse it): known residual; reopen trigger is a real-world false
+  positive.
+- **NIT-8, not folded** (an `anchor_lost` refusal on a MISSING register
+  file says "the anchor moved", which under-describes a deleted file):
+  known residual; reopen trigger is a real-world false positive.
