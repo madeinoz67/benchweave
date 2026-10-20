@@ -46,7 +46,12 @@ the two ``uv run`` delegations, which need the project environment — the
 same requirement ``make check-sdk-standards`` already makes. Steps 2-4
 need an initialized submodule exactly as ``gates`` does (the delegated
 commands refuse by name when it is not); the counter's scope set adds
-``sdk`` only when the submodule tree is present.
+``sdk`` only when the submodule tree is present. NOT OFFLINE (the fold's
+LOW-4 correction of the design §4 claim "every delegated check is
+offline"): step 1 resolves TAG pins against the SDK remote over
+``git ls-remote`` — an unreadable remote reads INDETERMINATE (the
+checker's exit 2) and the preflight reds on that step; SHA pins decide
+locally, offline.
 
 WHAT THIS SCRIPT DOES NOT CATCH (G4): anything its delegated commands do
 not catch — the counter's documented assembly-miss classes, CI-only
