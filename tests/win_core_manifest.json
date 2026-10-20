@@ -654,7 +654,7 @@
     },
     "tests/ui_html/test_browser_patterns.py": {
       "core": 0,
-      "total": 52
+      "total": 54
     },
     "tests/ui_html/test_classref_dc_psu.py": {
       "core": 0,
@@ -679,6 +679,10 @@
     "tests/ui_html/test_classref_page.py": {
       "core": 0,
       "total": 10
+    },
+    "tests/ui_html/test_classref_smu.py": {
+      "core": 0,
+      "total": 30
     },
     "tests/ui_html/test_compositions.py": {
       "core": 0,
@@ -754,7 +758,7 @@
     },
     "tests/ui_html/test_styleguide_mockup.py": {
       "core": 0,
-      "total": 29
+      "total": 32
     },
     "tests/ui_html/test_templates_packaged.py": {
       "core": 0,
