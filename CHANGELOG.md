@@ -46,6 +46,9 @@ All notable changes to this project will be documented in this file.
 - The --json arm performs the check it reports on (LOW-6)
 - Sweep the architecture doc's stale active claims, register the two named sites (governor H1)
 - Read the range gate over unstarved trials; the belt's verdict was false
+- Read the belt cell in the driving-signal domain — the plan recording, re-derived evaluators, the corrected verdict
+- Pin the plan VALUE — the read-leg scale regression the retired ceiling used to catch (review fold MED-1)
+- Pin the capture construction — the chunk count and plan product (probe G's fold)
 
 ### Documentation
 
@@ -114,6 +117,10 @@ All notable changes to this project will be documented in this file.
 - Correct the offline claim — tag-pin resolution is networked (LOW-4)
 - Align the module and exit-status prose (review NIT)
 - The design record's build-and-fold addendum (MED-2 + governor condition 2)
+- The belt cell design record — the driving-signal reading
+- The obligations walk — the plan-reading sentences and the #172 record's amendment lines
+- The trial count is ten, not eleven (review fold LOW-1)
+- The one-sided couplings' upper-side reason, corrected (review fold LOW-2)
 
 ### Features
 
@@ -182,6 +189,7 @@ All notable changes to this project will be documented in this file.
 - Bump fastapi from 0.141.1 to 0.143.0
 - Pin reviewer to sonnet and doc writer to haiku (#496)
 - Advance the pointer to v0.16.0 — the interface 0.1.1 pairing (#450)
+- Refresh the win-core manifest count — the continuity file collects 67
 
 ### Refactoring
 
@@ -220,6 +228,7 @@ All notable changes to this project will be documented in this file.
 - Fold refute F1 — mirror the arm-1 hang guard onto arm 2
 - F5 saturated window — re-cut the fixture's return margin at 200 ms
 - F5 fold F1 — a scenario-relative saturation gate on the slice
+- The committed load-shape replay control — the exact CI red, with both named RED plants
 
 ### Build
 
