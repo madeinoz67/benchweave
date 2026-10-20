@@ -1,20 +1,25 @@
-"""The docs claim register's permanent pins (issue #459, design §3-§5).
+"""The docs claim register's permanent pins (issue #459, design §3-§5,
+plus the 2026-10-20 fold wave's rows).
 
 The register closes the one truth gap no owner covers (design §0): a green,
 correctly-pinned docs-literal baseline sat over a FALSE "is active" claim
 for a full train cycle (the 9b879cf8 miss) because no mechanism derives
-docs prose version claims from the standards manifest. These pins hold the
-register's two halves:
+docs prose version claims from the standards manifest. The pins, by the
+behavior they hold:
 
-- A2 (the clean-tree arm): ``train_preflight.py --claims-only`` over the
-  real tree exits 0 — all 18 register rows verify against the committed
-  manifest. The expectations in these tests are DERIVED from the manifest
-  (never hand-typed), so a standards bump moves them for free.
-- A1 (the differential control, as a permanent pin): the 9b879cf8 class —
-  a stale active literal that a ``--refresh-docs-baseline`` blessing would
-  hide from every existing gate — refuses, naming the file and the
-  manifest's active version. The scratch arms plant over a COPIED tree so
-  the real tree never moves.
+- the clean-tree hold (A2): ``train_preflight.py --claims-only`` over the
+  real tree exits 0 — every register row verifies against the committed
+  manifest, and the register's file set and row count are pinned exactly.
+  The expectations in these tests are DERIVED from the manifest (never
+  hand-typed), so a standards bump moves them for free.
+- the planted refusals (A1 and its classes): a stale active literal that a
+  ``--refresh-docs-baseline`` blessing would hide from every existing
+  gate; an unretained served claim; a dissolved anchor; a non-stable
+  manifest status; a stale tree through ``--json``. The scratch arms plant
+  over a COPIED tree so the real tree never moves.
+- the fold rows: the anchor-hijack decoys (MED-1/L1 — an anchor matching
+  more than one site refuses) and the green-path ``::`` annotation
+  forwarding (MED-3 — the pairing warning must not vanish).
 """
 
 from __future__ import annotations

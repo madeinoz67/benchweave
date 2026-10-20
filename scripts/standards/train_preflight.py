@@ -61,7 +61,9 @@ verifies only its DECLARED sites: a NEW file with wrong values plus a
 ``--refresh-docs-baseline`` blessing still passes — a new claim site gets
 a row or is a defect (design risk 2; D2's trigger is the tripwire).
 
-Exit status: 0 when every surface holds, 1 otherwise. ``--claims-only``
+Exit status: 0 when every surface holds, 1 when any surface is unmoved,
+2 for usage errors (argparse — ``--root`` or ``--json`` without
+``--claims-only``). ``--claims-only``
 runs the register alone (the CI arm — no environment, no submodule);
 ``--root <dir>`` redirects the register's tree (the test arm) and is
 refused without ``--claims-only`` because the delegated steps anchor on
