@@ -656,6 +656,10 @@
       "core": 0,
       "total": 56
     },
+    "tests/ui_html/test_classref_composition.py": {
+      "core": 0,
+      "total": 7
+    },
     "tests/ui_html/test_classref_daq.py": {
       "core": 0,
       "total": 29
