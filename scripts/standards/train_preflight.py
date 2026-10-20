@@ -25,6 +25,10 @@ yanked, not retired). Refusals, named, in the house prefix style:
 - ``docs_claim_anchor_lost: <file> …`` — a moved or dissolved claim site
   fails until the register row is re-anchored: a visible editorial edit,
   never a silent pass (the counter register's anti-laundering shape).
+- ``docs_claim_anchor_ambiguous: <file> …`` — an anchor matching MORE THAN
+  ONE site (the anchor-hijack class, fold MED-1/L1: a decoy sentence above
+  the declared site must not launder the declared row); the row re-anchors
+  on a token unique to its site.
 - ``docs_claim_check_failed: …`` — the register's inputs cannot be read
   (manifest absent/corrupt, an unparseable policy clause): a refusal,
   never a guess.
@@ -297,14 +301,35 @@ def check_claims(root: Path) -> tuple[int, int, list[str]]:
                 texts[row.file] = (root / row.file).read_text(encoding="utf-8")
             except OSError:
                 texts[row.file] = ""
-        match = re.search(row.anchor, texts[row.file]) if texts[row.file] else None
-        if match is None:
+        matches = list(re.finditer(row.anchor, texts[row.file])) if texts[row.file] else []
+        if not matches:
             refusals.append(
                 f"docs_claim_anchor_lost: {row.file} ({row.standard_id} {row.kind} "
                 "row) — the anchor moved; re-anchor the register row (a moved "
                 "claim site is a reviewable edit, never a silent pass)"
             )
             continue
+        if len(matches) > 1:
+            # The anchor-hijack guard (fold MED-1/L1): first-match semantics
+            # let a decoy sentence above the declared site launder the row —
+            # the decoy's TRUE literal verified while the staled real claim
+            # went unchecked. An anchor is a declaration of exactly one site;
+            # two matches is a register/ prose disagreement, refused with
+            # every site named so the re-anchor is a reviewable edit.
+            sites = ", ".join(
+                str(texts[row.file].count("\n", 0, match.start(1)) + 1)
+                for match in matches
+            )
+            refusals.append(
+                f"docs_claim_anchor_ambiguous: {row.file} ({row.standard_id} "
+                f"{row.kind} row) — the anchor matches {len(matches)} sites "
+                f"(lines {sites}); re-anchor the row on a token unique to the "
+                "declared site (a claim laundered by a lookalike sentence is "
+                "the anchor-hijack class; a moved claim site is a reviewable "
+                "edit, never a silent pass)"
+            )
+            continue
+        match = matches[0]
         claimed = match.group(1)
         line = texts[row.file].count("\n", 0, match.start(1)) + 1
         expected = active.get(row.standard_id)

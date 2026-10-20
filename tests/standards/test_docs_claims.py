@@ -201,3 +201,81 @@ class TestPlantedClaims:
         combined = result.stdout + result.stderr
         assert "docs_claim_anchor_lost:" in combined
         assert "docs/develop-your-device.md" in combined
+
+
+class TestAnchorAmbiguity:
+    """MED-1 + governor L1 (the fold wave): an anchor matching MORE THAN
+    ONE site refuses with ``docs_claim_anchor_ambiguous:``. A decoy
+    sentence inserted above the declared site must not launder the
+    declared row — pre-fix, first-match semantics verified the decoy's
+    TRUE literal while the staled real line below it went unchecked, and
+    ``--claims-only`` exited 0 (the anchor-hijack the adversary planted)."""
+
+    def test_decoy_baseline_line_cannot_launder_the_staled_real_line(
+        self, tmp_path: Path
+    ) -> None:
+        """The adversary's plant shape: a worked-example ``**Baseline:**``
+        line carrying the TRUE OTDP version above the real line, the real
+        line's literal staled one bump behind the manifest."""
+        scratch = _scratch_tree(tmp_path)
+        active = _active_version(scratch, "otdp")
+        previous = _previous_patch(active)
+        claim_file = scratch / "docs/device-developer-guide.md"
+        text = claim_file.read_text(encoding="utf-8")
+        marker = "**Baseline:** architecture"
+        assert marker in text, "the real Baseline sentence moved; re-derive the plant"
+        decoy = (
+            f"**Baseline:** (worked example) plugin authors may target OTDP {active} "
+            "when they review the worked example below.\n\n"
+        )
+        planted = text.replace(marker, decoy + marker, 1)
+        staled = planted.replace(f"OTDP {active} ·", f"OTDP {previous} ·", 1)
+        assert staled != planted, "the stale did not land on the real line"
+        claim_file.write_text(staled, encoding="utf-8")
+
+        result = _preflight("--claims-only", "--root", str(scratch))
+        assert result.returncode != 0, result.stdout + result.stderr
+        combined = result.stdout + result.stderr
+        assert "docs_claim_anchor_ambiguous:" in combined
+        assert "docs/device-developer-guide.md" in combined
+        assert "(otdp active row)" in combined
+        assert "matches 2 sites" in combined
+
+    def test_decoy_served_sentence_cannot_launder_the_staled_real_sentence(
+        self, tmp_path: Path
+    ) -> None:
+        """The served-row variant of the same hijack: a decoy sentence
+        carrying a RETAINED version above the real sentence, the real
+        served claim staled to the yanked entry."""
+        scratch = _scratch_tree(tmp_path)
+        document = _manifest_at(scratch)
+        policy = document["dependency_policy"]
+        assert isinstance(policy, dict)
+        entry = policy["standards"]["otdp"]
+        unretained = sorted(entry["yanked"])[0] if entry["yanked"] else sorted(entry["retired"])[0]
+        claim_file = scratch / "docs/develop-your-device.md"
+        text = claim_file.read_text(encoding="utf-8")
+        lines = text.splitlines(keepends=True)
+        served_line = next((i for i, line in enumerate(lines) if "remains served" in line), None)
+        assert served_line is not None, "the served sentence moved; re-derive the plant"
+        held = re.search(r"version (\d+\.\d+\.\d+) remains served", lines[served_line])
+        assert held is not None
+        lines.insert(
+            served_line,
+            f"(Worked example) version {held.group(1)} remains served for older installs.\n",
+        )
+        planted = "".join(lines).replace(
+            f"version {held.group(1)} remains served. Confirm",
+            f"version {unretained} remains served. Confirm",
+            1,
+        )
+        assert unretained in planted, "the stale did not land on the real sentence"
+        claim_file.write_text(planted, encoding="utf-8")
+
+        result = _preflight("--claims-only", "--root", str(scratch))
+        assert result.returncode != 0, result.stdout + result.stderr
+        combined = result.stdout + result.stderr
+        assert "docs_claim_anchor_ambiguous:" in combined
+        assert "docs/develop-your-device.md" in combined
+        assert "(otdp served row)" in combined
+        assert "matches 2 sites" in combined
