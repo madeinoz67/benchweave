@@ -19,12 +19,16 @@ register's two halves:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import cast
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT = ROOT / "scripts/standards/train_preflight.py"
@@ -279,3 +283,68 @@ class TestAnchorAmbiguity:
         assert "docs/develop-your-device.md" in combined
         assert "(otdp served row)" in combined
         assert "matches 2 sites" in combined
+
+
+def _preflight_module() -> ModuleType:
+    """The script as a module, for the in-process pins over its pure
+    helpers (the A3 harness's script-shaped-module precedent; importlib
+    beats a sys.path bootstrap — nothing leaks into the test session)."""
+    spec = importlib.util.spec_from_file_location("train_preflight_under_test", PREFLIGHT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Registration BEFORE exec is load-bearing: the module's dataclass
+    # resolves string annotations through sys.modules[cls.__module__], and
+    # an unregistered module makes that lookup return None (AttributeError
+    # from inside dataclasses, not from the code under test).
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestGreenPathAnnotations:
+    """MED-3 (fold wave): ``::``-prefixed annotation lines forward on the
+    GREEN path, never swallowed. The pairing-pending ``::warning::`` is the
+    one green-path signal the release-family walk reads at exactly the
+    moment the preflight runs; the standalone checker prints it and exits
+    0, and the orchestrator must not be the place it disappears."""
+
+    def test_warning_annotation_forwards_on_green(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        module = _preflight_module()
+        module.print_row(
+            "packages/sdk pointer pin ↔ gitlink (drift checker)",
+            True,
+            [
+                "sdk-drift OK: packages/sdk gitlink 9e0449ef is at the declared pin",
+                "::warning::pin v0.16.0 trails latest v0.17.0 — pairing pending",
+            ],
+        )
+        captured = capsys.readouterr().out
+        assert (
+            "[ok] packages/sdk pointer pin ↔ gitlink (drift checker) — sdk-drift OK:"
+            in captured
+        )
+        assert "::warning::pin v0.16.0 trails latest v0.17.0 — pairing pending" in captured
+
+    def test_plain_green_row_stays_lean(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """A green step with no annotations prints one row and nothing
+        indented — forwarding is for `::` lines, not all output."""
+        module = _preflight_module()
+        module.print_row("a quiet surface", True, [])
+        captured = capsys.readouterr().out
+        assert captured == "[ok] a quiet surface\n"
+
+    def test_annotation_lines_forward_on_refusal_too(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        module = _preflight_module()
+        module.print_row(
+            "a surface",
+            False,
+            ["::notice::fetch failed — the annotation degrades", "a refusal line"],
+        )
+        captured = capsys.readouterr().out
+        assert "[UNMOVED] a surface" in captured
+        assert "::notice::fetch failed" in captured
+        assert "a refusal line" in captured

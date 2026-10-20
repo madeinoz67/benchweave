@@ -420,6 +420,28 @@ def _stepOutcome(
     return ok, name, lines
 
 
+def print_row(surface: str, ok: bool, lines: list[str]) -> None:
+    """One surface's report row (the MED-3 seam): `[ok]`/`[UNMOVED]` plus
+    the lines that belong under it. On green, a step's single plain line
+    rides as the row's detail suffix and `::`-prefixed ANNOTATION lines
+    forward indented — never swallowed. The pairing-pending
+    `::warning::` is the one green-path signal the release-family walk
+    reads at exactly the moment the preflight runs; the delegated checker
+    prints it and exits 0, and this orchestrator must not be the place it
+    disappears. On refusal every line forwards indented, `::` included."""
+    if ok:
+        plain = [line for line in lines if not line.startswith("::")]
+        annotations = [line for line in lines if line.startswith("::")]
+        detail = f" — {plain[0]}" if len(plain) == 1 else ""
+        print(f"[ok] {surface}{detail}")
+        for line in annotations:
+            print(f"  {line}")
+        return
+    print(f"[UNMOVED] {surface}")
+    for line in lines:
+        print(f"  {line}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -496,15 +518,10 @@ def main(argv: list[str] | None = None) -> int:
         ok, surface, lines = _stepOutcome(name, thunk)
         checked += 1
         if ok:
-            # A thunk may carry one success detail (the claims row's
-            # verified count); anything longer is refusal output.
-            detail = f" — {lines[0]}" if len(lines) == 1 else ""
-            print(f"[ok] {surface}{detail}")
+            print_row(surface, True, lines)
             continue
         unmoved += 1
-        print(f"[UNMOVED] {surface}")
-        for line in lines:
-            print(f"  {line}")
+        print_row(surface, False, lines)
     print(f"train-preflight: {checked} surfaces checked, {unmoved} unmoved")
     return 0 if unmoved == 0 else 1
 
