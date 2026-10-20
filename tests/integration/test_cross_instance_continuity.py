@@ -1916,7 +1916,7 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
     distribution, and the 2026-10-20 main red (run 39358368822) was that
     shape firing — a sustained runner stretch delivered the capture arm's
     deadline-max cut 48–165 ms late on BOTH belt generations, past the
-    band, with the fixture pacing tight (four of eleven trials at
+    band, with the fixture pacing tight (four of ten trials at
     51.3–52.0 ms against the 50 ms budget). What replaces them is
     load-safe by construction — load INFLATES wall values, and every
     assert here is either clock-free bookkeeping or a bound in the

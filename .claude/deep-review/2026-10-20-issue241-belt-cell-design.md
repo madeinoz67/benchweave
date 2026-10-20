@@ -600,3 +600,13 @@ everything else null and freshly enumerated.
    attributes the chunk loop iterates — there is no dispatch-time ask
    distinct from the construction parameters, so a value pin there would
    pin the constructor, not witness the dispatch.
+
+2. **LOW-1 — the record's trial count is TEN, not eleven.** §0.1's table
+   has ten rows (five gen-1 trials 10–50, five fresh trials 510–550);
+   every "eleven" in the body (§0.1's "four of eleven", "ALL eleven
+   trials", §1.2's "all eleven rendered trials", §5.1 AR-0's "the eleven
+   trials") reads as "ten", and "four of eleven trials cut at 51.3–52.0"
+   regenerates as four of ten. The committed test docstring is corrected
+   in place; the commit messages of the slice retain the error (pushed
+   history is not rewritten). The committed replay control carries no
+   count phrase — its vectors are the ten rows.
