@@ -260,6 +260,7 @@ class ARigAdapter:
         # parameters regress or scatter lands here by construction.
         self.pace_log: list[float] = []
         self.capture_plan_ms: float | None = None
+        self.capture_chunks: int | None = None
 
     async def open(self, descriptor: dict[str, Any], services: Any, context: Any) -> None:
         self.services = services
@@ -370,8 +371,12 @@ class ARigAdapter:
         # The capture arm's driving signal: the chunk plan from the LIVE
         # instance state (the capture arm never calls ``_pace`` — its
         # natural duration is the chunk loop, so its plan is the plan the
-        # chunks encode). One multiplication, no clock.
+        # chunks encode). One multiplication, no clock. The chunk COUNT is
+        # recorded beside it — the primitive construction artefact the
+        # capture pins read (probe G's fold: the capture dispatch must
+        # record the construction it claims, not just the wall it took).
         self.capture_plan_ms = self.chunks * self.chunk_ms
+        self.capture_chunks = self.chunks
         for _ in range(self.chunks):
             if context.is_cancelled():
                 break
@@ -1315,6 +1320,9 @@ def _run_trial_once(
             assert rig.adapter_a.capture_plan_ms is not None, (
                 "the capture arm never recorded its chunk plan"
             )
+            assert rig.adapter_a.capture_chunks is not None, (
+                "the capture arm never recorded its chunk count"
+            )
             pacing_plan_ms: float | None = rig.adapter_a.capture_plan_ms
         else:
             paced_entries = rig.adapter_a.pace_log[pace_mark:]
@@ -1485,6 +1493,7 @@ def _run_trial_once(
             "enter_call_to_action_ms": enter_call_to_action_ms,
             "dispatch_duration_ms": duration_ms,
             "pacing_plan_ms": pacing_plan_ms,
+            "capture_chunks": rig.adapter_a.capture_chunks,
             "dispatch_budget_ms": budget,
             "t_cross_offset_ms": t_cross_offset_ms,
             "write_leg_gap_ms": write_gap,
@@ -1906,6 +1915,12 @@ _ARM_DISPATCH_BUDGET = {
     "control": SHORT_T_MS,
 }
 _ARM_TRIP_OFFSET = {"capture": 20.0, "non_capture": 40.0, "control": 10.0}
+#: The capture rig's chunk construction — the PRIMITIVE artefact the
+#: capture-side pins read (probe G's fold): an independent restatement of
+#: the adapter's default ``chunks``, so a construction regression (or a
+#: recording seam that misreports it) reds the pin while a deliberate
+#: retune shows as a visible amendment here.
+_CAPTURE_CHUNKS = 100
 
 
 def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
@@ -1946,9 +1961,9 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
       ``t_cross_offset_ms``) — deterministic bookkeeping catching the
       arm/budget wiring regressions the retired ceilings caught
       incidentally;
-    * the PLAN VALUE pin (non_capture only): ``pacing_plan_ms ==
-      T_ACQ_MIN_MS`` — the read leg's dispatch-time ask is §5's fixture
-      scale, and the plan is load-immune bookkeeping, so the pin cannot
+    * the PLAN pins — ``pacing_plan_ms == T_ACQ_MIN_MS`` on BOTH arms,
+      plus the capture arm's chunk COUNT (``capture_chunks ==
+      _CAPTURE_CHUNKS``) — all load-immune bookkeeping, so none can
       false-red under host load. Review fold MED-1: a doubled read-leg
       pace (durations ~401–403 ms, X1 ~401–403, plan honestly 400.0)
       stayed GREEN on every live reader while the retired ceiling reded
@@ -1956,20 +1971,34 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
       the couplings see only the gap, and the range gate reads
       cross-trial consistency (all plans equal at 400 → spread 0), so
       the plan VALUE is the only load-safe witness of a read-dispatch
-      scale regression. Capture-side is NOT value-pinned:
-      ``capture_plan_ms`` is computed at capture entry from the same
-      attributes the chunk loop iterates — there is no dispatch-time ask
-      distinct from the construction parameters, so a value pin there
-      would pin the constructor (redding any deliberate retune of
-      ``chunks``/``chunk_ms``) rather than witness the dispatch; the
-      capture side's scale regressions stay bounded by the posture
-      assert and the floor.
+      scale regression. The arms' pins differ in what they witness, and
+      the asymmetry is the point: the non_capture plan is the read
+      leg's DISPATCH-TIME ASK (the pace call argument — a behavioural
+      seam); the capture arm has no dispatch-time ask — its plan is
+      computed at capture entry from the same attributes the chunk loop
+      iterates — so the capture pins are CONSTRUCTION pins (the count
+      and the product): their claim is "the rig was BUILT to §5's
+      fixture scale and the recording says so", closing probe G's hole
+      (a doubled chunk construction passed every live reader). The
+      accepted cost, named: a deliberate retune of ``chunks``/
+      ``chunk_ms`` must amend ``_CAPTURE_CHUNKS``/the pin — the
+      visible-diff discipline. Artefact choice: the CONSTRUCTION count
+      is recorded; the OBSERVED append count is NOT usable — it is
+      wall-coupled (the cut's delivery time, a wall quantity,
+      determines how many paced chunks complete before the cancel), so
+      pinning it would re-introduce a wall bound in disguise. What
+      stays green BY DESIGN: a cut-status trial with honest
+      construction and an absurd wall duration — the extreme-load
+      class; the wall domain cannot separate it from a defect (this
+      slice's law), and the rig-defect classes that could produce the
+      shape are pinned (a never-cut dispatch completes and reds the
+      posture assert; a doubled construction reds these pins).
 
     Disclosed residual (design §7 D4): a moderate budget regression
     between the budget and natural completion has no interior ceiling —
-    caught at its edges (the floor below, the posture at completion, the
-    plan value on the read leg), the interior window on the census's
-    watch list."""
+    caught at its edges (the floor below, the posture at completion,
+    the plan pins on both legs' construction), the interior window on
+    the census's watch list."""
     dispatch_ms = _ARM_DISPATCH_MS[arm]
     expected_status = "unknown" if arm == "capture" else "ok"
     breaches: list[str] = []
@@ -2018,6 +2047,26 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
             "changed scale (the plan is load-immune bookkeeping, so this "
             f"is a fixture regression, not host load): {trial}"
         )
+    if arm == "capture":
+        # Probe G's fold: the capture dispatch must record the
+        # construction it claims. Two pins, both load-immune bookkeeping:
+        # the chunk COUNT (the primitive) and the plan product.
+        if trial["capture_chunks"] != _CAPTURE_CHUNKS:
+            breaches.append(
+                f"trial {trial['trial']}: capture_chunks "
+                f"{trial['capture_chunks']} is not the rig's "
+                f"{_CAPTURE_CHUNKS}-chunk construction — the capture "
+                "dispatch's chunk plan changed scale (bookkeeping, not a "
+                f"clock — a fixture regression, not host load): {trial}"
+            )
+        if trial["pacing_plan_ms"] != T_ACQ_MIN_MS:
+            breaches.append(
+                f"trial {trial['trial']}: pacing_plan_ms "
+                f"{trial['pacing_plan_ms']:.1f} is not §5's fixture scale "
+                f"({T_ACQ_MIN_MS:.0f} ms) — the capture chunk plan "
+                "(chunks x chunk_ms) changed scale (bookkeeping, not a "
+                f"clock — a fixture regression, not host load): {trial}"
+            )
     return breaches
 
 
@@ -2837,6 +2886,7 @@ def test_issue241_load_shape_replay_control(
             "x4_ms": x4,
             "dispatch_duration_ms": dur,
             "pacing_plan_ms": 200.0,  # the rig's 100 x 2.0 ms chunk plan
+            "capture_chunks": 100,  # the rig's chunk construction
             "dispatch_budget_ms": 50.0,  # CAPTURE_BUDGET_MS
             "t_cross_offset_ms": 20.0,  # the capture arm's script
             "status": "unknown",  # the deadline-max cut, in every trial
@@ -2862,6 +2912,7 @@ def test_issue241_load_shape_replay_control(
     # Vector honesty: the vectors' wiring literals ARE the rig's.
     assert gen1[0]["dispatch_budget_ms"] == _ARM_DISPATCH_BUDGET[arm]
     assert gen1[0]["t_cross_offset_ms"] == _ARM_TRIP_OFFSET[arm]
+    assert gen1[0]["capture_chunks"] == _CAPTURE_CHUNKS
 
     def stretched(cell: list[dict[str, Any]], factor: float) -> list[dict[str, Any]]:
         scaled = []

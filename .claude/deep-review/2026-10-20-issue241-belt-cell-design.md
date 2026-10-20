@@ -623,3 +623,33 @@ everything else null and freshly enumerated.
    same drain, so a drain stall inflates the latency the same way. The
    committed docstring carries the corrected reason; this entry records
    the citation fix for the frozen body.
+
+4. **Probe G (the addendum row) — the capture side had NO upper bound at
+   all; closed with construction pins.** Entry 1's fix left the capture
+   arm unpinned (the asymmetry entry 1 explained), and the adversary's
+   probe G proved the hole live: a synthetic capture trial at duration
+   2000 / X1 5000 passed every live reader while the retired ceiling
+   reded it. The fold records the chunk COUNT at capture entry
+   (``capture_chunks`` — construction bookkeeping, the same class
+   ``pace_log`` is) and pins it against an independent constant
+   (``_CAPTURE_CHUNKS = 100``), beside the plan product pin extended to
+   the capture arm (``pacing_plan_ms == T_ACQ_MIN_MS``, both arms). RED
+   (probe G rebuilt in three forms, pre-pin): the never-cut form
+   (status ok) reds the POSTURE assert (live — the load-immune status
+   axis, "load cannot turn a cut dispatch into a completed one"); the
+   DOUBLED-CONSTRUCTION form (status unknown, plan 400, chunks 200 —
+   the capture-side twin of the doubled read leg) passed every live
+   reader — the hole; the honest-artefact extreme-wall form passed (the
+   load class). GREEN (post-pin): the doubled construction reds BOTH
+   pins; the clean capture cell stays green. Artefact choice recorded:
+   the OBSERVED append count is NOT usable — wall-coupled (the cut's
+   delivery time determines how many paced chunks complete; pinning it
+   re-introduces a wall bound in disguise); the construction count is
+   bookkeeping. Accepted cost, named: the capture pins are CONSTRUCTION
+   pins (no dispatch-time ask exists on the capture arm), so a
+   deliberate retune of ``chunks``/``chunk_ms`` must amend
+   ``_CAPTURE_CHUNKS`` — the visible-diff discipline. Stays green BY
+   DESIGN: a cut-status trial with honest construction and an absurd
+   wall duration (the extreme-load class — no wall ceiling is
+   reintroduced; the defect classes that could fake the shape are
+   pinned: never-cut reds posture, doubled construction reds the pins).
