@@ -206,6 +206,26 @@ class TestPlantedClaims:
         assert "docs_claim_anchor_lost:" in combined
         assert "docs/develop-your-device.md" in combined
 
+    def test_json_performs_the_check_over_a_stale_tree(self, tmp_path: Path) -> None:
+        """LOW-6 (fold wave): the ``--json`` arm reads the tree it reports
+        on — it is a reporting format, never a second verdict path that
+        could exit 0 over a stale tree without reading it."""
+        scratch = _scratch_tree(tmp_path)
+        active = _active_version(scratch, "otdp")
+        previous = _previous_patch(active)
+        claim_file = scratch / "docs/develop-your-device.md"
+        planted = claim_file.read_text(encoding="utf-8").replace(
+            f"Version {active} is active", f"Version {previous} is active"
+        )
+        assert planted != claim_file.read_text(encoding="utf-8"), "the plant did not land"
+        claim_file.write_text(planted, encoding="utf-8")
+
+        result = _preflight("--claims-only", "--json", "--root", str(scratch))
+        assert result.returncode != 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["verified"] < payload["rows"], payload
+        assert any("docs_claim_stale:" in line for line in payload["refusals"]), payload
+
 
 class TestAnchorAmbiguity:
     """MED-1 + governor L1 (the fold wave): an anchor matching MORE THAN

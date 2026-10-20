@@ -483,8 +483,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--json",
         action="store_true",
-        help="with --claims-only: print the register's file set and row "
-        "count as JSON (the census pin's input)",
+        help="with --claims-only: print the register's file set, row count and "
+        "the check's verdict as JSON (the check runs — a stale tree exits 1)",
     )
     arguments = parser.parse_args(argv)
     if arguments.root is not None and not arguments.claims_only:
@@ -532,8 +532,24 @@ def main(argv: list[str] | None = None) -> int:
         if not arguments.claims_only:
             parser.error("--json reports the claim register; use it with --claims-only")
         files = sorted({row.file for row in CLAIMS})
-        print(json.dumps({"files": files, "rows": len(CLAIMS)}))
-        return 0
+        # The JSON arm performs the check it reports on (LOW-6): a
+        # reporting format is not a second verdict path, and it must
+        # never exit 0 over a stale tree without having read it.
+        try:
+            total, verified, refusals = check_claims(root)
+        except ClaimCheckError as exc:
+            print(
+                json.dumps(
+                    {"files": files, "rows": len(CLAIMS), "verified": 0, "refusals": [str(exc)]}
+                )
+            )
+            return 1
+        print(
+            json.dumps(
+                {"files": files, "rows": total, "verified": verified, "refusals": refusals}
+            )
+        )
+        return 0 if verified == total else 1
 
     checked = 0
     unmoved = 0
