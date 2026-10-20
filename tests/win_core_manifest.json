@@ -330,7 +330,7 @@
     },
     "tests/integration/test_cross_instance_continuity.py": {
       "core": 0,
-      "total": 66
+      "total": 67
     },
     "tests/integration/test_demo_lattice_streaming.py": {
       "core": 0,
