@@ -610,3 +610,16 @@ everything else null and freshly enumerated.
    in place; the commit messages of the slice retain the error (pushed
    history is not rewritten). The committed replay control carries no
    count phrase — its vectors are the ten rows.
+
+3. **LOW-2 — §2.3's upper-side justification cited the wrong evidence.**
+   The body's "post-cut tick and landing stalls inflate exactly those,
+   the class §1.2 measured (fresh trials 510/530)" misread §1.2: those
+   trials' X1 EQUALLED the duration (±0.8 ms in all ten trials); the
+   stalls were X4's post-cut legs, not X1's. The conclusion (the upper
+   sides stay unasserted) stands on the corrected, structural reason:
+   X1's slice ``tick_times[tick_mark:]`` extends past the dispatch's
+   end, so a stalled tick in the post-dispatch drain widens the max gap
+   without the duration moving, and X3's landing set lands during that
+   same drain, so a drain stall inflates the latency the same way. The
+   committed docstring carries the corrected reason; this entry records
+   the citation fix for the frozen body.

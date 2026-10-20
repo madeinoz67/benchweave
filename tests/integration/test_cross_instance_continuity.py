@@ -1932,9 +1932,16 @@ def _axis_per_trial_breaches(trial: dict[str, Any], arm: str) -> list[str]:
       50`` — the serial model's structural content (the blackout spans
       the dispatch; a tick inside the window or an emission schedule that
       misses the window start SHRINKS the gap below the duration, which
-      inflation cannot do). The upper sides are NOT asserted: post-cut
-      tick and landing stalls inflate exactly those (the 2026-10-20 fresh
-      trials 510/530 — X4 legs stalled after the cut);
+      inflation cannot do). The upper sides are NOT asserted, for
+      structural reasons: X1's slice ``tick_times[tick_mark:]`` extends
+      past the dispatch's end, so a stalled tick in the post-dispatch
+      drain widens the max gap without the duration moving, and X3's
+      landing set lands during that same drain, so a drain stall
+      inflates the latency the same way. (The 2026-10-20 fresh trials
+      510/530 are NOT X1 upper-side examples — their X1 EQUALLED the
+      duration; their stalls were X4's post-cut legs, per the record's
+      own §1.2. Review fold LOW-2 corrected the citation this bullet
+      first shipped with);
     * wiring pins on the recorded driving signals (``dispatch_budget_ms``,
       ``t_cross_offset_ms``) — deterministic bookkeeping catching the
       arm/budget wiring regressions the retired ceilings caught
