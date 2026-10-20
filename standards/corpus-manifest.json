@@ -1506,6 +1506,11 @@
       "path": "plugin-ui-class-reference/0.3.0/class-smu.json",
       "source": "docs/plugin-ui-class-reference-v2/class-smu.json",
       "sha256": "48cc55c24c08423251ab878a092ffe472ef594c5c69f5ae51aeb2f92ba5dfe3a"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-daq.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-daq.json",
+      "sha256": "8cf11dc0e0d933b3cb1edd274e9d40fcb62fd619234d926c1174816113de2fd8"
     }
   ]
 }

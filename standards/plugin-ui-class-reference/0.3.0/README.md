@@ -142,6 +142,36 @@ cites the authoring staging path
 `docs/plugin-ui-class-reference-v2/class-smu.json` (removed in the
 same pull request — the founding convention).
 
+## L17 note (in-window: the `daq` class, nothing widened — the sweep's first real consumer)
+
+The 0.3.0 window was still open when the `daq` class landed, so the
+eighth class file joined the same bump with ZERO vocabulary motion —
+the cheapest member of the family: not even a settlement-class schema
+edit rides here, because the batch's own widenings carry the whole
+birth surface (the `waveform` plot kind is L13's; without it this
+reference is schema-invalid — the batch-state dependency is
+load-bearing, not decorative). The class is the oscilloscope's
+action-identical sibling with a different substance: the lifecycle
+quartet is structurally identical while `configure` differs materially
+(per-channel quantity/unit/range plus the `sampling` mode, against the
+scope's probe-scaled display semantics), and the family keeps TWO
+classes because `profile_id` binds exactly one OTDP profile — a merged
+document is not an expressible object. This is also the sweep's first
+class with a real, shipped consumer: a public community plugin
+declares `otdp.daq/1.0.0` with six analogue voltage channels and no
+`ui/` manifest, so the L4 no-manifest fallback makes this reference
+the plugin's served presentation the moment the batch lands; the
+conformance claim is executable and lives in
+`tests/ui_html/test_classref_daq.py` over a vendored byte-copy of the
+public descriptor (source commit named in-file; no network in CI).
+The class's honesty row is `calibration-context`: the real consumer
+streams raw counts with calibration `not_applied`, and the class
+presents the unit the dataset carries — `count`, never a nicer one —
+until an upstream measurement-profiles layer exists. Its row cites
+the authoring staging path
+`docs/plugin-ui-class-reference-v2/class-daq.json` (removed in the
+same pull request — the founding convention).
+
 ## Files
 
 | File | What it is |
@@ -155,6 +185,7 @@ same pull request — the founding convention).
 | `class-function_generator.json` | The reference for the `otdp.function_generator/1.0.0` class (L14) |
 | `class-electronic_load.json` | The reference for the `otdp.electronic_load/1.0.0` class (L15) |
 | `class-smu.json` | The reference for the `otdp.smu/1.0.0` class (L16) |
+| `class-daq.json` | The reference for the `otdp.daq/1.0.0` class (L17) |
 
 ## The structure rule (D2)
 
@@ -287,5 +318,5 @@ derivation per bump (design record R2).
 ## Names
 
 All fixture names are invented. "Veridian", "PSU-01", "DMM-01", "OSC-01",
-"FGEN-01", "ELOAD-01", "SMU-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
+"FGEN-01", "ELOAD-01", "SMU-01", "DAQ-01" and the `ch1`/`ch2` channel naming are fixture vocabulary, not real
 products, vendors, or benches.

@@ -454,6 +454,27 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The daq class page (L17 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the second capture class — the
+    # oscilloscope's geometry with engineering-unit substance —
+    # the capture-page composition (one waveform plot over the
+    # capture slot with one trace per (channel, quantity) of the
+    # six-channel derived fixture — the real consumer's channel
+    # count, its identity nowhere; the run panel's arm staging and
+    # the three run buttons, the optional trigger bound by
+    # when_declared; the buffer-overflow alert) — rendered from the
+    # committed reference/descriptor expansion (classref.py — host
+    # composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-daq",
+            fixture_id="capture",
+            kind="class-page",
+            page="class-daq",
+            render=classref.render_daq_capture_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -481,6 +502,7 @@ _PAGE_TITLES: dict[str, str] = {
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
     "class-configuration": "Function generator configuration (class reference)",
+    "class-daq": "Data acquisition capture (class reference)",
     "class-input": "Electronic load input (class reference)",
     "class-output": "DC power supply output (class reference)",
     "class-readings": "Digital multimeter readings (class reference)",
@@ -497,6 +519,7 @@ def pages() -> tuple[str, ...]:
     ordered.append("refusals")
     ordered.append("class-capture")
     ordered.append("class-configuration")
+    ordered.append("class-daq")
     ordered.append("class-input")
     ordered.append("class-output")
     ordered.append("class-readings")

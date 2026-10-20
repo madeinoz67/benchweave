@@ -6,8 +6,9 @@ The class-page pattern-library compositions are built from the §E.1
 partials the renderer already ships: host composition, no renderer
 change, no new contract rows (the record's §2.6 rule). The §E.1
 partials, templates and the contract harness are untouched by any of
-the slices; the class-page composers now number six (analyser,
-dc_psu, dmm, oscilloscope, function_generator, electronic_load).
+the slices; the class-page composers now number eight (analyser,
+dc_psu, dmm, oscilloscope, function_generator, electronic_load, smu,
+daq).
 
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. The analyser page's data was produced by a
@@ -1211,12 +1212,161 @@ def render_smu_output_page() -> str:
     )
 
 
+# --- the daq capture page (L17; design record 2026-10-19) ------------------------
+#
+# The second capture class, eighth composer, the oscilloscope's geometry
+# with a different substance — engineering units per channel instead of
+# probe-scaled display, acquisition evidence instead of a graticule. The
+# composition mirrors the daq reference's own layout block (the traces
+# section recessed and dominant, span 12; the run section raised below,
+# span 12 — the analyser/scope capture geometry, re-proven) and its
+# counts derive from the corpus pair widened to the mockup's own shape:
+# the committed example declares two analogue channels and the mockup is
+# authored to the real consumer's SIX-channel count, so the composition
+# carries the six-channel derived fixture's traces (6 x 1 — one per
+# (channel, declared quantity), labels following the example's own
+# label pattern, its identity nowhere), one waveform plot over the
+# capture dataset, and one run control per DECLARED run action of the
+# fixture (3: arm staging + abort + trigger buttons — the optional
+# trigger binds by ``when_declared``; a trigger-less descriptor renders
+# its ghost at expansion). Trace values and the acquisition numbers are
+# fixture choices in the fixtures.py sense (the mockup's own
+# illustrative data — per-trace acquired 3,300 summing to the mockup's
+# 19,800, decimation certain); the labels and trace ids are corpus
+# strings (channel labels x declared quantities). No control surface
+# derives beyond the ladder's: acquisition settings are cannot_derive
+# (acquisition-settings; configure is preset-mediated at birth) and the
+# page fabricates no settings face; the trigger marker and cursor
+# readout are cannot_derive (host-knowledge seam) and compose nothing
+# here; the capture page carries NO data table and NO reading tile
+# (streamed samples are not a tabular surface; waveform variables carry
+# no scalar-extraction rule — the streaming-latest monitor strip is a
+# named deferral; the drift guard pins both absences).
+
+
+def _daq_traces() -> tuple[TraceSpec, ...]:
+    """One trace per (channel, quantity) of the six-channel derived
+    fixture — six voltage waveforms over the acquisition window (6 x 1
+    derived from the corpus pair widened to the mockup's shape; no
+    subset choice to disclose). The acquired counts are the mockup's
+    own acquisition numbers, per trace (the aggregate 19,800 is the
+    mockup's acquisition line — fixture data)."""
+    samples = (
+        (0.0, 1.1, 0.9, 1.2, 1.0, 1.1, 0.8, 1.2, 0.9, 1.1, 1.0),
+        (0.5, 0.6, 0.4, 0.7, 0.5, 0.6, 0.3, 0.7, 0.4, 0.6, 0.5),
+        (-0.2, -0.1, -0.3, 0.0, -0.2, -0.1, -0.4, 0.0, -0.3, -0.1, -0.2),
+        (2.2, 2.1, 2.3, 2.0, 2.2, 2.1, 1.9, 2.3, 2.0, 2.1, 2.2),
+        (0.0, 0.2, 0.1, 0.3, 0.0, 0.2, -0.1, 0.3, 0.1, 0.2, 0.0),
+        (-1.5, -1.4, -1.6, -1.3, -1.5, -1.4, -1.7, -1.3, -1.6, -1.4, -1.5),
+    )
+    return tuple(
+        TraceSpec(
+            f"Reference channel {index + 1} · voltage",
+            "V",
+            samples=samples[index],
+            acquired=3300,
+        )
+        for index in range(6)
+    )
+
+
+#: The partial-capture alert (cannot_derive partial-capture-alert renders
+#: from host-observed conditions; the composition carries the mockup's
+#: illustrative one — the buffer-overflow condition, the dataset's
+#: runtime `status: partial` — not dismissible, a persistent condition).
+_DAQ_ALERT = AlertBubbleData(
+    severity="warning",
+    title="Buffer overflow",
+    message="Acquisition truncated — partial dataset retained",
+    live_region="status",
+    dismissible=False,
+)
+
+#: The run controls (expect.controls: arm staging L2, abort/trigger
+#: button L1). Display labels and faces are fixture choices — the
+#: reference authors structure, not data (D2); the face set is the
+#: mockup's own (Arm primary; Trigger and Abort secondary).
+_DAQ_ARM_NUMERIC = NumericInputData(
+    label="Max duration",
+    unit="ms",
+    value="10000",  # fixture choice — the analyser composer's own
+    minimum="1",  # the action schema's own minimum
+    maximum="",  # no schema maximum — the absent bound (A02)
+    step="1",  # the schema type's integer step, type-derived
+    input_id="bw-classref-daq-arm-duration",
+)
+_DAQ_ARM_BUTTON = ButtonData(label="Arm", variant="primary")
+_DAQ_TRIGGER_BUTTON = ButtonData(label="Trigger", variant="secondary")
+_DAQ_ABORT_BUTTON = ButtonData(label="Abort", variant="secondary")
+
+
+def _daq_plot() -> ComposedPlot:
+    """The capture plot: one waveform engineering plot over the capture
+    dataset — all six derived channel traces (the mockup's six). The
+    per-trace acquisition disclosure renders because the drawn samples
+    are fewer than acquired (the §E.2.5 strip lands by use — a class
+    whose streaming rate makes decimation certain)."""
+    return compose_plot(
+        title="Capture",
+        description=(
+            "All six declared analogue channels' voltage waveforms over "
+            "the acquisition window."
+        ),
+        traces=_daq_traces(),
+        hints={},
+        rate="3 kS/s",
+    )
+
+
+_DAQ_CAPTURE_TEMPLATE = """<div class="bw-classref-page">
+{{ banner | safe }}
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="traces"
+  data-surface="recessed" data-bw-span="12" aria-label="Traces">
+<h3>Traces</h3>
+{{ plot | safe }}
+</section>
+</div>
+<div class="bw-classref-grid">
+<section class="bw-classref-section" data-bw-section-id="run"
+  data-surface="raised" data-bw-span="12" aria-label="Run">
+<h3>Run</h3>
+<p data-bw-staged-config>{{ staged_config }}</p>
+{{ arm_numeric | safe }}
+{{ arm_button | safe }}
+{{ trigger_button | safe }}
+{{ abort_button | safe }}
+</section>
+</div>
+{{ alert | safe }}
+</div>"""
+
+
+def render_daq_capture_page() -> str:
+    """The daq capture-page composition: mode banner, the Traces section
+    (one engineering waveform plot over the capture dataset, six channel
+    traces), the Run section (staged-config evidence, the arm staging
+    numeric and the three run buttons) and the buffer-overflow alert —
+    the reference layout block's own surfaces and spans."""
+    return ENV.from_string(_DAQ_CAPTURE_TEMPLATE).render(
+        banner=render_mode_banner(_MODE),
+        plot=render_plot(_daq_plot()),
+        staged_config=_STAGED_CONFIG_TEXT,
+        arm_numeric=render_numeric_input(_DAQ_ARM_NUMERIC),
+        arm_button=render_button(_DAQ_ARM_BUTTON),
+        trigger_button=render_button(_DAQ_TRIGGER_BUTTON),
+        abort_button=render_button(_DAQ_ABORT_BUTTON),
+        alert=render_alert_bubble(_DAQ_ALERT),
+    )
+
+
 __all__ = [
     "capture_lanes",
     "dmm_readings",
     "eload_readings",
     "output_readings",
     "render_capture_page",
+    "render_daq_capture_page",
     "render_dmm_readings_page",
     "render_electronic_load_input_page",
     "render_function_generator_configuration_page",

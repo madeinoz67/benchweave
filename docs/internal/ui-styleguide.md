@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`, `class-smu.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`, `class-smu.html`, `class-daq.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -436,6 +436,38 @@ the smu's own wrinkle recorded for the safety-behaviours slice — the
 energise confirm's values pair by the sourced function, level with
 the opposite-quantity compliance, never a flattened pair), and no run
 panel is fabricated for the deferred block.
+
+The `class-daq` pattern-library page composes the `otdp.daq`
+capture-page composition the same way — the second capture class
+after the oscilloscope, and the sweep's first class with a real,
+shipped consumer (a public community plugin declares the profile with
+six analogue channels and no `ui/` manifest, so the no-manifest
+fallback serves this composition to that plugin the moment the batch
+lands; its descriptor bytes are vendored as a test fixture with the
+source named, and the conformance claim is executable —
+`tests/ui_html/test_classref_daq.py`). The reference
+(`standards/plugin-ui-class-reference/0.3.0/class-daq.json`, the L17
+class — zero vocabulary motion again; the batch's own `waveform`
+widening is load-bearing here) expanded against the OTDP reference
+descriptor, rendered from the §E.1 partials the renderer already
+ships: one `waveform` `engineering-plot` over the capture slot with
+one trace per (channel, quantity) of the composition's six derived
+channels (the real consumer's channel COUNT, its identity nowhere),
+the run panel with the arm staging numeric and the three run buttons
+(the optional trigger binds by `when_declared` — a trigger-less
+descriptor renders its ghost), and one `alert-bubble` carrying the
+buffer-overflow condition. The capture page carries no table and no
+reading tile (streamed samples are not a tabular surface and waveform
+variables carry no scalar-extraction rule — the streaming-latest
+monitor strip is a named deferral). The mockup paints the
+non-contract idioms (the trigger marker and cursor readout, and the
+daq's own `UNIT COUNT · CALIBRATION NOT APPLIED` context line — the
+class presents the unit the dataset carries, never a nicer one) with
+no `bw-` hook: they are `cannot_derive` (`trigger-marker`,
+`cursor-readout`, `calibration-context`), so they never present as
+contract components. The acquisition disclosure (§E.2.5) lands by use
+with its contract hook — a class whose streaming rate makes
+decimation certain.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 
