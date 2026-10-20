@@ -654,7 +654,11 @@
     },
     "tests/ui_html/test_browser_patterns.py": {
       "core": 0,
-      "total": 54
+      "total": 56
+    },
+    "tests/ui_html/test_classref_daq.py": {
+      "core": 0,
+      "total": 29
     },
     "tests/ui_html/test_classref_dc_psu.py": {
       "core": 0,
@@ -758,7 +762,7 @@
     },
     "tests/ui_html/test_styleguide_mockup.py": {
       "core": 0,
-      "total": 32
+      "total": 35
     },
     "tests/ui_html/test_templates_packaged.py": {
       "core": 0,

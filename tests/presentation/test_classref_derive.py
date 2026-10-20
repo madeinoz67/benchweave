@@ -288,12 +288,13 @@ class TestSelection:
         ROTATES with the sweep: dc_psu carried this arm until L11 gave it
         a reference, dmm until L12, oscilloscope until L13,
         function_generator until L14, electronic_load until L15, smu
-        until L16; daq (the L17 slot, unwritten) carries it now — when
-        L17 lands its reference, the exemplar advances again."""
+        until L16, daq until L17; embedded_controller (the L18 slot,
+        unwritten) carries it now — when L18 lands its reference, the
+        exemplar advances again."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.scalar",
-            "profiles": ["otdp.daq/1.0.0"],
+            "profiles": ["otdp.embedded_controller/1.0.0"],
         }
         assert select_references(corpus_root(), descriptor) is None
 
@@ -302,16 +303,16 @@ class TestSelection:
         without a corpus reference is skipped and the next one applies.
         The skipped profile ROTATES with the sweep: dc_psu until L11,
         dmm until L12, oscilloscope until L13, function_generator until
-        L14, electronic_load until L15, smu until L16; daq (the L17
-        slot, unwritten — sorted BEFORE the analyser bytewise, so the
-        arm's shape inverts from L15's: the unknown profile now leads
-        the sorted order and is skipped, the analyser second applies)
-        carries the skip arm now — and the corpus pairs add their own
-        multi-profile arms below."""
+        L14, electronic_load until L15, smu until L16, daq until L17;
+        embedded_controller (the L18 slot, unwritten — sorted BEFORE
+        the analyser bytewise as daq was, so the inverted shape
+        carries: the unknown profile leads the sorted order and is
+        skipped, the analyser second applies) carries the skip arm now
+        — and the corpus pairs add their own multi-profile arms below."""
         descriptor = {
             "otdp_version": "0.2.3",
             "id": "dev.example.multi",
-            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.daq/1.0.0"],
+            "profiles": ["otdp.logic_analyser/1.0.0", "otdp.embedded_controller/1.0.0"],
         }
         selected = select_references(corpus_root(), descriptor)
         assert selected is not None and len(selected) == 1
