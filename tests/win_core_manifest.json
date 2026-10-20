@@ -592,6 +592,10 @@
       "core": 7,
       "total": 16
     },
+    "tests/standards/test_docs_claims.py": {
+      "core": 0,
+      "total": 5
+    },
     "tests/standards/test_execution_promotion.py": {
       "core": 0,
       "total": 7
