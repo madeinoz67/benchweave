@@ -29,6 +29,10 @@ yanked, not retired). Refusals, named, in the house prefix style:
   ONE site (the anchor-hijack class, fold MED-1/L1: a decoy sentence above
   the declared site must not launder the declared row); the row re-anchors
   on a token unique to its site.
+- ``docs_claim_status_nonstable: <file>:<line> asserts <id> whose manifest
+  status is <status>, not 'stable'`` — the derivation reads the manifest's
+  status, not the version alone (a standard deprecated at the same version
+  must not leave is-active rows green; governor M1).
 - ``docs_claim_check_failed: …`` — the register's inputs cannot be read
   (manifest absent/corrupt, an unparseable policy clause): a refusal,
   never a guess.
@@ -287,6 +291,11 @@ def check_claims(root: Path) -> tuple[int, int, list[str]]:
         for entry in entries
         if isinstance(entry, dict) and "id" in entry and "version" in entry
     }
+    statuses = {
+        str(entry["id"]): str(entry.get("status", ""))
+        for entry in entries
+        if isinstance(entry, dict) and "id" in entry
+    }
     policy = manifest.get("dependency_policy")
     policy_standards = policy.get("standards") if isinstance(policy, dict) else None
     if not isinstance(policy_standards, dict):
@@ -337,6 +346,20 @@ def check_claims(root: Path) -> tuple[int, int, list[str]]:
             refusals.append(
                 f"docs_claim_check_failed: the manifest carries no "
                 f"{row.standard_id} entry — re-derive this register row"
+            )
+            continue
+        entry_status = statuses.get(row.standard_id, "")
+        if entry_status != "stable":
+            # The status guard (governor M1): the derivation reads the
+            # manifest's status, not the version alone — a standard
+            # deprecated AT THE SAME VERSION would otherwise leave every
+            # is-active row green (a version-only map cannot see it).
+            shown = entry_status if entry_status else "absent"
+            refusals.append(
+                f"docs_claim_status_nonstable: {row.file}:{line} asserts "
+                f"{row.standard_id} whose manifest status is {shown!r}, not "
+                "'stable' — an active/served claim against a non-stable "
+                "standard is a stale-claim class; sweep it in-arc"
             )
             continue
         if row.kind == "active":

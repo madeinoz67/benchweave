@@ -348,3 +348,32 @@ class TestGreenPathAnnotations:
         assert "[UNMOVED] a surface" in captured
         assert "::notice::fetch failed" in captured
         assert "a refusal line" in captured
+
+
+class TestStatusGuard:
+    """Governor M1 (fold wave): the manifest's status is part of the
+    derivation, not just the version. A standard deprecated AT THE SAME
+    VERSION would leave every is-active row green under a version-only
+    map; an asserted standard whose manifest entry is not ``stable``
+    refuses, naming the status."""
+
+    def test_deprecated_at_the_same_version_refuses(self, tmp_path: Path) -> None:
+        scratch = _scratch_tree(tmp_path)
+        manifest_file = scratch / "standards" / "standards-manifest.json"
+        document = _manifest_at(scratch)
+        entries = document["standards"]
+        assert isinstance(entries, list)
+        planted = False
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get("id") == "otdp":
+                entry["status"] = "deprecated"
+                planted = True
+        assert planted, "the manifest carries no otdp entry to plant"
+        manifest_file.write_text(json.dumps(document), encoding="utf-8")
+
+        result = _preflight("--claims-only", "--root", str(scratch))
+        assert result.returncode != 0, result.stdout + result.stderr
+        combined = result.stdout + result.stderr
+        assert "docs_claim_status_nonstable:" in combined
+        assert "deprecated" in combined
+        assert "docs/develop-your-device.md" in combined
