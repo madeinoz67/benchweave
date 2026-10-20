@@ -40,6 +40,11 @@ All notable changes to this project will be documented in this file.
 - Refresh the docs literal baseline for the trio's 0.3.0 sentence (battery catch)
 - Re-point the ui_readings fixture's hand-authored layout block to 0.2.0 (gateway #463)
 - The classref derivation mirrors the SDK's L5 input trio (gateway #463)
+- Refuse ambiguous claim anchors — the anchor-hijack class (MED-1 + L1)
+- Forward :: annotations on the green path — the pairing warning (MED-3)
+- The status guard — non-stable manifest entries refuse (governor M1)
+- The --json arm performs the check it reports on (LOW-6)
+- Sweep the architecture doc's stale active claims, register the two named sites (governor H1)
 
 ### Documentation
 
@@ -103,6 +108,11 @@ All notable changes to this project will be documented in this file.
 - Issue #450 fold addendum — owner row call, folded deferrals
 - Commit the F5 saturated-window design record
 - F5 fold addendum — the two-lane refute slate, six corrections
+- Carry the train-preflight design record into the build branch
+- The obligations and release-family rows for the claim register
+- Correct the offline claim — tag-pin resolution is networked (LOW-4)
+- Align the module and exit-status prose (review NIT)
+- The design record's build-and-fold addendum (MED-2 + governor condition 2)
 
 ### Features
 
@@ -139,6 +149,7 @@ All notable changes to this project will be documented in this file.
 - The L5 input trio — renderer partials, contract rows, gateway read-only arms (PR-1)
 - Plugin-ui 0.4.0 + class-reference 0.2.0 — the L5 corpus-and-version arc (gateway #463)
 - Interface 0.1.1 — the #450 corpus revision (rows 1b/2/3/5 + D1/D2/D4/D5/F4, fold-all)
+- The docs claim register and the train pre-flight orchestrator
 
 ### Miscellaneous
 
