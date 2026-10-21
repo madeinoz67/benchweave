@@ -24,13 +24,22 @@ const GORTEX_CANDIDATES = [
   "gortex",
   "/opt/homebrew/bin/gortex",
 ].filter(Boolean);
-// Per-candidate budget (fold F4): a healthy full-hook run measured ~0.22s
-// wall (refute lane, 2026-10-21), so 500ms per candidate is over 2x the
-// entire healthy run — generous for the real CLI while bounding the
-// 3-candidate walk at <=1.5s (measured pre-fold: one hanging candidate
-// 5.36s, two ~10.3s). The git calls below keep the 5s sh default: separate
+// Per-candidate budget and overall walk cap (fold F4 + the verdict-stability
+// follow-up, both measured 2026-10-21): the deny must survive real load, not
+// just idle speed. Measured on the dev machine (10 cores, parallel agent
+// lanes): ambient load 34-53 — real daemon call p50 93ms, worst spike 1021ms
+// (the load class that flipped verdicts at the first 500ms budget); a fork
+// storm at load 67 still spawns an instant stub in <=303ms. Induced 2x-core
+// storms push the real call to 3.5s-8s+ — beyond ANY walk cap under the
+// pre-#508 single-hang cost, so storm-time deny is unreachable by budget and
+// is a disclosed residual, not a tunable. Derivation: 1500ms per candidate
+// = 1.5x the worst ambient spike and ~16x ambient p50; 3000ms overall walk
+// cap = 43% under the measured 5.26s pre-#508 single-hang cost, and it binds
+// only when earlier candidates consumed full slices (all-starved walks
+// fail-open regardless). The git calls keep the 5s sh default: separate
 // constant, separate call sites.
-const GORTEX_CANDIDATE_TIMEOUT_MS = 500;
+const GORTEX_CANDIDATE_TIMEOUT_MS = 1500;
+const GORTEX_WALK_BUDGET_MS = 3000;
 const ALLOW = 0;
 const DENY = 2;
 
@@ -62,10 +71,13 @@ function looksLikeWorkspaceInfo(out) {
 }
 
 function gortexInfo(cwd) {
+  const walkStart = Date.now();
   for (const bin of GORTEX_CANDIDATES) {
+    const remaining = GORTEX_WALK_BUDGET_MS - (Date.now() - walkStart);
+    if (remaining <= 0) return null;
     const out = sh(bin, ["call", "workspace", "--arg", "operation=info"], {
       cwd,
-      timeout: GORTEX_CANDIDATE_TIMEOUT_MS,
+      timeout: Math.min(GORTEX_CANDIDATE_TIMEOUT_MS, remaining),
     });
     if (out !== null && looksLikeWorkspaceInfo(out)) return out;
   }

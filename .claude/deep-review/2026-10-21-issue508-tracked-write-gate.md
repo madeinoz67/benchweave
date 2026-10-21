@@ -242,3 +242,38 @@ unchanged. Decisions and pins:
   call sites). Pinned by the F4 wall test: two hanging candidates, total
   < 2500ms (the 1.5s walk cap plus <1s of measured host-dependent extras —
   the surviving real candidate, the git calls, node boot).
+
+## 13. Follow-up (2026-10-21) — verdict stability under load
+
+The fold's first F4 numbers traded latency for verdict stability: a 500ms
+per-candidate budget sits BELOW a measured ambient daemon spike (1021ms, load
+34-53), so daemon-contention windows flipped the deny to allow (observed
+in-suite once; the walk correctly fail-opens). Re-derived from measured load,
+same machine (10 cores, parallel agent lanes):
+
+- spawn latency (node execFileSync of an instant stub): ambient p50 7ms /
+  max 10ms; induced 6x-core storm (load 67) p50 57ms / p90 136ms / max 303ms.
+- real daemon call (the hook's own cost): ambient p50 93ms / worst spike
+  1021ms; induced 2x-core storm 3.5s with 16/20 censored at 8s; 6x-core
+  storm 20/20 censored at 8s.
+- Decision: **1500ms per candidate** (1.5x the worst ambient spike, ~16x the
+  ambient p50) and a **3000ms overall walk budget** (43% under the measured
+  5.26s pre-#508 single-hang cost; it binds only when earlier candidates
+  consumed full slices — an all-starved walk fail-opens regardless of a
+  third try). Budget above the worst INDUCED spike is arithmetically
+  impossible: the storm spike (>=8s) exceeds the pre-#508 hang cost itself.
+- Flip measurement (20 runs each, tracked primary payload, real daemon):
+  ambient load 76-208 — current 1500ms hook **20/20 deny, 0 flips**; the
+  shipped 500ms fold hook also 20/20 in that window (its instability was the
+  transient 1021ms-class spike, which 1500ms covers). Induced 20-burner
+  storm — current 1500ms hook **0/20 deny, 20 flips**; the PRE-#508 5s hook
+  **2/20 deny, 18 flips**. Plain statement of the residual: under a storm
+  that starves the daemon past seconds, the deny is unreachable at ANY
+  bounded budget tried, including the original 5s single-candidate code —
+  the gate's deny is best-effort under machine saturation, a property that
+  predates #508. This residual belongs in the PR body, not in a test retry.
+- beltRetry (the tests' one-shot load belt) stays, now self-announcing on
+  stderr when it fires; three consecutive suite runs after the re-derivation
+  fired it zero times (113/113 each) — no test depends on a retry on a quiet
+  machine. Its comment states what it does not prove: verdict stability
+  under load is the mechanism measurement above, not something a retry pins.

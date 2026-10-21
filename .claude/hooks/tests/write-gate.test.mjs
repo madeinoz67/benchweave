@@ -48,15 +48,18 @@ function writeExecutable(file, body) {
 }
 
 // One-shot load belt (the timing lane's gen-1 pattern, applied to the node
-// lane): this suite runs every hook-test file in parallel, and a synchronous
-// fork under that load can exceed the 500ms per-candidate budget on an
-// otherwise-instant stub — the mechanism's correct answer to a timed-out
-// candidate is fall-through, so a starved run can yield the opposite verdict
-// from a quiet host. Re-measure once on exactly the named load-noise
-// signature; the pinned property must hold on the re-measure.
-function beltRetry(run, isLoadNoise) {
+// lane): a starved run can yield the opposite verdict from a quiet host, so
+// re-measure once on exactly the named load-noise signature. What this does
+// NOT prove: verdict stability under load — that is a mechanism property,
+// measured in the record's verdict-stability section (per-candidate budget
+// derived from measured ambient spikes), not something a retry can pin. No
+// test here may NEED the retry on a quiet machine: the belt announces itself
+// on stderr when it fires, and a suite run with any announcement is a
+// finding about the environment, not a pass condition.
+function beltRetry(run, isLoadNoise, label) {
   const first = run();
   if (!isLoadNoise(first)) return first;
+  console.error(`[belt] retrying after load noise (${label})`);
   return run();
 }
 
@@ -135,6 +138,7 @@ test("GORTEX_BIN is honored: a 'does not track' stub allows a tracked primary fi
     const r = beltRetry(
       () => runHookRaw(payload, env),
       (x) => x.status === 2 && /GortexWriteGate/.test(x.stderr || ""),
+      "C4 allow-stub starved",
     );
     assert.equal(r.status, 0, `expected ALLOW with the stub honored; stderr: ${r.stderr}`);
     assert.doesNotMatch(r.stderr || "", /GortexWriteGate/);
@@ -159,12 +163,13 @@ test("F1 (deny pinned): output that is not workspace info is not an answer — a
   try {
     const env = { ...process.env, GORTEX_BIN: "/bin/echo", PATH: `${stubDir}:${process.env.PATH}` };
     const payload = JSON.stringify({ tool_input: { file_path: probe } });
-    // Load noise here: every candidate starved inside its 500ms budget, so
-    // the walk fail-opened with no gate message — allow-with-no-stderr is
-    // that signature.
+    // Load noise here: every candidate starved inside its per-candidate
+    // budget, so the walk fail-opened with no gate message —
+    // allow-with-no-stderr is that signature.
     const r = beltRetry(
       () => runHookRaw(payload, env),
       (x) => x.status === 0 && !/GortexWriteGate/.test(x.stderr || ""),
+      "F1 all candidates starved",
     );
     assert.equal(r.status, 2, `expected DENY once the garbage candidate fell through; stderr: ${r.stderr}`);
     assert.match(r.stderr || "", /GortexWriteGate/);
@@ -193,6 +198,7 @@ test("F3: a symlink at an untracked path reaches its target's verdict (realpath 
       beltRetry(
         () => runHookRaw(JSON.stringify({ tool_input: { file_path: filePath } }), env),
         (x) => x.status === 0 && !/GortexWriteGate/.test(x.stderr || ""),
+        "F3 all candidates starved",
       );
     const viaTarget = belted(target);
     const viaLink = belted(link);
@@ -205,13 +211,13 @@ test("F3: a symlink at an untracked path reaches its target's verdict (realpath 
   }
 });
 
-test("F4: the candidate walk is bounded — a hanging candidate costs its per-candidate budget, not the 5s sh timeout", () => {
-  // Budget: 500ms per gortex candidate. Why 500: the refute lane measured a
-  // healthy full-hook run at ~0.22s wall, so 500ms per candidate is over 2x
-  // the entire healthy run — generous for the real CLI, while bounding the
-  // 3-candidate walk at <=1.5s instead of the measured 5.36s (one hanging
-  // candidate) / ~10s (two). The git calls keep the 5s sh default: separate
-  // constant, separate call sites.
+test("F4: the candidate walk is bounded — hanging candidates cost the walk cap, not the 5s sh timeout", () => {
+  // Budget: 1500ms per candidate, 3000ms overall walk cap (the hook's
+  // constants carry the derivation — ambient spike 1021ms, fork-storm spawn
+  // <=303ms, storm-time daemon calls 3.5s+ unreachable by any cap under the
+  // 5.26s pre-#508 hang cost). Two hanging candidates consume the walk cap;
+  // later candidates are skipped by the budget, not consulted. The git calls
+  // keep the 5s sh default: separate constant, separate call sites.
   const primaryTop = primaryToplevel();
   const probe = join(primaryTop, "README.md");
   const stubDir = mkdtempSync(join(tmpdir(), "wg-f4-"));
@@ -228,13 +234,13 @@ test("F4: the candidate walk is bounded — a hanging candidate costs its per-ca
       return { r, wallMs: Date.now() - t0 };
     };
     // Load noise here: a wall past the ceiling (the fork pressure itself
-    // stretched the non-hanging parts). RED pre-fold measured 10340ms.
-    const { r, wallMs } = beltRetry(measure, (m) => m.wallMs >= 2500);
+    // stretched the non-hanging parts). RED pre-fold measured 10340ms (two
+    // hanging candidates at the 5s sh default).
+    const { r, wallMs } = beltRetry(measure, (m) => m.wallMs >= 4000, "F4 wall past ceiling");
     assert.ok(r.status === 0 || r.status === 2, `verdict should still be reached, got ${r.status}`);
-    // Assert ceiling 2500ms = the 1.5s walk cap plus <1s of host-dependent
-    // extras measured on the dev machine (the surviving real brew candidate
-    // ~0.2-0.6s, the git calls, node boot).
-    assert.ok(wallMs < 2500, `candidate walk took ${wallMs}ms; expected < 2500ms with two hanging candidates at 500ms each`);
+    // Assert ceiling 4000ms = the 3.0s walk cap plus ~1s of host-dependent
+    // extras (git calls, node boot) measured on the dev machine under load.
+    assert.ok(wallMs < 4000, `candidate walk took ${wallMs}ms; expected < 4000ms with two hanging candidates consuming the 3000ms walk cap`);
   } finally {
     rmSync(stubDir, { recursive: true, force: true });
   }
