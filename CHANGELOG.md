@@ -57,6 +57,8 @@ All notable changes to this project will be documented in this file.
 - Contain raises out of the protective transition
 - Fold the result processing into the protected region — the malformed-return twin
 - Second bounded fold — comparison-hostile status and hostile Reading subclasses
+- Narrow docs.yml Pages/OIDC grants to publish-docs job scope
+- Fold F1 — exclusion prover becomes exact conjunct equality
 
 ### Documentation
 
@@ -148,6 +150,7 @@ All notable changes to this project will be documented in this file.
 - Apply the designer's amendment — record path, title, tracker line, deferral homes
 - Record addendum — base-commit correction (lane B) and the fold-1 mechanism note
 - Addendum line for the second bounded fold — contained classes and the named residual
+- Design record — docs.yml Pages/OIDC grants narrow to job scope
 
 ### Features
 
