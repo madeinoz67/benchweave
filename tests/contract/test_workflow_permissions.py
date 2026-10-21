@@ -8,7 +8,12 @@ exactly the shapes the repository's root workflow files use and REFUSES
 anything else — a shape it cannot structure is a refusal naming ``path:line``,
 never a silent skip. Over-approximation is the safe direction throughout: an
 ``if:`` expression whose PR-exclusion cannot be proven counts the job as
-PR-reachable.
+PR-reachable. Exclusion is proven ONLY by exact conjunct equality — every
+top-level ``||`` alternative of an ``if:`` expression must be a ``&&``
+conjunction of the recognized forms, never substring containment (fold F1 of
+the review wave: the first shipped prover matched by substring and falsely
+excluded ``!(...)``-negated and parenthesised-disjunction guards, both of
+which are true on PRs).
 
 What this check does NOT catch (design §5, stated guard): write scopes other
 than ``pages``/``id-token`` on PR runs (``security-events`` has a legitimate
@@ -39,15 +44,17 @@ _PERMISSION_LINE = re.compile(r"^([a-z][a-z0-9-]*):\s*(read|write|none)$")
 _KEY_LINE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 # An ``if:`` expression PROVABLY excludes pull_request events only when every
-# top-level ``||`` alternative contains at least one of these conjuncts.
-# Everything else counts as reachable — a false "reachable" fails loudly and
-# gets reasoned about; a false "unreachable" would hide a grant.
+# top-level ``||`` alternative is a ``&&`` conjunction of these EXACT forms
+# (equality after whitespace normalization — never substring containment: a
+# form under negation or inside a nested disjunction proves nothing, fold F1).
+# Everything unprovable counts as reachable — a false "reachable" fails loudly
+# and gets reasoned about; a false "unreachable" would hide a grant.
 _RECOGNIZED_EXCLUSIONS = (
     "github.event_name == 'push'",
     "github.ref == 'refs/heads/main'",
     "github.event_name != 'pull_request'",
     "github.event_name == 'schedule'",
-    "startsWith(github.event.release.tag_name",
+    "startsWith(github.event.release.tag_name, 'ui-html-v')",
 )
 
 
@@ -80,6 +87,14 @@ _Entry = tuple[int, int, str]
 
 def _refusal(path: Path, lineno: int, detail: str) -> NoReturn:
     raise WorkflowRefusal(f"{path.name}: line {lineno}: {detail}")
+
+
+def _strip_outer_quotes(value: str) -> str:
+    """Strip ONE balanced outer quote pair (YAML-quoted ``if:`` scalars)."""
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+        return v[1:-1].strip()
+    return v
 
 
 def _strip_comment(line: str) -> str:
@@ -227,7 +242,7 @@ def _parse_jobs(path: Path, entries: list[_Entry], i: int) -> tuple[tuple[Job, .
             if not _KEY_LINE.match(bkey):
                 _refusal(path, body_lineno, f"unstructured job-body line: {body!r}")
             if bkey == "if":
-                if_expr = bvalue or None  # block-form if: cannot prove exclusion
+                if_expr = _strip_outer_quotes(bvalue) or None  # block form: unprovable
             elif bkey == "permissions":
                 permissions, j = _parse_permissions(path, entries, j)
                 continue
@@ -267,8 +282,10 @@ def _parse_workflows(directory: Path) -> list[Workflow]:
     return [_parse_workflow(p) for p in sorted(directory.glob("*.yml"))]
 
 
-def _split_top_level_or(expr: str) -> list[str]:
-    """Split on ``||`` at paren depth 0, outside quotes."""
+def _split_top_level(expr: str, operator: str) -> list[str]:
+    """Split ``expr`` on ``||``/``&&`` at paren depth 0, outside quotes."""
+    assert operator in ("||", "&&")
+    lead = operator[0]
     parts: list[str] = []
     current: list[str] = []
     depth = 0
@@ -289,7 +306,7 @@ def _split_top_level_or(expr: str) -> list[str]:
         elif ch == ")":
             depth -= 1
             current.append(ch)
-        elif ch == "|" and depth == 0 and expr.startswith("||", i):
+        elif ch == lead and depth == 0 and expr.startswith(operator, i):
             parts.append("".join(current))
             current = []
             i += 1
@@ -300,20 +317,39 @@ def _split_top_level_or(expr: str) -> list[str]:
     return parts
 
 
+def _provable_pr_exclusion(if_expr: str) -> bool:
+    """Exact conjunct analysis: every top-level ``||`` alternative must be a
+    ``&&`` conjunction of RECOGNIZED forms, each matched by EQUALITY after
+    whitespace normalization.
+
+    Substring containment is deliberately absent (fold F1): a recognized form
+    under negation (``!(...)``) or inside a nested (parenthesised) disjunction
+    never equals a recognized form — parentheses and ``!`` survive
+    normalization — so such guards leave the job PR-reachable, the safe
+    direction. The one parenthesised recognized form is the exact in-tree
+    release guard ``startsWith(github.event.release.tag_name, 'ui-html-v')``;
+    a different release-tag prefix in a future guard reads reachable until it
+    is added here (D3's exception register, not a silent pass).
+    """
+    for alternative in _split_top_level(if_expr, "||"):
+        for conjunct in _split_top_level(alternative, "&&"):
+            token = " ".join(conjunct.split())
+            if token not in _RECOGNIZED_EXCLUSIONS:
+                return False
+    return True
+
+
 def _pr_reachable(events: frozenset[str], if_expr: str | None) -> bool:
     """Over-approximate: PR-reachable unless exclusion is provable."""
     if "pull_request" not in events:
         return False
     if not if_expr:
         return True
-    alternatives = _split_top_level_or(if_expr)
-    return not all(any(excl in alt for excl in _RECOGNIZED_EXCLUSIONS) for alt in alternatives)
+    return not _provable_pr_exclusion(if_expr)
 
 
-def test_no_pr_reachable_job_holds_pages_or_oidc_write() -> None:
-    workflows = _parse_workflows(WORKFLOWS_DIR)
-    assert workflows, f"no workflow files under {WORKFLOWS_DIR} — census must not be empty"
-    census: list[str] = []
+def _rule_offenders(workflows: list[Workflow]) -> list[str]:
+    """The verdict: every PR-reachable job holding a pinned write scope."""
     offenders: list[str] = []
     for wf in workflows:
         for job in wf.jobs:
@@ -323,18 +359,31 @@ def test_no_pr_reachable_job_holds_pages_or_oidc_write() -> None:
                 effective, origin = job.permissions, "job-declared"
             else:
                 effective, origin = wf.permissions or {}, "inherited from the workflow block"
-            census.append(
-                f"{wf.path.name}/{job.id}: "
-                + (", ".join(f"{k}: {v}" for k, v in sorted(effective.items())) or "no block")
-            )
             for scope in PINNED_SCOPES:
                 if effective.get(scope) == "write":
                     offenders.append(
                         f"{wf.path.name}: job '{job.id}' holds {scope}: write ({origin})"
                     )
+    return offenders
+
+
+def test_no_pr_reachable_job_holds_pages_or_oidc_write() -> None:
+    workflows = _parse_workflows(WORKFLOWS_DIR)
+    assert workflows, f"no workflow files under {WORKFLOWS_DIR} — census must not be empty"
+    census: list[str] = []
+    for wf in workflows:
+        for job in wf.jobs:
+            if not _pr_reachable(wf.events, job.if_expr):
+                continue
+            effective = job.permissions if job.permissions is not None else wf.permissions or {}
+            census.append(
+                f"{wf.path.name}/{job.id}: "
+                + (", ".join(f"{k}: {v}" for k, v in sorted(effective.items())) or "no block")
+            )
     print(f"census: {len(workflows)} workflows, {len(census)} PR-reachable jobs")
     for line in census:
         print(f"  {line}")
+    offenders = _rule_offenders(workflows)
     assert not offenders, (
         "PR-reachable jobs holding a pinned write scope (issue #509):\n  "
         + "\n  ".join(offenders)
@@ -359,3 +408,56 @@ def test_reader_refuses_unstructured_permission_forms(tmp_path: Path) -> None:
             _parse_workflows(tmp_path)
         assert name in str(excinfo.value)
         assert "line" in str(excinfo.value)
+
+
+_HOSTILE_GUARDED = """\
+name: hostile
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  guarded:
+    runs-on: ubuntu-latest
+    if: {guard}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - run: echo ok
+"""
+
+
+def _hostile_offenders(tmp_path: Path, guard: str) -> list[str]:
+    """Offenders for one hostile workflow whose guarded job holds both scopes."""
+    (tmp_path / "hostile.yml").write_text(
+        _HOSTILE_GUARDED.format(guard=guard), encoding="utf-8"
+    )
+    return _rule_offenders(_parse_workflows(tmp_path))
+
+
+def test_negated_recognised_exclusion_keeps_job_reachable(tmp_path: Path) -> None:
+    """Fold F1: ``!(recognised)`` is TRUE on every PR — must stay reachable."""
+    guard = '"!(github.event_name == \'schedule\')"'
+    offenders = _hostile_offenders(tmp_path, guard)
+    assert any("'guarded'" in o and "pages: write" in o for o in offenders), offenders
+
+
+def test_parenthesised_disjunction_keeps_job_reachable(tmp_path: Path) -> None:
+    """Fold F1: a nested ``||`` group with one PR-true arm — must stay reachable."""
+    guard = '"(github.event_name == \'push\' || github.event_name == \'pull_request\')"'
+    offenders = _hostile_offenders(tmp_path, guard)
+    assert any("'guarded'" in o and "pages: write" in o for o in offenders), offenders
+
+
+@pytest.mark.parametrize(
+    "guard",
+    [
+        "github.event_name == 'push'",
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    ],
+    ids=["single-exact-form", "real-publish-docs-conjunction"],
+)
+def test_exact_recognised_exclusions_still_exclude(tmp_path: Path, guard: str) -> None:
+    """The honest positives: exact recognized forms DO prove the exclusion."""
+    assert _hostile_offenders(tmp_path, guard) == []

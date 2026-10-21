@@ -226,3 +226,34 @@ child-process calls inside `scripts/assemble_docs_site.py`; this slice moves per
 trivially. The two findings complement: #509 removes the capability grant from PR builds; #501
 bounds their resource consumption. #501's marker-watching port (its own acceptance shape, per its
 issue text) stays entirely in its slice.
+
+
+---
+
+## Addendum — 2026-10-21, review fold F1: the §5 prover wording overstated the mechanism
+
+The review wave's refute lane drove the shipped `_pr_reachable` directly and captured a
+false-green class. §5 calls the recognized forms "conjuncts", but the first implementation
+matched them by SUBSTRING containment — two shapes smuggled a PR-true guard past the rule:
+
+- `if: "!(github.event_name == 'schedule')"` — TRUE on every PR, yet read as excluded (the
+  recognized string appears under negation).
+- `if: "(github.event_name == 'push' || github.event_name == 'pull_request')"` — TRUE on
+  PRs, yet read as excluded (the splitter only splits depth-0 `||`, so the parenthesised
+  group was a single alternative containing a recognized string).
+
+Neither shape exists in the seven committed workflows at landing — the census is unchanged
+(7 workflows, 12 PR-reachable jobs) — but the guard exists to police future edits, and both
+shapes are one refactor away from a silent exemption. The fix, landed the same wave: a
+recognized form proves exclusion ONLY by exact conjunct equality — every top-level `||`
+alternative of the `if:` expression must be a `&&` conjunction of the recognized forms
+(after whitespace normalization); anything else — negation, nested disjunction,
+parenthesised groups, unrecognized predicates — leaves the job PR-reachable (over-
+approximation, structurally true now rather than aspirational). One consequence: the
+`startsWith(github.event.release.tag_name` member was truncated in §5's list and is now
+the exact in-tree form `startsWith(github.event.release.tag_name, 'ui-html-v')` — a
+different future release-tag prefix reads reachable until added (D3's exception register,
+not a silent pass). Both smuggle shapes are pinned as separate tests beside the honest
+positives (`github.event_name == 'push'` and the real publish-docs conjunction) in
+`tests/contract/test_workflow_permissions.py`; a neutralization run (prover reverted to
+substring containment) reddens exactly the two pins and nothing else.

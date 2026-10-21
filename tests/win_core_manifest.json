@@ -178,7 +178,7 @@
     },
     "tests/contract/test_workflow_permissions.py": {
       "core": 0,
-      "total": 2
+      "total": 6
     },
     "tests/contracts/test_architecture.py": {
       "core": 0,
