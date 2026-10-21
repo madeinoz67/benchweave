@@ -171,9 +171,11 @@ property, not a repository property: the repository declares pins, never vendors
 therefore cannot promise the refute runs a different model than the producing lane; where an
 installation resolves both pins to one model, the second pass's independence rests on its
 mandate and evidence standard, not its model. Where the installation has a genuinely
-different-vendor set of agents (the sibling Codex fleet under `.codex/agents/`), dispatching
-the refute there is the strongest available cross-vendor option — recommended where present,
-never a requirement every contributor can meet. Each refute report quotes the model string
+different-vendor set of agents (the sibling agent set where an installation has one — for
+example a Codex fleet under `.codex/agents/` on installs that carry it; that path is
+installation wiring, not tracked in this repository), dispatching the refute there is the
+strongest available cross-vendor option — recommended where present, never a requirement
+every contributor can meet. Each refute report quotes the model string
 its own installation reports: self-reported, an audit trail, not a gate. The two reviews
 are compared:
 - Both reach APPROVE with consistent evidence → APPROVE stands.
