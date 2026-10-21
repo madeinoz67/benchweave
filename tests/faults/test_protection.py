@@ -35,6 +35,7 @@ from benchweave.host.services import HostServices
 from benchweave.host.types import (
     DispatchState,
     ErrorCode,
+    OperationError,
     OperationRequest,
     OperationResult,
     OperationStatus,
@@ -158,6 +159,14 @@ class _FaultPsu:
         self.return_none_on_invoke_action: str | None = None
         #: Reads of output_voltage_v return None (same malformed-return class).
         self.return_none_on_reads = False
+        #: The invoke action whose result carries a comparison-hostile fake
+        #: status (the second fold's shape 1: the post-region ``!= "ok"``
+        #: escapes when the recorded status is a plugin object).
+        self.weird_ne_status_action: str | None = None
+        #: Reads of output_voltage_v return a Reading SUBCLASS whose .value
+        #: raises (the second fold's shape 2: the raise lands after the
+        #: isinstance gate, in the freshness derivation).
+        self.hostile_reading_on_reads = False
         #: A successful measure both tampers the voltage dataset (assertion
         #: failure) and arms the voltage fault (post-body violation).
         self.trip_after_measure = False
@@ -200,6 +209,22 @@ class _FaultPsu:
         ):
             return None  # type: ignore[return-value]  # malformed by design
         if (
+            self.weird_ne_status_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.weird_ne_status_action
+        ):
+            return OperationResult(
+                operation_id=request.operation_id,
+                verb=request.verb,
+                status=_FakeStatus(),  # type: ignore[arg-type]  # hostile by design
+                data=None,
+                error=OperationError(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="synthetic comparison-hostile status",
+                    dispatch_state=DispatchState.UNKNOWN,
+                ),
+            )
+        if (
             request.verb is OperationVerb.READ
             and request.arguments.get("parameter") == "output_voltage_v"
         ):
@@ -207,6 +232,20 @@ class _FaultPsu:
                 raise RuntimeError("synthetic plugin raise inside a signal read")
             if self.return_none_on_reads:
                 return None  # type: ignore[return-value]  # malformed by design
+            if self.hostile_reading_on_reads:
+                return OperationResult.ok(
+                    request.operation_id,
+                    request.verb,
+                    _HostileReading(
+                        parameter="output_voltage_v",
+                        value=0.0,
+                        unit="V",
+                        observed_at=self._now(),
+                        age_ms=0,
+                        quality=Quality.VALID,
+                        source=ReadingSource.DEVICE,
+                    ),
+                )
             index = self.read_index
             self.read_index += 1
             forced = self.force_voltage_v
@@ -282,6 +321,34 @@ class _FaultPsu:
                     for variable in dataset.get("variables", []):
                         if variable.get("id") == "voltage":
                             variable["values"] = [self.force_measure_voltage_v]
+
+
+class _WeirdNe:
+    """A comparison-hostile object: ``!=`` raises (the second fold's shape 1)."""
+
+    def __ne__(self, other: object) -> bool:
+        raise RuntimeError("synthetic hostile __ne__")
+
+
+class _FakeStatus:
+    """Pretends to be an OperationStatus whose ``.value`` is comparison-hostile."""
+
+    value: Any = _WeirdNe()
+
+
+class _HostileReading(Reading):
+    """A Reading subclass that passes the isinstance gate and raises on
+    ``.value`` READS (the second fold's shape 2). The setter exists only
+    so the frozen dataclass ``__init__`` can construct the instance; the
+    stashed value is unreachable behind the raising getter."""
+
+    @property
+    def value(self) -> Any:
+        raise RuntimeError("synthetic hostile Reading.value")
+
+    @value.setter
+    def value(self, raw: Any) -> None:
+        self.__dict__["value"] = raw  # never read back: the getter raises
 
 
 def _plugins(clock: TestClock) -> dict[str, DevicePlugin]:
@@ -1123,3 +1190,97 @@ def test_malformed_read_return_is_a_failed_read_not_an_escape() -> None:
     assert result.safe_state == "unknown"
     assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
     assert "fault-1" in result.reasons
+
+
+# --- issue #506 second fold: comparison-hostile and subclass shapes ----------------
+
+
+def test_weird_ne_status_is_coerced_inside_the_region_not_an_escape() -> None:
+    """Second fold, shape 1 (lane A): the loop's post-region comparison
+    ``record["status"] != "ok"`` must never touch a plugin object — a
+    result whose ``status.value`` is comparison-hostile raised ``__ne__``
+    there, outside the region, and escaped to the belt with the remaining
+    actions abandoned. The status is coerced to a plain string INSIDE the
+    region: the recorded status is the plugin's own claimed (garbage)
+    string, the reason-append fires, and the loop continues."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.weird_ne_status_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its result carries the comparison-hostile status
+            "id": "lying-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["lying-relay", "disable"]
+    assert result.actions[0]["status"] == "error"  # out-of-vocabulary -> plain error
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: synthetic comparison-hostile status"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action lying-relay: error" in result.reasons
+    # The verify conjunction — not the action failure — decides safety.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_hostile_reading_subclass_is_a_failed_read_not_an_escape() -> None:
+    """Second fold, shape 2 (lane A), engine-level: a Reading SUBCLASS
+    that passes the isinstance gate and raises on ``.value`` access used
+    to raise in the freshness derivation, outside the region, escaping
+    the verify loop to the belt. Contained: the Reading is rebuilt as a
+    plain Reading inside the region, so a hostile subclass can raise
+    only where a raise is a failed read — invalid signal, budget lapse,
+    ``unknown``."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.hostile_reading_on_reads = True  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_read_signal_values_hostile_reading_subclass_is_invalid() -> None:
+    """Second fold, shape 2, the direct-function arm: read_signal_values
+    itself must treat a hostile Reading subclass as a failed read — the
+    signal is invalid, its sibling stays fresh, and nothing escapes the
+    function."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    fault.hostile_reading_on_reads = True
+    plugins["psu"] = fault
+    docs = _admit()
+
+    snapshot = read_signal_values(
+        plugins,
+        docs.bench,
+        deadline_ns=clock.now_ns() + 1_000_000,
+        wall_now=clock.now_iso,
+    )
+
+    assert snapshot["dut-voltage"].valid is False
+    assert snapshot["dut-current"].valid is True  # the unforced signal stays fresh

@@ -49,6 +49,14 @@ from benchweave.host.types import (
 SAFE_VERIFIED = "verified"
 SAFE_UNKNOWN = "unknown"
 
+#: The closed status vocabulary an action record may carry — derived from
+#: the enum, so the vocabulary cannot drift from it. A plugin whose claimed
+#: status string falls outside it is recorded as a plain ``error``: the run
+#: record's reasons must never carry a plugin object's nondeterministic
+#: text (a memory address) — reasons are record evidence (issue #506,
+#: second fold).
+_STATUS_TEXTS = frozenset(member.value for member in OperationStatus)
+
 _DEFAULT_POLL_MS = 10
 
 
@@ -146,16 +154,31 @@ def read_signal_values(
             try:
                 result = plugin.dispatch(request, deadline_ns=deadline_ns)
                 if result.status is OperationStatus.OK and isinstance(result.data, Reading):
-                    reading = result.data
+                    # Rebuild a PLAIN Reading inside the region (the second
+                    # fold's shape 2): touching every field here means a
+                    # hostile subclass can raise only where a raise is a
+                    # failed read, and the derivation below only ever sees
+                    # the plain class's own attributes.
+                    data = result.data
+                    reading = Reading(
+                        parameter=data.parameter,
+                        value=data.value,
+                        unit=data.unit,
+                        observed_at=data.observed_at,
+                        age_ms=data.age_ms,
+                        quality=data.quality,
+                        source=data.source,
+                    )
             except Exception:
-                # A raising OR malformed-returning read is a failed read
-                # (issue #506, the :143 half; the fold wave moved the
-                # result check INSIDE the region): the reading stays None,
-                # the signal is invalid downstream, and the poll loop
-                # continues — one derivation covering the verify loop's
-                # reads and the monitor tick's. Exception-width like
-                # run_body: a BaseException still propagates to the
-                # coordinator's protection belt.
+                # A raising, malformed-returning or hostile-subclass read
+                # is a failed read (issue #506, the :143 half; the fold
+                # waves moved the result check and the Reading rebuild
+                # INSIDE the region): the reading stays None, the signal
+                # is invalid downstream, and the poll loop continues —
+                # one derivation covering the verify loop's reads and the
+                # monitor tick's. Exception-width like run_body: a
+                # BaseException still propagates to the coordinator's
+                # protection belt.
                 reading = None
         now = _parse_wall(wall_now() if callable(wall_now) else wall_now)
         value: float | None = None
@@ -299,7 +322,17 @@ class ProtectionEngine:
             else:
                 try:
                     result = plugin.dispatch(request, deadline_ns=deadline_ns)
-                    record["status"] = result.status.value
+                    # str() coerces INSIDE the region (the second fold's
+                    # shape 1) so the loop's post-region ``!= "ok"``
+                    # comparison can never touch a plugin object — a
+                    # comparison-hostile status value would raise there,
+                    # outside containment. The vocabulary check then keeps
+                    # the recorded status assertable evidence: a claimed
+                    # status outside the enum's texts is a plain ``error``.
+                    status_text = str(result.status.value)
+                    record["status"] = (
+                        status_text if status_text in _STATUS_TEXTS else "error"
+                    )
                     if result.status is not OperationStatus.OK and result.error is not None:
                         record["error"] = (
                             f"{result.error.code.value}: {result.error.message}"
