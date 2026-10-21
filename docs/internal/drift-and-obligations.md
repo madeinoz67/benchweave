@@ -216,15 +216,18 @@ and remain the reviewer's job.
     frozen historical evidence and are not regenerated; plugin-ui's reports are train
     records, not family members.
 
-14. **An agent tool-grant change** (`.claude/agents/*.md` `tools:`/`disallowedTools:`
-    frontmatter) → re-extract every sibling agent's frontmatter and diff the effective
-    grant sets, so any exception is visible against the standing posture; document the
-    exception in the agent's own file (prose, not frontmatter alone — the frontmatter
-    says what is granted, the prose says what enforces it); name the reference set
-    (issue #74's deliberate exclusions) in the commit message; keep the frontmatter
-    serialization consistent across the seven files (comma-separated scalar lists, not
-    JSON arrays). Second surface arrival here in as many days (#110, then #112) — the
-    row lands per obligation 12's own principle.
+14. **An agent tool-grant or model-pin change** (`.claude/agents/*.md`
+    `tools:`/`disallowedTools:`/`model:` frontmatter) → re-extract every sibling agent's
+    frontmatter and diff the effective grant sets, so any exception is visible against the
+    standing posture; document the exception in the agent's own file (prose, not
+    frontmatter alone — the frontmatter says what is granted, the prose says what enforces
+    it); name the reference set (issue #74's deliberate exclusions) in the commit message;
+    keep the frontmatter serialization consistent across every agent file (comma-separated
+    scalar lists, not JSON arrays; eight files at #519 — this row's earlier "seven" was
+    stale). A `model:` change re-diffs every agent file's pin the same way (#519: the repo
+    declares model pins, never vendors — `tests/contract/test_agent_model_pins.py` pins
+    the declaration completeness). Second surface arrival here in as many days (#110, then
+    #112) — the row lands per obligation 12's own principle.
 
 15. **The transport-provider lane** (OTDP 0.2.2's provider declaration: corpus schema
     and prose in this repository, offline conformance in `packages/sdk`, gateway
