@@ -42,23 +42,31 @@ def _rewrite(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any]]) -> 
 
 
 def test_the_retrofit_row_is_exactly_the_evidenced_set() -> None:
-    """Two rows: execution 0.2.0 requiring OTDP 0.2.x and adapter API 1.1
-    (PR #201's prose), and the plugin-ui-class-reference 0.2.0 admission row
-    naming the family's plugin-ui floor (the 2026-10-16 L5 design record;
-    the row amends in place per the RC-5 amendment the record §3 names).
-    Every other standard's absence is the recorded honest negative carried
-    in the file's note."""
+    """Three rows: execution 0.2.0 requiring OTDP 0.2.x and adapter API 1.1
+    (PR #201's prose), and TWO plugin-ui-class-reference rows naming the
+    family's plugin-ui floor — the 0.2.0 admission (the 2026-10-16 L5
+    design record) retained beside the 0.3.0 row (the 2026-10-18 L11
+    record; the refute fold's F3 ruling: a served pin never loses its
+    constraint, so a bump ADDS its row instead of amending the
+    predecessor's away — the loader admits both, each firing for its own
+    resolved pin). Every other standard's absence is the recorded honest
+    negative carried in the file's note."""
     rows = load_cross_constraints(ROOT)
     assert [(row.standard, row.version) for row in rows] == [
         ("execution", "0.2.0"),
         ("plugin-ui-class-reference", "0.2.0"),
+        ("plugin-ui-class-reference", "0.3.0"),
     ]
     row = rows[0]
     assert row.requires == {"otdp": ">=0.2.0,<0.3.0", "adapter_api": "1.1"}
     assert "PR #201" in row.evidence
-    admission = rows[1]
-    assert admission.requires == {"plugin-ui": ">=0.4.0,<0.5.0"}
-    assert "2026-10-16-classref-l5-plugin-ui-0-4-0-design.md" in admission.evidence
+    by_version = {r.version: r for r in rows[1:]}
+    for version, record in (
+        ("0.2.0", "2026-10-16-classref-l5-plugin-ui-0-4-0-design.md"),
+        ("0.3.0", "2026-10-18-classref-l11-dc-psu-design.md"),
+    ):
+        assert by_version[version].requires == {"plugin-ui": ">=0.4.0,<0.5.0"}
+        assert record in by_version[version].evidence
     note = json.loads(CROSS.read_bytes())["note"]
     assert "plugin-ui" in note and "deliberate" in note
 

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<title>BenchWeave mock — Function generator (class-function_generator)</title>
+<style>
+.mock-theme { padding:18px; margin-bottom:20px; background:var(--bw-canvas); color:var(--bw-text); }
+/* bw-shipped:tokens — embedded from packages/ui-html assets (drift-guarded) */
+:root {
+  --bw-space-1: 0.25rem;
+  --bw-space-2: 0.5rem;
+  --bw-space-3: 0.75rem;
+  --bw-space-4: 1rem;
+  --bw-space-5: 1.5rem;
+  --bw-space-6: 2rem;
+  --bw-radius-control: 0.5rem;
+  --bw-radius-panel: 0.875rem;
+  --bw-font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bw-font-data: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --bw-shadow-raised: 0.5rem 0.625rem 1.5rem var(--bw-shadow-dark), -0.35rem -0.35rem 1rem var(--bw-shadow-light);
+  --bw-shadow-recessed: inset 0.25rem 0.25rem 0.625rem var(--bw-shadow-dark), inset -0.2rem -0.2rem 0.5rem var(--bw-shadow-light);
+  --bw-focus-ring: 0 0 0 0.2rem color-mix(in srgb, var(--bw-focus), transparent 55%);
+  --bw-transition-fast: 120ms ease;
+}
+/* /bw-shipped:tokens */
+/* bw-shipped:themes */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bw-canvas: #e4ebef;
+  --bw-surface: #f5f8f9;
+  --bw-surface-recessed: #dce5ea;
+  --bw-text: #17242c;
+  --bw-text-muted: #5b6a73;
+  --bw-border: #c3cfd5;
+  --bw-accent: #0b7181;
+  --bw-accent-contrast: #ffffff;
+  --bw-focus: #087f8c;
+  --bw-shadow-dark: #b9c5cc;
+  --bw-shadow-light: #ffffff;
+  --bw-advisory: #2476b8;
+  --bw-warning: #a96608;
+  --bw-critical: #b63830;
+  --bw-trip: #a92858;
+  --bw-success: #177158;
+  --bw-limiting: #274076;
+  --bw-series-1: #253421;
+  --bw-series-2: #8e7588;
+  --bw-series-3: #2f3300;
+  --bw-series-4: #00379d;
+  --bw-series-5: #7e002d;
+  --bw-series-6: #746084;
+  --bw-series-7: #5a1538;
+  --bw-series-8: #183058;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bw-canvas: #19252c;
+  --bw-surface: #26363f;
+  --bw-surface-recessed: #101a20;
+  --bw-text: #eef5f7;
+  --bw-text-muted: #aebbc2;
+  --bw-border: #40515b;
+  --bw-accent: #42cee2;
+  --bw-accent-contrast: #07161a;
+  --bw-focus: #59d9eb;
+  --bw-shadow-dark: #0c1317;
+  --bw-shadow-light: #354852;
+  --bw-advisory: #62aee8;
+  --bw-warning: #ffb342;
+  --bw-critical: #ff6d63;
+  --bw-trip: #ff5d91;
+  --bw-success: #67d8b2;
+  --bw-limiting: #5f9500;
+  --bw-series-1: #00744a;
+  --bw-series-2: #e3d7ff;
+  --bw-series-3: #567200;
+  --bw-series-4: #805e71;
+  --bw-series-5: #007df3;
+  --bw-series-6: #ae686e;
+  --bw-series-7: #755d9a;
+  --bw-series-8: #7d8f00;
+}
+/* /bw-shipped:themes */
+/* bw-shipped:globals */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+  font-family: var(--bw-font-ui);
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 0.125rem solid var(--bw-focus);
+  outline-offset: 0.125rem;
+  box-shadow: var(--bw-focus-ring);
+}
+
+.bw-story-canvas {
+  min-height: 100vh;
+  padding: var(--bw-space-5);
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+}
+
+.bw-data {
+  font-family: var(--bw-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+/* /bw-shipped:globals */
+
+
+    /* The frame convention (principal-set, 2026-10-19): each theme block
+       renders as a COMPLETE page — banner, ground and margins belong to
+       the theme they frame. body owns no theme and must not contradict
+       either block. */
+    html { background: transparent; }
+    body { margin: 0; padding: 0; background: transparent; }
+    .mock-theme { max-width: 1280px; margin: 0 auto 28px; padding: 20px 24px 0; }
+    .mock-banner { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border:1px solid var(--bw-border); border-radius:10px; background:color-mix(in srgb, var(--bw-warning) 10%, var(--bw-surface)); margin-bottom:14px; }
+    .mock-banner p { margin:0; font:700 .62rem ui-monospace,monospace; letter-spacing:.12em; color:var(--bw-text-muted); }
+    .mock-banner p:first-child { color:var(--bw-warning); }
+    .topbar,.footer { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--bw-border); font-size:.72rem; letter-spacing:.08em; }
+    .footer { border:0; border-top:1px solid var(--bw-border); color:var(--bw-text-muted); margin:18px -24px 0; padding:14px 24px; }
+    .status { color:var(--bw-success); font-family:ui-monospace,monospace; }
+    .content { padding:18px; }
+    .title-row { display:flex; justify-content:space-between; gap:12px; align-items:end; }
+    .eyebrow { color:var(--bw-text-muted); font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    h2 { margin:4px 0 0; font-size:1.25rem; }
+    h3 { margin:0 0 10px; font-size:.78rem; letter-spacing:.08em; color:var(--bw-text-muted); text-transform:uppercase; }
+    .context { margin:6px 0 0; color:var(--bw-text-muted); font:.66rem ui-monospace,monospace; letter-spacing:.06em; }
+    button { border:1px solid var(--bw-border); border-radius:9px; padding:8px 12px; color:var(--bw-text); background:linear-gradient(145deg,var(--bw-surface),var(--bw-canvas)); box-shadow:0 4px 8px #0003,inset 0 1px #fff2; font-weight:700; }
+    .card { position:relative; min-width:0; padding:13px; border:1px solid var(--bw-border); border-radius:12px; background:linear-gradient(145deg,var(--bw-surface),var(--bw-canvas)); box-shadow:var(--bw-shadow-raised); }
+    .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:16px; }
+    .fncard .fn-label { color:var(--bw-text-muted); font-size:.64rem; font-weight:800; letter-spacing:.1em; }
+    .fncard .fn-value { margin:7px 0 4px; font:700 clamp(1rem,2vw,1.3rem) ui-monospace,monospace; }
+    .fncard .fn-state { font:.66rem ui-monospace,monospace; color:var(--bw-success); }
+    .fncard .fn-state.off { color:var(--bw-text-muted); }
+    .alert { margin-top:16px; padding:12px 14px; border:1px solid var(--bw-warning); border-radius:11px; background:color-mix(in srgb,var(--bw-warning) 10%,var(--bw-surface)); box-shadow:0 0 20px color-mix(in srgb,var(--bw-warning) 22%,transparent); }
+    .alert strong { color:var(--bw-warning); }
+    .alert p { margin:4px 0 0; font-size:.82rem; }
+    .lower { display:grid; grid-template-columns:5fr 7fr; gap:12px; margin-top:16px; align-items:start; }
+    .settings { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; overflow:hidden; border-radius:10px; font-size:.73rem; }
+    th,td { padding:8px 10px; border-bottom:1px solid var(--bw-border); text-align:left; }
+    th { color:var(--bw-text-muted); font-size:.61rem; letter-spacing:.08em; }
+    td:first-child { font-family:ui-monospace,monospace; }
+    td:last-child { color:var(--bw-text-muted); }
+    .plot { padding:13px; border:1px solid var(--bw-border); border-radius:12px; background:var(--bw-surface-recessed); box-shadow:var(--bw-shadow-recessed); }
+    .plot-head { display:flex; justify-content:space-between; color:var(--bw-text-muted); font:.63rem ui-monospace,monospace; }
+    svg { display:block; width:100%; height:150px; margin-top:8px; }
+    .acq { margin-top:8px; color:var(--bw-text-muted); font:.64rem ui-monospace,monospace; letter-spacing:.06em; }
+    .stage-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+    .preset-line { margin:7px 0 4px; font:700 1rem ui-monospace,monospace; }
+    .staged { display:block; color:var(--bw-warning); font:.65rem ui-monospace,monospace; letter-spacing:.08em; }
+    .armed-line { margin:7px 0 6px; font:.7rem ui-monospace,monospace; color:var(--bw-text); }
+    .ungated { margin-top:8px; font:.7rem ui-monospace,monospace; color:var(--bw-text-muted); }
+    @media (max-width:720px) { .mock-theme{margin:0 0 20px;padding:14px 14px 0} .footer{margin:18px -14px 0;padding:14px} .title-row{align-items:start} .topbar{align-items:start;gap:10px} .status{text-align:right} .cards,.lower,.stage-row{grid-template-columns:1fr} }
+
+    </style>
+</head>
+<body>
+<section class="mock-theme" data-theme="light" aria-label="Light theme mock-up">
+<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.3.1</p></div>
+<div class="topbar"><strong>BENCHWEAVE</strong><span class="status">BENCH A · CONNECTED</span></div>
+      <div class="content">
+        <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>Function generator · FGEN-01</h2></div><button>Controls</button></div>
+        <p class="context">2 source channels · arbitrary-waveform capable · 25 MHz maximum · uploaded waveforms 16 MS</p>
+        <div class="cards">
+          <article class="fncard card"><span class="fn-label">REFERENCE CHANNEL 1 · SINE</span><div class="fn-value">1 kHz · 2.5 Vpp · +125 mV</div><span class="fn-state">50 Ω LOAD · OUTPUT ON</span></article>
+          <article class="fncard card"><span class="fn-label">REFERENCE CHANNEL 2 · SQUARE</span><div class="fn-value">10 kHz · 5 Vpp · 25% duty</div><span class="fn-state off">50 Ω LOAD · OUTPUT OFF</span></article>
+        </div>
+        <aside class="alert bw-alert-bubble"><strong>△ Load convention</strong><p>voltage is specified at the declared 50 Ω load; high-impedance operation changes the delivered amplitude · FGEN-01</p></aside>
+        <div class="lower">
+          <section class="settings card"><h3>Settings</h3>
+            <table class="settings-table bw-data-table"><thead><tr><th>Field</th><th>Kind</th><th>Notes</th></tr></thead><tbody>
+              <tr><td>function</td><td>selection</td><td>—</td></tr>
+              <tr><td>frequency_hz</td><td>numeric</td><td>—</td></tr>
+              <tr><td>amplitude_vpp</td><td>numeric</td><td>—</td></tr>
+              <tr><td>offset_v</td><td>numeric</td><td>—</td></tr>
+              <tr><td>phase_deg</td><td>numeric</td><td>—</td></tr>
+              <tr><td>load_ohm</td><td>numeric</td><td>—</td></tr>
+              <tr><td>duty_cycle</td><td>numeric</td><td>required when function is square or pulse</td></tr>
+              <tr><td>waveform_id</td><td>text</td><td>required when function is arbitrary</td></tr>
+            </tbody></table>
+          </section>
+          <section class="plot waveform-preview"><div class="plot-head"><span>PREVIEW · CONFIGURED OUTPUT</span><span>— SINE CH1&nbsp;&nbsp; -- SQUARE CH2</span></div>
+            <svg viewBox="0 0 460 150" role="img" aria-label="Painted preview of the two configured output waveforms"><defs><pattern id="fgl" width="46" height="30" patternUnits="userSpaceOnUse"><path d="M46 0H0V30" fill="none" stroke="#bdcbd2" stroke-opacity="0.35"/></pattern></defs><rect width="460" height="150" fill="none"/><rect width="460" height="150" fill="url(#fgl)"/><path d="M0 82C30 30 60 30 90 82S150 134 180 82 240 30 270 82 330 134 360 82 420 30 450 82" fill="none" stroke="#147e90" stroke-width="2.5"/><path d="M0 58H45V106H135V58H225V106H315V58H405V106H460" fill="none" stroke="#a96e10" stroke-width="2" stroke-dasharray="8 5"/></svg>
+            <div class="acq">Preview joins the effective configuration · 1 kHz / 10 kHz · illustrative</div>
+          </section>
+        </div>
+        <div class="stage-row">
+          <section class="preset-card card"><span class="eyebrow">Preset</span><div class="preset-line">FUNCTION · SINE / 1 kHz / 2.5 Vpp</div><span class="staged">PRESET · APPLY REQUIRED</span></section>
+          <section class="output-control card"><span class="eyebrow">Output</span>
+            <div class="armed-line">ENABLE · REFERENCE CHANNEL 1 · EFFECT: OUTPUT ON AT THE STAGED CONFIGURATION</div>
+            <span class="staged">STAGED · CONFIRM REQUIRED</span>
+            <div class="ungated">DISABLE · REFERENCE CHANNEL 1 · ONE ACTION · NO CONFIRMATION</div>
+          </section>
+        </div>
+      </div>
+      <div class="footer"><span>LIGHT THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
+</section>
+<section class="mock-theme" data-theme="dark" aria-label="Dark theme mock-up">
+<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.3.1</p></div>
+<div class="topbar"><strong>BENCHWEAVE</strong><span class="status">BENCH A · CONNECTED</span></div>
+      <div class="content">
+        <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>Function generator · FGEN-01</h2></div><button>Controls</button></div>
+        <p class="context">2 source channels · arbitrary-waveform capable · 25 MHz maximum · uploaded waveforms 16 MS</p>
+        <div class="cards">
+          <article class="fncard card"><span class="fn-label">REFERENCE CHANNEL 1 · SINE</span><div class="fn-value">1 kHz · 2.5 Vpp · +125 mV</div><span class="fn-state">50 Ω LOAD · OUTPUT ON</span></article>
+          <article class="fncard card"><span class="fn-label">REFERENCE CHANNEL 2 · SQUARE</span><div class="fn-value">10 kHz · 5 Vpp · 25% duty</div><span class="fn-state off">50 Ω LOAD · OUTPUT OFF</span></article>
+        </div>
+        <aside class="alert bw-alert-bubble"><strong>△ Load convention</strong><p>voltage is specified at the declared 50 Ω load; high-impedance operation changes the delivered amplitude · FGEN-01</p></aside>
+        <div class="lower">
+          <section class="settings card"><h3>Settings</h3>
+            <table class="settings-table bw-data-table"><thead><tr><th>Field</th><th>Kind</th><th>Notes</th></tr></thead><tbody>
+              <tr><td>function</td><td>selection</td><td>—</td></tr>
+              <tr><td>frequency_hz</td><td>numeric</td><td>—</td></tr>
+              <tr><td>amplitude_vpp</td><td>numeric</td><td>—</td></tr>
+              <tr><td>offset_v</td><td>numeric</td><td>—</td></tr>
+              <tr><td>phase_deg</td><td>numeric</td><td>—</td></tr>
+              <tr><td>load_ohm</td><td>numeric</td><td>—</td></tr>
+              <tr><td>duty_cycle</td><td>numeric</td><td>required when function is square or pulse</td></tr>
+              <tr><td>waveform_id</td><td>text</td><td>required when function is arbitrary</td></tr>
+            </tbody></table>
+          </section>
+          <section class="plot waveform-preview"><div class="plot-head"><span>PREVIEW · CONFIGURED OUTPUT</span><span>— SINE CH1&nbsp;&nbsp; -- SQUARE CH2</span></div>
+            <svg viewBox="0 0 460 150" role="img" aria-label="Painted preview of the two configured output waveforms"><defs><pattern id="fgd" width="46" height="30" patternUnits="userSpaceOnUse"><path d="M46 0H0V30" fill="none" stroke="#293a44" stroke-opacity="0.35"/></pattern></defs><rect width="460" height="150" fill="none"/><rect width="460" height="150" fill="url(#fgd)"/><path d="M0 82C30 30 60 30 90 82S150 134 180 82 240 30 270 82 330 134 360 82 420 30 450 82" fill="none" stroke="#42cee2" stroke-width="2.5"/><path d="M0 58H45V106H135V58H225V106H315V58H405V106H460" fill="none" stroke="#ffc15a" stroke-width="2" stroke-dasharray="8 5"/></svg>
+            <div class="acq">Preview joins the effective configuration · 1 kHz / 10 kHz · illustrative</div>
+          </section>
+        </div>
+        <div class="stage-row">
+          <section class="preset-card card"><span class="eyebrow">Preset</span><div class="preset-line">FUNCTION · SINE / 1 kHz / 2.5 Vpp</div><span class="staged">PRESET · APPLY REQUIRED</span></section>
+          <section class="output-control card"><span class="eyebrow">Output</span>
+            <div class="armed-line">ENABLE · REFERENCE CHANNEL 1 · EFFECT: OUTPUT ON AT THE STAGED CONFIGURATION</div>
+            <span class="staged">STAGED · CONFIRM REQUIRED</span>
+            <div class="ungated">DISABLE · REFERENCE CHANNEL 1 · ONE ACTION · NO CONFIRMATION</div>
+          </section>
+        </div>
+      </div>
+      <div class="footer"><span>DARK THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
+</section>
+</body>
+</html>

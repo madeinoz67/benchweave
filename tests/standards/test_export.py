@@ -113,6 +113,7 @@ def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
         ("plugin-ui", "0.4.0"),
         ("plugin-ui-class-reference", "0.1.0"),
         ("plugin-ui-class-reference", "0.2.0"),
+        ("plugin-ui-class-reference", "0.3.0"),
         ("plugin-ui-preview", "0.1.1"),
         ("plugin-ui-preview", "0.2.0"),
     }

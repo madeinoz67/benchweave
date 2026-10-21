@@ -6,9 +6,9 @@ severity cells, §D.1 wording cells), so the library cannot drift from the
 contract without the gate's own rows reding first.
 
 The export writes a static tree — plain rendered HTML files, no server:
-``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; sixteen pages
-(one per §E.1 component + one refusal page + one class-reference capture
-page) × two themes; every page root
+``patterns/<theme>/<page>.html`` plus ``patterns/index.html``; nineteen
+pages (one per §E.1 component + one refusal page + the three class-reference
+pages) × two themes; every page root
 carries ``data-bw-pattern-library``. Screenshots (UR-13) are captured into
 the same tree by the browser lane (slice 4). Styling inlines the REAL token
 CSS read through G1a's path constants (one mirror, no copy) and the export
@@ -353,6 +353,128 @@ def _build_patterns() -> tuple[PatternEntry, ...]:
         )
     )
 
+    # The dc_psu class page (L11 of the class sweep; gateway issue #463,
+    # design record 2026-10-18): the class's output-page composition —
+    # readings, trend, table, alert — rendered from the committed
+    # reference/descriptor expansion (classref.py — host composition of
+    # the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-dc_psu",
+            fixture_id="output",
+            kind="class-page",
+            page="class-output",
+            render=classref.render_output_page,
+        )
+    )
+
+    # The dmm class page (L12 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the observation-pure class's
+    # readings-page composition — readings, trend, table, alert —
+    # rendered from the committed reference/descriptor expansion
+    # (classref.py — host composition of the §E.1 partials, no renderer
+    # change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-dmm",
+            fixture_id="readings",
+            kind="class-page",
+            page="class-readings",
+            render=classref.render_dmm_readings_page,
+        )
+    )
+
+    # The oscilloscope class page (L13 of the class sweep; gateway issue
+    # #463, design record 2026-10-19): the capture class's
+    # capture-page composition — the waveform canvas and the run panel —
+    # rendered from the committed reference/descriptor expansion
+    # (classref.py — host composition of the §E.1 partials, no renderer
+    # change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-oscilloscope",
+            fixture_id="capture",
+            kind="class-page",
+            page="class-waveform",
+            render=classref.render_oscilloscope_capture_page,
+        )
+    )
+
+    # The function_generator class page (L14 of the class sweep; gateway
+    # issue #463, design record 2026-10-19): the pure-source class's
+    # configuration-page composition — the per-channel function cards,
+    # the load-convention alert, the settings table, the waveform
+    # preview and the preset/staged-output idioms — rendered from the
+    # committed reference/descriptor expansion (classref.py — host
+    # composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-function_generator",
+            fixture_id="configuration",
+            kind="class-page",
+            page="class-configuration",
+            render=classref.render_function_generator_configuration_page,
+        )
+    )
+
+    # The electronic_load class page (L15 of the class sweep; gateway
+    # issue #463, design record 2026-10-19): the sweep's first
+    # energy-ADMITTING class — the input-page composition, dc_psu's
+    # mirror over sink-role channels (one tile per channel/quantity
+    # pair, the sinking-margin alert, the trend, the table) — rendered
+    # from the committed reference/descriptor expansion (classref.py —
+    # host composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-electronic_load",
+            fixture_id="input",
+            kind="class-page",
+            page="class-input",
+            render=classref.render_electronic_load_input_page,
+        )
+    )
+
+    # The smu class page (L16 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the PSU's shape over a third channel
+    # role — the output-page composition (one tile per
+    # channel/quantity pair of the declared source_measure channels,
+    # the compliance-active alert, the trend, the table), with the
+    # profile's five-action sweep block DEFERRED BY NAME (RC-L16-1 —
+    # no run panel, no second plot; the declared sweep actions surface
+    # via Device features) — rendered from the committed
+    # reference/descriptor expansion (classref.py — host composition
+    # of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-smu",
+            fixture_id="readings",
+            kind="class-page",
+            page="class-smu",
+            render=classref.render_smu_output_page,
+        )
+    )
+
+    # The daq class page (L17 of the class sweep; gateway issue #463,
+    # design record 2026-10-19): the second capture class — the
+    # oscilloscope's geometry with engineering-unit substance —
+    # the capture-page composition (one waveform plot over the
+    # capture slot with one trace per (channel, quantity) of the
+    # six-channel derived fixture — the real consumer's channel
+    # count, its identity nowhere; the run panel's arm staging and
+    # the three run buttons, the optional trigger bound by
+    # when_declared; the buffer-overflow alert) — rendered from the
+    # committed reference/descriptor expansion (classref.py — host
+    # composition of the §E.1 partials, no renderer change).
+    entries.append(
+        PatternEntry(
+            row_id="plugin-ui-class-reference::class-daq",
+            fixture_id="capture",
+            kind="class-page",
+            page="class-daq",
+            render=classref.render_daq_capture_page,
+        )
+    )
+
     return tuple(entries)
 
 
@@ -379,16 +501,30 @@ _PAGE_TITLES: dict[str, str] = {
     "confirm-action": "Confirm action",
     "refusals": "Refusals",
     "class-capture": "Logic analyser capture (class reference)",
+    "class-configuration": "Function generator configuration (class reference)",
+    "class-daq": "Data acquisition capture (class reference)",
+    "class-input": "Electronic load input (class reference)",
+    "class-output": "DC power supply output (class reference)",
+    "class-readings": "Digital multimeter readings (class reference)",
+    "class-smu": "Source-measure unit output (class reference)",
+    "class-waveform": "Oscilloscope capture (class reference)",
 }
 
 
 def pages() -> tuple[str, ...]:
     """The library's page slugs: one per §E.1 component plus the refusal
-    page plus the class-reference capture page (16), the components in
-    §E.1's own order."""
+    page plus the class-reference pages (five classes and counting),
+    the components in §E.1's own order."""
     ordered = [key for key in _keys("e-1-components")]
     ordered.append("refusals")
     ordered.append("class-capture")
+    ordered.append("class-configuration")
+    ordered.append("class-daq")
+    ordered.append("class-input")
+    ordered.append("class-output")
+    ordered.append("class-readings")
+    ordered.append("class-smu")
+    ordered.append("class-waveform")
     return tuple(ordered)
 
 

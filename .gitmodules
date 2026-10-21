@@ -5,4 +5,4 @@
 	# tag whose bytes this branch's pointer names. A pointer move updates
 	# this line in the same commit. v0.16.0 = the interface 0.1.1 sync and
 	# the capture_series rider (#450), cut at the registration commit 9e0449e.
-	pin = v0.16.0
+	pin = v0.17.0

@@ -10,7 +10,7 @@ is how the renderer package (`packages/ui-html`) implements that contract.
 — plus the historical React/Storybook reference renderer it was first written against
 (deleted at the G1e cutover; see Exceptions E3).
 
-**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`); each carries both themes over the shipped token set
+**Portable visual reference:** [Layered Precision mock-up index](ui-styleguide-mockup.html) — one self-contained mock per device class under `ui-styleguide-mockups/` (`class-logic_analyser.html`, `class-dc_psu.html`, `class-dmm.html`, `class-oscilloscope.html`, `class-function_generator.html`, `class-electronic_load.html`, `class-smu.html`, `class-daq.html`); each carries both themes over the shipped token set
 
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
@@ -264,9 +264,210 @@ The coverage census is mechanical: the canonical fixtures (`packages/ui-html/src
 
 ## Class-reference capture pages
 
-The class-reference standards family (plugin-ui-class-reference 0.2.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the only source for the pattern-library class page, the SDK expander, and the rendered-output gate. The expander turns a class-conformant descriptor into a normal plugin-ui manifest set. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
+The class-reference standards family (plugin-ui-class-reference 0.3.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the only source for the pattern-library class page, the SDK expander, and the rendered-output gate. The expander turns a class-conformant descriptor into a normal plugin-ui manifest set. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
 
-The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.3/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
+The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.3/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
+
+The `class-output` pattern-library page composes the `otdp.dc_psu`
+output-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json`, the L11
+class) expanded against the OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-dc_psu.json`), rendered from the
+§E.1 partials the renderer already ships — one reading tile per
+(channel, quantity) pair of the declared source outputs, one
+`engineering-plot` trend over the measure dataset, one `data-table`, and
+the margin alert as host composition (the condition itself is commissioned
+policy — `cannot_derive margin-alert`). The drift guard and the
+mockup-consistency arm (`tests/ui_html/test_classref_dc_psu.py`) re-derive
+the page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is regenerated,
+and a mockup edit that changes a hook count reds against the reference.
+No control surface derives at birth — the output toggle is a declared
+deviation (the directional safety presentation is the safety-behaviours
+slice's work) and the staged setpoint idiom is `cannot_derive`.
+
+The `class-readings` pattern-library page composes the `otdp.dmm`
+readings-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-dmm.json`, the L12
+class — observation-pure: no sourcing action, no directional safety
+surface, no capture view) expanded against the OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-dmm.json`), rendered from the
+§E.1 partials the renderer already ships — one reading tile per
+(channel, quantity) pair of the declared measure inputs, one
+`engineering-plot` trend over the measure dataset (one trace per
+declared channel), one `data-table`, and the range-margin alert as host
+composition (the condition itself is commissioned policy —
+`cannot_derive range-margin-alert`). The drift guard and the
+mockup-consistency arm (`tests/ui_html/test_classref_dmm.py`) re-derive
+the page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. No control surface derives at birth — the
+function/range/aperture/autozero selection is `cannot_derive`
+(`function-selection`; configure is preset-mediated) and the page
+fabricates none.
+
+The `class-waveform` pattern-library page composes the `otdp.oscilloscope`
+capture-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-oscilloscope.json`, the
+L13 class — the sweep's first waveform-shaped one: capture view over the
+fetch dataset, acquisition-lifecycle run controls, no decode) expanded
+against the OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-oscilloscope.json`), rendered from
+the §E.1 partials the renderer already ships — one `engineering-plot`
+waveform over the capture dataset (one trace per (channel, declared
+quantity) of the declared analogue inputs), the per-trace acquisition
+disclosure as the capture-context strip (`Acquired {n} samples · plotted
+{m} at {rate}` — §E.2.5, landed by use), and the run panel's arm staging
+control plus the abort and trigger buttons (one per declared run action).
+The drift guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_oscilloscope.py`) re-derive the page's
+structure from those corpus files and pin the styleguide mockup's §E.1
+component-hook counts to the reference's resolved expectation: a corpus
+edit reddens the page data until it is regenerated, and a mockup edit
+that changes a hook count reds against the reference. The mockup paints
+the non-contract idioms (the trigger marker and cursor pair with its Δ
+readout) with no `bw-` hook — they are `cannot_derive` (`trigger-marker`,
+`cursor-readout`; the host-knowledge seam), so they never present as
+contract components. No control surface derives beyond the ladder's —
+acquisition settings are `cannot_derive` (`acquisition-settings`;
+configure is preset-mediated) and the page fabricates none; the capture
+page carries no data table.
+
+The `class-configuration` pattern-library page composes the
+`otdp.function_generator` configuration-page composition the same way:
+the reference (`standards/plugin-ui-class-reference/0.3.0/class-function_generator.json`,
+the L14 class — the sweep's first PURE SOURCE: no measurement action,
+so no observation binds and no plot template names an over-slot; two
+pages, zero layout blocks, zero numeric literals) expanded against the
+OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-function_generator.json`),
+rendered from the §E.1 partials the renderer already ships — one
+`data-table` over the configure schema's field rows (the field names
+and the conditional Notes wording are the catalog's own strings) and
+one `alert-bubble` carrying the load-convention condition. The drift
+guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_function_generator.py`) re-derive the
+page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. The mockup paints the non-contract idioms (the
+per-channel function cards, the waveform preview panel, the preset
+card and the staged output-control card) with no `bw-` hook — they are
+`cannot_derive` (`function-summary`, `waveform-preview`,
+`function-selection`, `output-control`), so they never present as
+contract components; a requested value is never a reading. No control
+surface derives at all — both procedure controls (the output toggle
+and the optional arbitrary-waveform `upload`, the `when_declared`
+seam's first non-lifecycle use) are declared deviations at birth, and
+the configuration page carries no plot.
+
+The `class-input` pattern-library page composes the
+`otdp.electronic_load` input-page composition the same way: the
+reference (`standards/plugin-ui-class-reference/0.3.0/class-electronic_load.json`,
+the L15 class — the sweep's first energy-ADMITTING instrument, the
+PSU's mirror over `sink`-role channels; zero vocabulary motion, the
+first sweep class since the analyser needing none) expanded against the
+OTDP reference descriptor
+(`standards/otdp/0.2.3/examples/class-electronic_load.json`),
+rendered from the §E.1 partials the renderer already ships — one
+`reading-tile` per (channel, quantity) of the example's two declared
+sink channels (2 × 3), one `time_series` `engineering-plot` over the
+measure slot, one `data-table` with a row per pair, and one
+`alert-bubble` carrying the sinking-margin condition. The drift guard
+and the mockup-consistency arm
+(`tests/ui_html/test_classref_electronic_load.py`) re-derive the
+page's structure from those corpus files and pin the styleguide
+mockup's §E.1 component-hook counts to the reference's resolved
+expectation: a corpus edit reddens the page data until it is
+regenerated, and a mockup edit that changes a hook count reds against
+the reference. The mockup paints the non-contract idioms (the staged
+mode/setpoint draw card, the trend's dashed configured-maximum line)
+with no `bw-` hook — they are `cannot_derive` (`draw-staging`,
+`limit-overlay`), so they never present as contract components. The
+class's directional question — which side of ui-contract §C.1 the
+input-enable sits on — is pinned in the reference's own data: the
+`output` control is a declared deviation, the `input-control`
+cannot_derive row names the inversion (engage stages then confirms
+naming effect, values and target; disengage is the one ungated
+action), the forbid set carries
+`intermediated-energy-removing-action` with its second true home, and
+the direction-pin arm (`test_the_direction_pin_*`) makes both
+dangerous simplifications — the ungated engage or the gated disengage
+— visible reds. No control surface derives: the input control is the
+named deviation and no staged draw is fabricated.
+
+The `class-smu` pattern-library page composes the `otdp.smu`
+output-page composition the same way: the reference
+(`standards/plugin-ui-class-reference/0.3.0/class-smu.json`,
+the L16 class — the PSU's shape over a THIRD channel role,
+`source_measure`; zero vocabulary motion, L12's zero-surface result
+second application and stronger) expanded against the OTDP reference
+descriptor (`standards/otdp/0.2.3/examples/class-smu.json`), rendered
+from the §E.1 partials the renderer already ships — one `reading-tile`
+per (channel, quantity) of the example's two declared source_measure
+channels (2 × 3), one `time_series` `engineering-plot` over the
+measure slot, one `data-table` with a row per pair, and one
+`alert-bubble` carrying the compliance-active condition. The drift
+guard and the mockup-consistency arm
+(`tests/ui_html/test_classref_smu.py`) re-derive the page's structure
+from those corpus files and pin the styleguide mockup's §E.1
+component-hook counts to the reference's resolved expectation: a
+corpus edit reddens the page data until it is regenerated, and a
+mockup edit that changes a hook count reds against the reference. The
+mockup paints the non-contract idioms (the staged-source card with its
+function-selected face, the trend's dashed compliance bound) with no
+`bw-` hook — they are `cannot_derive` (`source-settings`,
+`compliance-overlay`), so they never present as contract components.
+The class's own question — the profile's five-action sweep block — is
+DEFERRED BY NAME (RC-L16-1), and the deferral is a live assertion,
+not prose: the sweep-absence arm expands the committed example (which
+declares all eight profile actions) over the birth reference and
+asserts the derivation succeeds, derives no sweep component anywhere
+in the triple, and resolves the declared sweep URNs' controls on the
+Device features page (the `vendor_actions` coverage home) — with the
+fifth (configure_sweep, its channel field pattern-narrowed) pinned L0
+and rendering nothing by name. No control surface derives: the output
+control is the inherited directional deviation (L11's verdict, with
+the smu's own wrinkle recorded for the safety-behaviours slice — the
+energise confirm's values pair by the sourced function, level with
+the opposite-quantity compliance, never a flattened pair), and no run
+panel is fabricated for the deferred block.
+
+The `class-daq` pattern-library page composes the `otdp.daq`
+capture-page composition the same way — the second capture class
+after the oscilloscope, and the sweep's first class with a real,
+shipped consumer (a public community plugin declares the profile with
+six analogue channels and no `ui/` manifest, so the no-manifest
+fallback serves this composition to that plugin the moment the batch
+lands; its descriptor bytes are vendored as a test fixture with the
+source named, and the conformance claim is executable —
+`tests/ui_html/test_classref_daq.py`). The reference
+(`standards/plugin-ui-class-reference/0.3.0/class-daq.json`, the L17
+class — zero vocabulary motion again; the batch's own `waveform`
+widening is load-bearing here) expanded against the OTDP reference
+descriptor, rendered from the §E.1 partials the renderer already
+ships: one `waveform` `engineering-plot` over the capture slot with
+one trace per (channel, quantity) of the composition's six derived
+channels (the real consumer's channel COUNT, its identity nowhere),
+the run panel with the arm staging numeric and the three run buttons
+(the optional trigger binds by `when_declared` — a trigger-less
+descriptor renders its ghost), and one `alert-bubble` carrying the
+buffer-overflow condition. The capture page carries no table and no
+reading tile (streamed samples are not a tabular surface and waveform
+variables carry no scalar-extraction rule — the streaming-latest
+monitor strip is a named deferral). The mockup paints the
+non-contract idioms (the trigger marker and cursor readout, and the
+daq's own `UNIT COUNT · CALIBRATION NOT APPLIED` context line — the
+class presents the unit the dataset carries, never a nicer one) with
+no `bw-` hook: they are `cannot_derive` (`trigger-marker`,
+`cursor-readout`, `calibration-context`), so they never present as
+contract components. The acquisition disclosure (§E.2.5) lands by use
+with its contract hook — a class whose streaming rate makes
+decimation certain.
 
 The standard compositions are the default every device gets, and the starting point that custom layouts build from. The derive emits the standard compositions. The author owns layout within the contract. The host owns the look. The consistency rule for the class sweep: build each capture-view idiom CLASS-GENERIC when any device class can reuse it. The class-generic idioms are the waveform canvas, the grouped label column with brackets, the annotation-chip rows for bus values and decode overlays, the cursor and trigger markers with their readout, the capture-context strip, and the position badges. Only the analyser-specific part rides the existing digital-lanes contract component. One language, many devices.
 
@@ -274,7 +475,7 @@ The standard compositions are the default every device gets, and the starting po
 
 Plugins declare pages, bindings, plots and exact registered panel identifiers. The host renders them. A plugin manifest cannot supply JavaScript, arbitrary CSS, permission, polling or a raw device command.
 
-Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI extension fields. The one governed exception is the class-reference family's namespaced `plugin-ui-class-reference:layout` block (plugin-ui-class-reference 0.2.0). The family schema is one vocabulary with two writers: a class-conformant descriptor's expansion, and a hand-authored block. Either writer may place layout structure in a manifest's namespaced `extensions` map. The canonical validator is extension-blind, so the family schema is the block's only validation authority; a host that does not know the namespace ignores the block and serves the manifest's plain pages (degrade by ignoring, never an error).
+Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI extension fields. The one governed exception is the class-reference family's namespaced `plugin-ui-class-reference:layout` block (plugin-ui-class-reference 0.3.0). The family schema is one vocabulary with two writers: a class-conformant descriptor's expansion, and a hand-authored block. Either writer may place layout structure in a manifest's namespaced `extensions` map. The canonical validator is extension-blind, so the family schema is the block's only validation authority; a host that does not know the namespace ignores the block and serves the manifest's plain pages (degrade by ignoring, never an error).
 
 ## Exceptions
 

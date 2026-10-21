@@ -80,6 +80,7 @@ the job. ``verify_tree`` is equally loud. Run from the repository root with
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -132,6 +133,7 @@ USER_GUIDE: dict[str, str] = {
     "docs/operator-guide.md": "operator-guide.md",
     "docs/device-developer-guide.md": "device-developer-guide.md",
     "docs/develop-your-device.md": "develop-your-device.md",
+    "docs/adding-a-device-class.md": "adding-a-device-class.md",
     "docs/ai-device-reviewer.md": "ai-device-reviewer.md",
     "docs/plugin-sdk.md": "plugin-sdk.md",
     "docs/development.md": "development.md",
@@ -157,8 +159,11 @@ USER_GUIDE: dict[str, str] = {
 # build time from a live capture, so the key here is the staged name alone.
 # Merged into site_paths() below; verify_tree then pins the rendered page's
 # presence, so a listed-but-missing page fails assembly (the wiring hole).
+# device-classes.md derives from committed corpus state instead of a live
+# capture (issue #499) — the same discipline, one more input family.
 GENERATED_PAGES: dict[str, str] = {
     "standards-cli.md": "user-guide/standards-cli.html",
+    "device-classes.md": "user-guide/device-classes.html",
 }
 
 LINK_RE = re.compile(r"(?<!\!)\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
@@ -410,6 +415,220 @@ def write_standards_cli_page(dest_dir: Path) -> None:
         render_standards_cli_page(capture_standards_help()), encoding="utf-8"
     )
     log("staged generated page: standards-cli.md <- benchweave.standards --help")
+
+
+# ── the device-class table (gateway issue #499) ──────────────────────────────
+#
+# The Device classes page is GENERATED from three committed inputs — the
+# class-reference corpus (its ACTIVE family version, derived from the
+# standards manifest the same way ACTIVE_OTDP_RUNTIME_SCHEMA derives its
+# path, never a version literal), the sweep-plan record, and the authoring
+# mockups — so the published table cannot go stale by hand: a class file or
+# a plan row landing anywhere moves the table with no prose edit. The
+# hand-kept table is the defect issue #499 exists to kill.
+#
+# State is DERIVED, never authored: implemented means a class file exists
+# in the active family version; planned means the sweep-plan record
+# carries the slug. The record holds slug and sweep slot only, and is
+# append-only — the corpus wins for a slug both carry, so a class landing
+# needs no plan edit and parallel sweep lanes never conflict on one shared
+# file. The published previews are byte-identical build-time copies of the
+# authoring mockups under user-guide/device-classes/, beside the rendered
+# page; the pair (class file, mockup) is atomic, and the copy refuses an
+# orphan in either direction
+# (tests/contract/test_docs_site_device_classes.py).
+
+CLASSREF_FAMILY = "plugin-ui-class-reference"
+SWEEP_PLAN_PATH = "docs/internal/classref-sweep-plan.json"
+MOCKUP_DIR_PATH = "docs/internal/ui-styleguide-mockups"
+PREVIEW_DIR_NAME = "device-classes"
+DEVICE_CLASSES_SOURCE = (
+    "generated from the class-reference corpus, the sweep plan record and "
+    "the authoring mockups at build time"
+)
+
+
+def classref_classes() -> list[dict[str, str]]:
+    """The ACTIVE family's implemented classes as ``{slug, title}`` rows.
+
+    The family version derives from the standards manifest (the runtime
+    schema path's own derivation), and the class walk applies the
+    production selection's acceptance: a ``class-*.json`` whose parsed
+    document carries no ``otdp.``-prefixed ``profile_id`` is not a class —
+    the family schema file matches the glob and must not ship as one.
+    """
+    version = active_version_from_corpus(corpus_root(), CLASSREF_FAMILY)
+    root = REPO / "standards" / CLASSREF_FAMILY / version
+    classes: list[dict[str, str]] = []
+    for path in sorted(root.glob("class-*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and str(
+            document.get("profile_id", "")
+        ).startswith("otdp."):
+            classes.append(
+                {
+                    "slug": path.name[len("class-") : -len(".json")],
+                    "title": str(document["title"]),
+                }
+            )
+    return classes
+
+
+def load_sweep_plan() -> list[dict[str, str]]:
+    """The sweep-plan record's rows: slug and sweep slot ONLY, validated.
+
+    Fail-closed (``classref_sweep_plan*:``): the record must exist
+    (deleting it cannot silence planned rows), be an object whose only key
+    is ``planned``, and carry rows of exactly a lowercase ``slug`` and an
+    ``L``-numbered ``slot``, unique by slug. The record never carries
+    state: a landed slug may stay (append-only; the corpus wins), which is
+    what keeps parallel sweep lanes off one shared file.
+    """
+    path = REPO / SWEEP_PLAN_PATH
+    if not path.is_file():
+        raise SystemExit(
+            f"classref_sweep_plan_absent: {SWEEP_PLAN_PATH} — the planned rows "
+            "derive from it; an empty list is the honest empty sweep"
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise SystemExit(f"classref_sweep_plan_invalid: {exc}") from exc
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"planned"}
+        or not isinstance(document["planned"], list)
+    ):
+        raise SystemExit(
+            'classref_sweep_plan_shape: the record is {"planned": [{"slug", '
+            '"slot"}]} and carries nothing else — state is derived, never authored'
+        )
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in document["planned"]:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"slug", "slot"}
+            or not re.fullmatch(r"[a-z][a-z0-9_]*", str(row.get("slug", "")))
+            or not re.fullmatch(r"L[0-9]+", str(row.get("slot", "")))
+        ):
+            raise SystemExit(
+                f"classref_sweep_plan_row: {row!r} — each row carries exactly a "
+                "lowercase slug and an L-numbered sweep slot"
+            )
+        if str(row["slug"]) in seen:
+            raise SystemExit(f"classref_sweep_plan_duplicate: {row['slug']} appears twice")
+        seen.add(str(row["slug"]))
+        rows.append({"slug": str(row["slug"]), "slot": str(row["slot"])})
+    return rows
+
+
+def device_class_rows() -> list[dict[str, str]]:
+    """The table's rows: implemented corpus classes first (sorted by slug),
+    then the plan's unlanded slugs as planned rows (ordered by slot
+    number). The corpus wins for a slug both carry — a class file landing
+    moves the row to implemented with no edit to the plan record."""
+    rows = [
+        {"slug": row["slug"], "title": row["title"], "state": "implemented"}
+        for row in classref_classes()
+    ]
+    rows.sort(key=lambda row: row["slug"])
+    landed = {row["slug"] for row in rows}
+    planned = [row for row in load_sweep_plan() if row["slug"] not in landed]
+    planned.sort(key=lambda row: int(row["slot"][1:]))
+    rows.extend({"slug": row["slug"], "state": "planned", "slot": row["slot"]} for row in planned)
+    return rows
+
+
+def render_device_classes_page(rows: list[dict[str, str]]) -> str:
+    """Render the Device classes page (pure) from derived rows.
+
+    The table's Class cell carries the machine slug with the corpus title;
+    the State cell's vocabulary is closed (Implemented, or Planned with the
+    sweep slot that will deliver it); implemented rows link the published
+    preview copy beside the rendered page. No body H1 (the frontmatter
+    title renders as the header — the standards-CLI page's shape).
+    """
+    lines = [
+        "---",
+        'title: "Device classes"',
+        f"source: {DEVICE_CLASSES_SOURCE}",
+        "---",
+        "",
+        "BenchWeave gives every device class one shared page shape. This table "
+        "shows the classes that the corpus implements today. It also shows "
+        "the classes that are planned after the minimum viable product (MVP).",
+        "Select a preview link to see the design of the class page before you "
+        "install anything.",
+        "",
+        "| Class | State | Preview |",
+        "|---|---|---|",
+    ]
+    for row in rows:
+        if row["state"] == "implemented":
+            lines.append(
+                f"| `{row['slug']}` ({row['title']}) | Implemented "
+                f"| [Preview]({PREVIEW_DIR_NAME}/class-{row['slug']}.html) |"
+            )
+        else:
+            lines.append(
+                f"| `{row['slug']}` | Planned (post-MVP, future slot {row['slot']}) "
+                "| Not yet available |"
+            )
+    lines += [
+        "",
+        "The state column is derived from the corpus, so the table cannot "
+        "become stale by hand.",
+        "The planned classes are post-MVP. Each planned row names the future "
+        "sweep slot that will deliver the class. No date is set for this work "
+        "yet.",
+        "To add a class to the corpus, read [Add a device class]"
+        "(adding-a-device-class.md).",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def write_device_classes_page(dest_dir: Path) -> None:
+    """Stage the generated Device classes page into the user-guide staging tree."""
+    (dest_dir / "device-classes.md").write_text(
+        render_device_classes_page(device_class_rows()), encoding="utf-8"
+    )
+    log("staged generated page: device-classes.md <- corpus + sweep plan + mockups")
+
+
+def publish_device_class_previews(docs_root: Path) -> list[str]:
+    """Publish every authoring mockup as a byte-identical preview copy under
+    ``user-guide/<PREVIEW_DIR_NAME>/``, from the glob — never a hand list.
+
+    Fail-closed both directions: a mockup whose slug is not an implemented
+    corpus class refuses (``classref_preview_orphan:``), and an implemented
+    class without a mockup refuses (``classref_class_without_mockup:``) —
+    the pair is atomic, so the public preview set can never carry a class
+    the corpus does not implement, nor implement a class it cannot show.
+    """
+    rows = [row for row in device_class_rows() if row["state"] == "implemented"]
+    src_dir = REPO / MOCKUP_DIR_PATH
+    mockups = {p.name: p for p in sorted(src_dir.glob("class-*.html"))}
+    expected = {f"class-{row['slug']}.html" for row in rows}
+    orphan = sorted(set(mockups) - expected)
+    if orphan:
+        raise SystemExit(
+            f"classref_preview_orphan: {', '.join(orphan)} — a mockup without a "
+            "corpus class file; the pair is atomic"
+        )
+    missing = sorted(expected - set(mockups))
+    if missing:
+        raise SystemExit(
+            f"classref_class_without_mockup: {', '.join(missing)} — a corpus class "
+            "without an authoring mockup; the pair is atomic"
+        )
+    dst_dir = docs_root / "user-guide" / PREVIEW_DIR_NAME
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name, src in mockups.items():
+        shutil.copyfile(src, dst_dir / name)
+    log(f"class previews: {len(mockups)} byte-identical copies -> user-guide/{PREVIEW_DIR_NAME}/")
+    return sorted(mockups)
 
 
 def rename_standards_section(docs_root: Path) -> None:
@@ -1116,6 +1335,16 @@ def verify_tree(
             failures.append(f"docs/{rel} missing")
     if not (current / ACTIVE_OTDP_RUNTIME_SCHEMA).is_file():
         failures.append(f"{rendered_at}/{ACTIVE_OTDP_RUNTIME_SCHEMA} missing")
+    # The device-class previews are CURRENT-tree arms for the same reason as
+    # the render map (fold A-F1): a release tag's bucket build produces its
+    # own preview set, so the root (the latest tag's bucket) legitimately
+    # lacks previews for a class that landed after that tag.
+    for slug in (
+        row["slug"] for row in device_class_rows() if row["state"] == "implemented"
+    ):
+        preview = f"user-guide/{PREVIEW_DIR_NAME}/class-{slug}.html"
+        if not (current / preview).is_file():
+            failures.append(f"{rendered_at}/{preview} missing")
     for src, html in paths.items():
         if not (current / html).is_file():
             failures.append(f"{src} did not render to {rendered_at}/{html}")
@@ -1418,6 +1647,7 @@ def main() -> None:
         try:
             stage_pages(USER_GUIDE, staging, paths)
             write_standards_cli_page(staging)
+            write_device_classes_page(staging)
             stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
             cache = REPO / ".great-docs-cache"
             if cache.exists():
@@ -1438,6 +1668,7 @@ def main() -> None:
         rename_standards_section(docs_root)
         copy_standards_resources(docs_root)
         stage_pattern_library(docs_root)
+        publish_device_class_previews(docs_root)
         complete_favicons(docs_root, REPO / "website" / "assets" / "logo.svg")
         write_llms_txt(docs_root)
         fix_root_doc_links(docs_root)
@@ -1474,6 +1705,7 @@ def main() -> None:
     try:
         stage_pages(USER_GUIDE, staging, paths)
         write_standards_cli_page(staging)
+        write_device_classes_page(staging)
         stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
         cache = REPO / ".great-docs-cache"
         if cache.exists():
@@ -1508,6 +1740,7 @@ def main() -> None:
     rename_standards_section(docs_root if not tags else docs_root / "v" / "dev")
     copy_standards_resources(docs_root if not tags else docs_root / "v" / "dev")
     stage_pattern_library(docs_root if not tags else docs_root / "v" / "dev")
+    publish_device_class_previews(docs_root if not tags else docs_root / "v" / "dev")
     if not tags:
         write_llms_txt(docs_root)
         fix_root_doc_links(docs_root)

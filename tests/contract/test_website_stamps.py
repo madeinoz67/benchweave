@@ -324,6 +324,14 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
         path = docs / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
+    # verify_tree's device-class preview probes (issue #499): the stub set
+    # derives from the corpus the same way the runtime-schema stub above
+    # does, so a class landing moves this fixture with it, never a re-pin.
+    for row in assembler.device_class_rows():
+        if row["state"] == "implemented":
+            path = docs / "user-guide" / assembler.PREVIEW_DIR_NAME / f"class-{row['slug']}.html"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("", encoding="utf-8")
     (docs / "index.html").write_text(assembler.SITE_LINK_MARKER, encoding="utf-8")
     # verify_tree resolves BOTH href= links and the selector's value= rows
     # (options are values, not hrefs) — a stamped artifact in a tagged clone

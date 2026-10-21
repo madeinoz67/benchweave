@@ -246,7 +246,7 @@ dev = [
 
 [[package]]
 name = "benchweave-ui-html"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "packages/ui-html" }
 dependencies = [
     { name = "jinja2" },

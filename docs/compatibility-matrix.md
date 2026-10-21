@@ -16,13 +16,13 @@ committed file is stale. Commit SHAs are not pinned here — run
 
 | Standard | Schema/protocol version | Status | SDK version | Main-project range | Migration guidance | Sources |
 | --- | --- | --- | --- | --- | --- | --- |
-| otdp | 0.2.3 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.2.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| registry | 0.1.3 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.1.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| execution | 0.2.0 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| interface | 0.1.1 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui | 0.4.0 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.3.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui-preview | 0.2.0 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui-class-reference | 0.2.0 | stable | 0.16.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| otdp | 0.2.3 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.2.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| registry | 0.1.3 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.1.2 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| execution | 0.2.0 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| interface | 0.1.1 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui | 0.4.0 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.3.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui-preview | 0.2.0 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui-class-reference | 0.3.0 | stable | 0.17.0 | >=0.1.0 | Supersedes 0.2.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 
 ## Retained versions
 
@@ -61,3 +61,4 @@ adoption, design record D6).
 | plugin-ui-preview | 0.2.0 | released | in range | — | standards/plugin-ui-preview/0.2.0/MIGRATION.md |
 | plugin-ui-class-reference | 0.1.0 | released | in range | — | — |
 | plugin-ui-class-reference | 0.2.0 | released | in range | — | standards/plugin-ui-class-reference/0.2.0/README.md |
+| plugin-ui-class-reference | 0.3.0 | released | in range | — | standards/plugin-ui-class-reference/0.3.0/README.md |

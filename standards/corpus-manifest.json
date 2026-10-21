@@ -1461,6 +1461,56 @@
       "path": "plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
       "source": "standards/plugin-ui-class-reference/0.1.0/class-logic_analyser.json",
       "sha256": "36dfc2440aa60fcb27db5fca919d0ee9b83c3c84a665c087190fa287190ada27"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-reference.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/class-reference.schema.json",
+      "sha256": "65be3f2a4afecf5e46241fec6b0094449e6dea8313d6bfa06ac02101e4d87799"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/layout.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/layout.schema.json",
+      "sha256": "c33cd4ca6b2b93f193370884489db16e1f2a415f7237ceb0804fe6bc8323bd86"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
+      "source": "standards/plugin-ui-class-reference/0.2.0/class-logic_analyser.json",
+      "sha256": "c0a1369235086700e7794950d4acac913382a375c37a0fa3a262ca8318d7bbcd"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-dc_psu.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-dc_psu.json",
+      "sha256": "20655ed2298fadbec97057bf79a5572a6dd08610288ee835ec2ac51a41365311"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-dmm.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-dmm.json",
+      "sha256": "77681d643a19c523a15fbbd049aabc95155dc55db73117d7afc92da7d4d55fbb"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-oscilloscope.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-oscilloscope.json",
+      "sha256": "7da86c2dc771847ffca61f4d374882debf501bdbc94311f6b7940fa650ae966e"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-function_generator.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-function_generator.json",
+      "sha256": "363bc0c7438fcb6f666f7bdebe04b2645f9f9d1ed2b26c8c659d0ed72ba704e7"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-electronic_load.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-electronic_load.json",
+      "sha256": "6d4fa64bae1f79082fed407bbb7ec601f941aae56e4efacad6e063c73351a173"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-smu.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-smu.json",
+      "sha256": "48cc55c24c08423251ab878a092ffe472ef594c5c69f5ae51aeb2f92ba5dfe3a"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.3.0/class-daq.json",
+      "source": "docs/plugin-ui-class-reference-v2/class-daq.json",
+      "sha256": "8cf11dc0e0d933b3cb1edd274e9d40fcb62fd619234d926c1174816113de2fd8"
     }
   ]
 }

@@ -182,22 +182,22 @@ textarea {
     </style>
 </head>
 <body>
-<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.3.0</p></div>
+<div class="mock-banner"><p>MOCK · ILLUSTRATIVE DATA, NOT A CAPTURE</p><p class="muted">GATEWAY STYLE TOKENS · benchweave-ui-html 0.3.1</p></div>
 <section class="mock-theme" data-theme="light" aria-label="Light theme mock-up">
 <div class="topbar"><strong>BENCHWEAVE</strong><span class="status">BENCH A · CONNECTED</span></div>
       <div class="content">
         <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>DC supply · PSU-01</h2></div><button>Controls</button></div>
         <div class="readings">
-          <article class="card"><span class="reading-label">Voltage</span><div class="value">12.04 <small>V</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
-          <article class="card warning"><span class="reading-label">Current</span><div class="value">1.92 <small>A</small></div><span class="quality">△ WARNING</span></article>
-          <article class="card"><span class="reading-label">Power</span><div class="value">23.1 <small>W</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
+          <article class="card bw-reading"><span class="reading-label">Voltage</span><div class="value">12.04 <small>V</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
+          <article class="card warning bw-reading"><span class="reading-label">Current</span><div class="value">1.92 <small>A</small></div><span class="quality">△ WARNING</span></article>
+          <article class="card bw-reading"><span class="reading-label">Power</span><div class="value">23.1 <small>W</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
         </div>
-        <aside class="alert"><strong>△ Operating margin</strong><p>Current approaching configured limit · PSU-01</p></aside>
+        <aside class="alert bw-alert-bubble"><strong>△ Operating margin</strong><p>Current approaching configured limit · PSU-01</p></aside>
         <div class="lower"><section class="card control"><span class="eyebrow">Staged output</span><div class="knob"></div><div class="setpoint">12.00 V</div><span class="staged">STAGED · APPLY REQUIRED</span></section>
-          <section class="plot"><div class="plot-head"><span>OUTPUT · LAST 60 SECONDS</span><span>— V&nbsp;&nbsp; -- A</span></div>
+          <section class="plot bw-plot"><div class="plot-head"><span>OUTPUT · LAST 60 SECONDS</span><span>— V&nbsp;&nbsp; -- A</span></div>
             <svg viewBox="0 0 460 145" role="img" aria-label="Voltage and current waveform"><defs><pattern id="lg" width="46" height="29" patternUnits="userSpaceOnUse"><path d="M46 0H0V29" fill="none" stroke="#bdcbd2"/></pattern></defs><rect width="460" height="145" fill="url(#lg)"/><path d="M0 98L45 95L90 100L135 73L180 82L225 58L270 65L315 38L365 49L415 24L460 31" fill="none" stroke="#147e90" stroke-width="3"/><path d="M0 120L45 116L90 112L135 104L180 107L225 87L270 91L315 73L365 66L415 58L460 48" fill="none" stroke="#a96e10" stroke-width="2" stroke-dasharray="8 5"/><path d="M0 42H460" stroke="#a96e10" stroke-dasharray="4 4"/></svg>
           </section></div>
-        <table><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
+        <table class="bw-data-table"><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
       </div>
       <div class="footer"><span>LIGHT THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
 </section>
@@ -206,16 +206,16 @@ textarea {
       <div class="content">
         <div class="title-row"><div><span class="eyebrow">Device overview</span><h2>DC supply · PSU-01</h2></div><button>Controls</button></div>
         <div class="readings">
-          <article class="card"><span class="reading-label">Voltage</span><div class="value">12.04 <small>V</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
-          <article class="card warning"><span class="reading-label">Current</span><div class="value">1.92 <small>A</small></div><span class="quality">△ WARNING</span></article>
-          <article class="card"><span class="reading-label">Power</span><div class="value">23.1 <small>W</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
+          <article class="card bw-reading"><span class="reading-label">Voltage</span><div class="value">12.04 <small>V</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
+          <article class="card warning bw-reading"><span class="reading-label">Current</span><div class="value">1.92 <small>A</small></div><span class="quality">△ WARNING</span></article>
+          <article class="card bw-reading"><span class="reading-label">Power</span><div class="value">23.1 <small>W</small></div><span class="quality">✓ NORMAL · 84 ms</span></article>
         </div>
-        <aside class="alert"><strong>△ Operating margin</strong><p>Current approaching configured limit · PSU-01</p></aside>
+        <aside class="alert bw-alert-bubble"><strong>△ Operating margin</strong><p>Current approaching configured limit · PSU-01</p></aside>
         <div class="lower"><section class="card control"><span class="eyebrow">Staged output</span><div class="knob"></div><div class="setpoint">12.00 V</div><span class="staged">STAGED · APPLY REQUIRED</span></section>
-          <section class="plot"><div class="plot-head"><span>OUTPUT · LAST 60 SECONDS</span><span>— V&nbsp;&nbsp; -- A</span></div>
+          <section class="plot bw-plot"><div class="plot-head"><span>OUTPUT · LAST 60 SECONDS</span><span>— V&nbsp;&nbsp; -- A</span></div>
             <svg viewBox="0 0 460 145" role="img" aria-label="Voltage and current waveform"><defs><pattern id="dg" width="46" height="29" patternUnits="userSpaceOnUse"><path d="M46 0H0V29" fill="none" stroke="#293a44"/></pattern></defs><rect width="460" height="145" fill="url(#dg)"/><path d="M0 98L45 95L90 100L135 73L180 82L225 58L270 65L315 38L365 49L415 24L460 31" fill="none" stroke="#42cee2" stroke-width="3"/><path d="M0 120L45 116L90 112L135 104L180 107L225 87L270 91L315 73L365 66L415 58L460 48" fill="none" stroke="#ffc15a" stroke-width="2" stroke-dasharray="8 5"/><path d="M0 42H460" stroke="#ffc15a" stroke-dasharray="4 4"/></svg>
           </section></div>
-        <table><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
+        <table class="bw-data-table"><thead><tr><th>Channel</th><th>Reading</th><th>Quality</th></tr></thead><tbody><tr><td>Voltage</td><td>12.04 V</td><td>Verified</td></tr><tr><td>Current</td><td>1.92 A</td><td>Near limit</td></tr></tbody></table>
       </div>
       <div class="footer"><span>DARK THEME</span><span>SIMULATED PRESENTATION DATA</span></div>
 </section>

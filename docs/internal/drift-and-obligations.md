@@ -686,6 +686,30 @@ and remain the reviewer's job.
     its verification legs not yet landed (D6 of the #443 record — lands with
     the gateway adapter-configuration mirror when that slice arrives).
 
+30. **The device-class table surface** (issue #499) → the published table,
+    its state derivation and its preview set are GENERATED at assembly
+    (`scripts/assemble_docs_site.py`), never hand-kept: implemented = a
+    `class-*.json` in the ACTIVE class-reference family version (derived
+    from the standards manifest, the runtime-schema path's own derivation —
+    zero bump motion); planned = a row in
+    `docs/internal/classref-sweep-plan.json` (slug and sweep slot only,
+    append-only, the corpus wins for a landed slug — parallel sweep lanes
+    never edit one shared file; the plan names POST-MVP future slots — the
+    implemented set is the approved MVP set and the planned rows carry no
+    schedule, the principal's mid-build ruling on #499). The public previews are byte-identical
+    build-time copies of the authoring mockups at
+    `user-guide/device-classes/`; they are CURRENT-tree arms in
+    `verify_tree` (fold A-F1 — a release tag's bucket legitimately lacks
+    previews for classes that landed after the tag), and nothing else from
+    `docs/internal/` publishes. The gate is two-way
+    (`tests/contract/test_docs_site_device_classes.py`): the row set equals
+    corpus classes plus unlanded plan rows, every mockup is exactly one
+    implemented row, the pair (class file, mockup) is atomic, and the
+    copied bytes digest-match the authoring home — a red on a class or plan
+    row landing anywhere is the tripwire doing its job, not noise. The
+    front-door card links the table through the `stg-docs-prefix` token
+    (issue #456's both-regime link), so no stamp-map motion.
+
 ## CI map
 
 | Job | What it catches |

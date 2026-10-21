@@ -288,9 +288,9 @@ def _version_table_rows(rendered: str, header: str) -> list[str]:
 
 
 def test_e3_one_row_per_retained_version_at_the_seed() -> None:
-    """E3 half 1: one row per retained version — 25 rows at this train.
+    """E3 half 1: one row per retained version — 26 rows at this train.
 
-    25 = the retained version directories enumerated from the corpus
+    26 = the retained version directories enumerated from the corpus
     manifest across the seven manifest standards at this commit (otdp 7,
     registry 4, execution 2, interface 2, plugin-ui 6, plugin-ui-preview
     3, plugin-ui-class-reference 2; measured 2026-10-17 at the interface
@@ -307,7 +307,7 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
     expected = sum(
         len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
     )
-    assert expected == 26, f"the seed retained-set denominator moved: {expected}"
+    assert expected == 27, f"the seed retained-set denominator moved: {expected}"
     assert len(rows) == expected, (
         f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
         "(one row per retained version)"

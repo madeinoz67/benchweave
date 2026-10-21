@@ -47,6 +47,8 @@ user_guide:
       - operator-guide.md
       - device-developer-guide.md
       - develop-your-device.md
+      - device-classes.md
+      - adding-a-device-class.md
       - ai-device-reviewer.md
       - plugin-sdk.md
       - development.md
