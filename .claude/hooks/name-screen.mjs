@@ -87,9 +87,10 @@ function allowedEmail(candidate) {
 function allowedIpv4(candidate) {
   const rawParts = candidate.split(".");
   if (rawParts.length !== 4) return true;
-  // version-shaped four-part strings (re-fold R2b, reachable branch): a
+  // version-shaped four-part strings (re-fold R2b, reachable branch): the
+  // rule is exactly leading-zero, out-of-range or first-octet-zero quads. A
   // leading-zero octet is not a canonical address and reads as version or
-  // vector-path data. Out-of-range octets and a first octet of zero are the
+  // vector-path data; out-of-range octets and a first octet of zero are the
   // same class. The claim names exactly this mechanism.
   if (rawParts.some((s) => /^0\d/.test(s))) return true;
   const parts = rawParts.map(Number);
@@ -103,13 +104,15 @@ function allowedIpv4(candidate) {
   return false;
 }
 
-// The ANCHOR RULE (re-fold FOLD-A): a home-path candidate must BEGIN at a
-// token boundary — start of line, whitespace, or one of the punctuation
-// characters that can abut a path in this repo's own prose (quotes, brackets,
-// `> * @ ~ ! ? + ] } |` and the map/separators `= ( : , ; {`). A path inside a
-// longer token ("email/home/serial", "docs/Users/index") never matches,
-// because the character before it is a word character or a slash.
-const ANCHOR = String.raw`(^|[\s"'` + "`" + String.raw`=(\[:,;{> *@~!?+\]}|])`;
+// The ANCHOR RULE (closed by the third refutation): a home-path candidate
+// must BEGIN at a token boundary — the preceding character is NOT in
+// [A-Za-z0-9_.-] and NOT a slash, or the candidate starts the line. That
+// single negative condition replaces any enumeration: it admits every
+// punctuation character that can abut a path in prose, and refuses a path
+// inside a longer token ("email/home/serial", "docs/Users/index", an
+// absolute path nested under another) because the character before it is a
+// word character, a dash/dot/underscore, or a slash.
+const ANCHOR = String.raw`(?<![A-Za-z0-9_.\-/])`;
 
 const PATTERNS = [
   { id: "home_path", re: new RegExp(`${ANCHOR}\\/(?:Users|home)\\/[A-Za-z0-9_.-]+`, "gi") },

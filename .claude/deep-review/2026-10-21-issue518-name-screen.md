@@ -279,7 +279,8 @@ GREEN (against the folded build), from the fold suite's own run counts.
   swept roots carried hits (189 total: ipv4 154, serial_like 19, email 10,
   home_path 6; the refuter's whole-tree figure was 122 of 1432). Fix: a
   measured allowlist (loopback, RFC 5737 documentation ranges, example
-  domains, version-shaped four-part strings, scp-style git URLs), a digit
+  domains, version-shaped four-part strings — leading-zero, out-of-range or
+  first-octet-zero quads — scp-style git URLs), a digit
   requirement on serial tails ("serial attachment" is prose), and the
   pinned tracked-tree sweep below. After: zero unpinned hits over the same
   674 files; 19 pinned hits in 6 files (both-direction ratchet).

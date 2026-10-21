@@ -356,21 +356,27 @@ test("F4: the CI message pipeline blocks a planted commit message (local shape)"
 
 // ---- second refutation (2026-10-21): FOLD-A / FOLD-B / FOLD-C / R2b ----------
 
-test("FOLD-A: every anchor character that can abut a path still hits; mid-token slashes do not", async () => {
+test("FOLD-A: the closed anchor rule — boundary chars hit, in-token paths never", async () => {
   const m = await import("../name-screen.mjs");
   const home = ["/", "Users", "/", "poisonbox", "/x"].join("");
-  // each of these characters legitimately precedes a path in this repo's prose
-  for (const anchor of ["blockquote>", "bullet*", "atsign@", "tilde~", "bang!", "quest?", "plus+", "rbracket]", "rbrace}", "pipe|", "quote\"", "paren(", "lbracket[", "brace{", "colon:", "semi;", "comma,", "eq="]) {
-    // the anchor character abuts the path with no separator (a bullet or bold marker abutting the path)
-    assert.ok(m.publicScan(`${anchor}${home}`).some((h) => h.id === "home_path"), `anchor ${anchor.slice(-1)} missed`);
+  // the four the positive enumeration used to let through
+  for (const pre of ["#", ")", "&", "\\"]) {
+    assert.ok(m.publicScan(`${pre}${home}`).some((h) => h.id === "home_path"), `boundary char ${pre} missed`);
   }
+  // representative prose abutments still hit
   assert.ok(m.publicScan(`> ${home}`).some((h) => h.id === "home_path"), "spaced blockquote path missed");
-  // bare tilde-name homes hit without a trailing slash
+  assert.ok(m.publicScan(`*${home}`).some((h) => h.id === "home_path"), "bullet-abutted path missed");
+  // bare tilde-name homes hit without a trailing separator
   const bare = ["~", "poisonbox"].join("");
   assert.ok(m.publicScan(`see ${bare} for the rig`).some((h) => h.id === "tilde_home"), "bare tilde home missed");
   // typing annotations are not homes
   assert.deepEqual(m.publicScan(["~", "benchweave.content.store.Context"].join("")).filter((h) => h.id === "tilde_home"), [], "typing annotation false-positives on tilde_home");
-  // mid-token slashes never match (the anchor rule's other half)
+  // in-token negatives: word chars, dash/dot/underscore prefixes and nested
+  // absolute paths never match — the rule did not over-widen
+  assert.deepEqual(m.publicScan(`abc${home}`), [], "word-char prefix matched");
+  assert.deepEqual(m.publicScan(`x-y${home}`), [], "dash-prefix matched");
+  assert.deepEqual(m.publicScan(`x.y${home}`), [], "dot-prefix matched");
+  assert.deepEqual(m.publicScan(["~", "/x", home].join("")), [], "nested absolute path matched");
   assert.deepEqual(m.publicScan("email/home/serial and docs/Users/index"), [], "mid-token path matched");
 });
 
