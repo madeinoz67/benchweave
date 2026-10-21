@@ -358,15 +358,21 @@ def _assert_pair_validates(
     DATASET-page pair's derived triple passes the unchanged
     ``validate_attachment`` (valid=true) — the serving lie's closure
     proof: these are the pairs whose pre-mirror derivation validated AND
-    served the wrong-kind plot. A READINGS-page pair over the committed
-    OTDP examples carries exactly the PRE-EXISTING ``invalid_plot``
-    finding — the examples declare no readable parameters, so the
-    readings page carries no observation bindings and the reference's
-    authored plot cannot sit on it validly; the pre-mirror derivation
-    carried the same single finding (verified against HEAD), so the
-    composition rendered findings, never a wrong page, before and after
-    the mirror. The parameters-carrying readings pair validates clean
-    (f6-smu, TestParityB8's validator arm)."""
+    served the wrong-kind plot.
+
+    A READINGS-page pair's assertion below records a PRE-EXISTING STATE,
+    not an expectation: before this slice, all four readings pairs
+    (dc_psu, dmm, electronic_load, smu — measured against HEAD) derived
+    valid=False with exactly ONE ``invalid_plot`` finding, because the
+    committed OTDP examples declare zero readable parameters, so the
+    readings page carries no observation bindings while the plot binds
+    the dataset slot (issue #525 tracks the corpus gap; the fix belongs
+    there, never in this slice). The assertion pins that state — it
+    REDS on a second finding and on any change to the finding's shape
+    (code or path) — the old state is pinned, not blessed. The
+    parameters-carrying readings pair validates clean (f6-smu,
+    TestParityB8's validator arm): the readings path itself is sound
+    once the descriptor owes what the reference authors."""
     from benchweave.interfaces.ui_presentation import _pin_scoped_documents
     from benchweave.presentation.admission import validate_attachment
     from benchweave.presentation.panels import SUPPORTED_PANELS
