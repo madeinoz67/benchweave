@@ -242,6 +242,16 @@ unchanged. Decisions and pins:
   call sites). Pinned by the F4 wall test: two hanging candidates, total
   < 2500ms (the 1.5s walk cap plus <1s of measured host-dependent extras —
   the surviving real candidate, the git calls, node boot).
+  **SUPERSEDED same day by §13** (verdict-stability follow-up, called by the
+  owner): the 500ms figure was derived from the idle number and sat BELOW a
+  measured ambient daemon spike (1021ms at load 34-53), so daemon-contention
+  windows flipped the deny to allow — a product behaviour change, not a test
+  flake. The shipped numbers are **1500ms per candidate / 3000ms overall
+  walk budget** (43% under the 5.26s pre-#508 single-hang cost), with the
+  load caveat that induced CPU storms push the real daemon call to 3.5s-8s+
+  — past ANY bounded budget, including the pre-#508 5s code (which flipped
+  18/20 under the same storm). §13 carries the full measurement set and the
+  flip counts; read §12's original decision as history.
 
 ## 13. Follow-up (2026-10-21) — verdict stability under load
 
