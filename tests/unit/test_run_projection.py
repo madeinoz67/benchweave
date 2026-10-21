@@ -64,3 +64,33 @@ def test_completion_between_projection_reads_keeps_terminal_truth(
     finally:
         writer.close()
         reader.close()
+
+
+def test_terminal_projection_without_a_record_is_outcome_unknown(
+    tmp_path: Path,
+) -> None:
+    """Issue #507 pin: a contained run's closed projection (terminal queue
+    row, NO durable record — the frozen contract's terminal-evidence-gap
+    shape, interface-contract §6) reads outcome_unknown/unknown/null on
+    the wire, never a fabricated outcome. The recovery sweep's contained
+    close (app.py) lands exactly this store shape; this pin holds the
+    projection side of the bargain."""
+    store = Store.open(tmp_path / "state.db")
+    try:
+        now = "2026-10-21T00:00:00Z"
+        store.create_run(
+            "run-contained",
+            binding={"id": "binding", "version": "1.0.0", "sha256": "a" * 64},
+            principal_id="operator",
+            now=now,
+        )
+        store.put_run_state("run-contained", "bench", "terminal", now)
+        operations = Operations.__new__(Operations)
+        operations._store = store
+        projection = operations._run_projection("run-contained")
+        assert projection["state"] == "terminal", projection
+        assert projection["outcome"] == "outcome_unknown", projection
+        assert projection["safe_state"] == "unknown", projection
+        assert projection["terminal_record"] is None, projection
+    finally:
+        store.close()

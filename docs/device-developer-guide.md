@@ -227,7 +227,10 @@ judged three ways: carried → era record; retired-but-retained → era
 record from the retained bytes; no retained bytes → caller data,
 terminalized as before. The contained class (doc/echo disagreement,
 unjudgeable or const-less doc const) logs
-`recovery_execution_version_unresolved:` with no record. RETIRED
+`recovery_execution_version_unresolved:` with no record; since issue
+#507 the run's queue state still closes `terminal` at that restart,
+reading `outcome_unknown` with no terminal record on the wire (no
+outcome is invented for the device run). RETIRED
 vocabulary from before this lane: `execution_version_not_runnable:` (the
 superseded run guard) and `recovery_execution_version_not_runnable:`
 (the superseded era skip).

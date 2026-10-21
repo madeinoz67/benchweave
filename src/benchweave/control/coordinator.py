@@ -49,7 +49,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from jsonschema import Draft202012Validator
 
@@ -173,6 +173,24 @@ class _RecoveryDecision:
     binding_pin: dict[str, Any]
     reasons: tuple[str, ...]
     containment: str | None
+
+
+class RecoverySweep(NamedTuple):
+    """What one startup recovery pass found (issue #507).
+
+    ``recovered`` ids ended with a durable terminal record (or already
+    had one) and get their projection closed by the interface's
+    recovery loop, which owns the queue projection. ``contained`` ids
+    are the #260 containment denominator — a decision-level
+    containment or a per-run terminalization failure — where NO record
+    is safe to write; they are reported separately so the SAME loop can
+    close their projection ``terminal`` WITHOUT a record: the frozen
+    contract's outcome_unknown shape. The durable record stays absent;
+    reporting a contained id invents no evidence, it only retires the
+    stale live row that holds the §5 busy oracle."""
+
+    recovered: list[str]
+    contained: list[str]
 
 
 def _implementation_disclosure(gateway_version: str, run_version: str, verb: str) -> str:
@@ -822,7 +840,7 @@ class RunCoordinator:
         if monitor is not None and monitor.phase == "body" and monitor.run_id == run_id:
             monitor.request_cancel()
 
-    def recover_interrupted(self) -> list[str]:
+    def recover_interrupted(self) -> RecoverySweep:
         """Finalise un-terminalised runs as interrupted; release their leases.
 
         Discovery rides the bench leases this coordinator's bench declares:
@@ -840,9 +858,21 @@ class RunCoordinator:
         interrupted or reconciled here, so neither wedge can outlive a
         restart. Reported run ids get their projection closed by the
         interface's recovery loop, which owns the queue projection.
+
+        Issue #507: contained run ids are reported TOO, on the sweep's
+        ``contained`` list — no record is safe for them, so the
+        interface's loop closes their projection ``terminal`` WITHOUT
+        a record (the frozen contract's outcome_unknown shape). That
+        retires the live row that would otherwise hold the §5 busy
+        oracle forever: containment is deterministic per boot over
+        durable bytes, so an unreported contained run never self-heals.
+        A per-run terminalization failure contains the run the same
+        way — the durable record stays absent either way, and closing
+        only the projection invents no evidence.
         """
         bench_id = str(self._docs.bench["id"])
         recovered: list[str] = []
+        contained: list[str] = []
         for lease in self._store.list_leases(bench_id):
             if lease.state != "active" or not lease.holder.startswith("run:"):
                 continue
@@ -867,6 +897,7 @@ class RunCoordinator:
                         decision.containment,
                         str(run["binding"].get("version", "")),
                     )
+                    contained.append(run_id)
                 else:
                     # Fold row 7: per-run containment around the
                     # terminalization — a judgeable-but-unrowed schema (or
@@ -913,6 +944,7 @@ class RunCoordinator:
                             f"terminalization failed: {type(exc).__name__}: {exc}",
                             str(run["binding"].get("version", "")),
                         )
+                        contained.append(run_id)
             self._store.release_lease(bench_id, lease.sequence, now)
         # Run-state-aware leg (issue #156 fix wave). The lease leg above has
         # by now released every active ``run:`` lease it saw, so a crash
@@ -930,7 +962,12 @@ class RunCoordinator:
         }
         for row in self._store.list_run_states(bench_id):
             run_id = str(row["run_id"])
-            if row["state"] == "terminal" or run_id in recovered or run_id in holders:
+            if (
+                row["state"] == "terminal"
+                or run_id in recovered
+                or run_id in contained
+                or run_id in holders
+            ):
                 continue
             run = self._store.get_run(run_id)
             if run is None or run["tombstoned"]:
@@ -945,15 +982,21 @@ class RunCoordinator:
                 )
                 if decision.containment is not None:
                     # Issue #260, second leg: the same containment class
-                    # through the ghost leg — no record, stays non-terminal,
-                    # never reported for projection close (the caller marks
-                    # reported ids terminal, which would launder the same
-                    # way).
+                    # through the ghost leg — no record, the run stays
+                    # non-terminal, but (issue #507) it IS reported on
+                    # ``contained`` so the interface's loop closes its
+                    # projection terminal over the missing record. That is
+                    # not laundering: laundering is a DURABLE record without
+                    # evidence, and no record is written here — the wire
+                    # reads outcome_unknown per the frozen contract, and
+                    # the containment log line stays the operator's
+                    # evidence.
                     _log_recovery_unresolved(
                         run_id,
                         decision.containment,
                         str(run["binding"].get("version", "")),
                     )
+                    contained.append(run_id)
                     continue
                 # Queued ghost: same interrupted record, same evidence and
                 # ledger semantics as the lease-held leg (a never-started
@@ -1002,12 +1045,13 @@ class RunCoordinator:
                         f"terminalization failed: {type(exc).__name__}: {exc}",
                         str(run["binding"].get("version", "")),
                     )
+                    contained.append(run_id)
                     continue
             # Stale projection over a durable terminal: report it for
             # projection close only — the durable record is the truth and
             # is never rewritten.
             recovered.append(run_id)
-        return recovered
+        return RecoverySweep(recovered=recovered, contained=contained)
 
     def interrupt_queued_at_stop(
         self, now_value: str, *, bench_ids: list[str] | None = None

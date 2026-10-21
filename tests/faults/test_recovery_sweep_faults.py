@@ -66,6 +66,16 @@ def _run_changed(store: Store, run_id: str) -> bool:
     )
 
 
+def _wire_projection(store: Store, run_id: str) -> dict[str, Any]:
+    """The seam's own run projection over this store — the wire object a
+    client reads (``Operations._run_projection`` needs only the store)."""
+    from benchweave.interfaces.operations import Operations
+
+    operations = Operations.__new__(Operations)
+    operations._store = store
+    return operations._run_projection(run_id)
+
+
 # --- F1: the queued ghost --------------------------------------------------------
 
 
@@ -416,6 +426,9 @@ def test_era_doc_echo_disagreement_is_contained(
         store.next_lease(
             BENCH_ID, "lease-era-4", holder="run:run-era-4", expires_at=NOW
         )
+        assert _busy(store) is True, (
+            "pre-condition: the contained run's live row owns the bench"
+        )
         with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
             recovered = _era_sweep(store)
         assert recovered == [], f"a contained run is not reported; recovered={recovered}"
@@ -437,6 +450,31 @@ def test_era_doc_echo_disagreement_is_contained(
         assert not any(
             SKIP_LOG in record.message for record in caplog.records
         ), "the old prefix is retired — it names no run anymore"
+        # Issue #507: containment keeps the bench bookable. The projection
+        # closes terminal OVER THE MISSING RECORD — the wire reads the
+        # contract's outcome_unknown shape, never a fabricated outcome.
+        assert _busy(store) is False, (
+            f"the contained run left the bench busy forever; run_states={_states(store)}"
+        )
+        row = store.get_run_state("run-era-4")
+        assert row is not None and row["state"] == "terminal", (
+            f"the contained run's projection must close; run_states={_states(store)}"
+        )
+        projection = _wire_projection(store, "run-era-4")
+        assert projection["state"] == "terminal", projection
+        assert projection["outcome"] == "outcome_unknown", projection
+        assert projection["safe_state"] == "unknown", projection
+        assert projection["terminal_record"] is None, projection
+        assert _run_changed(store, "run-era-4"), (
+            "the contained projection close is on the bench stream"
+        )
+        # Idempotent: a second sweep finds a terminal row and no work, and
+        # the durable record is still absent (no laundering on re-boot).
+        assert _era_sweep(store) == []
+        assert _busy(store) is False
+        run_after = store.get_run("run-era-4")
+        assert run_after is not None
+        assert run_after["terminal"] is None, "no sweep may invent a record"
     finally:
         store.close()
 
@@ -524,15 +562,10 @@ def test_era_echo_retired_by_a_later_policy_era_stamps_from_retained_bytes(
     assert real.containment is None
 
 
-def test_unrowed_run_record_schema_is_contained_per_run(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Fold row 7: recovery has per-run containment — a judgeable run whose
-    version's run-record schema lost its corpus row (a partially-rowed
-    version dir) is contained under the narrowed prefix and the SWEEP
-    SURVIVES (today: AdmissionRejected propagated out of
-    recover_interrupted and the gateway failed to start)."""
-    import logging
+def _unrowed_corpus(tmp_path: Path) -> Path:
+    """A corpus copy whose ``execution/0.1.0`` run-record schema lost its
+    manifest row (a partially-rowed version dir) — the unrowed-schema
+    containment class."""
     import shutil as _shutil
 
     corpus = tmp_path / "standards"
@@ -547,27 +580,33 @@ def test_unrowed_run_record_schema_is_contained_per_run(
     ]
     assert len(manifest_doc["files"]) == before - 1, "the probe row must exist"
     manifest_path.write_text(json.dumps(manifest_doc, indent=2))
+    return corpus
 
-    # The sweep runs against the copied corpus family: a RunCoordinator
-    # whose contracts point at the copy.
-    from benchweave.control.clocking import SystemClock
-    from benchweave.control.coordinator import RunCoordinator
-    from benchweave.control.documents import AdmittedDocuments, DescriptorPin
 
-    docs = AdmittedDocuments(
-        procedure={"max_body_ms": 1, "max_protection_ms": 1},
-        policy={},
-        bench={"id": BENCH_ID},
-        binding=BINDING,
-        commissioning={},
-        descriptors={},
-        digests={"binding": "0" * 64},
-        pins={},
-        execution_version="0.2.0",
-        execution_pin=DescriptorPin(
-            otdp_version="0.2.2", status="served", conformance="conforming"
-        ),
-    )
+def test_unrowed_run_record_schema_is_contained_per_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold row 7 + issue #507: recovery has per-run containment — a
+    judgeable run whose version's run-record schema lost its corpus row
+    (a partially-rowed version dir) is contained under the narrowed
+    prefix, the SWEEP SURVIVES (fold row 7: an AdmissionRejected once
+    killed gateway startup), AND (issue #507) the contained run's
+    projection closes terminal over the missing record so the §5 busy
+    oracle releases — driven through the app-level sweep, the lifespan's
+    ONE recovery entrypoint, over the broken corpus copy."""
+    import logging
+
+    corpus = _unrowed_corpus(tmp_path)
+
+    def sweep(store: Store) -> list[str]:
+        return _recover_interrupted_runs(
+            store,
+            LATTICE_010,
+            emit_keep=100,
+            now_iso=lambda: NOW,
+            contracts=corpus / "execution" / "0.2.0",
+        )
+
     store = Store.open(tmp_path / "unrowed.db")
     try:
         store.create_run("run-era-5", ERA_BINDING, "p1", NOW)
@@ -575,11 +614,11 @@ def test_unrowed_run_record_schema_is_contained_per_run(
         store.next_lease(
             BENCH_ID, "lease-era-5", holder="run:run-era-5", expires_at=NOW
         )
-        coordinator = RunCoordinator(
-            store, {}, SystemClock(), SystemClock(), docs, contracts=corpus / "execution" / "0.2.0"
+        assert _busy(store) is True, (
+            "pre-condition: the contained run's live row owns the bench"
         )
         with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
-            recovered = coordinator.recover_interrupted()
+            recovered = sweep(store)
         assert recovered == [], f"a contained run is not reported; recovered={recovered}"
         run = store.get_run("run-era-5")
         assert run is not None
@@ -590,5 +629,30 @@ def test_unrowed_run_record_schema_is_contained_per_run(
             and "corpus" in record.message
             for record in caplog.records
         ), f"the containment names the unrowed schema: {[r.message for r in caplog.records]}"
+        # Issue #507: containment keeps the bench bookable — the projection
+        # closes terminal over the missing record (outcome_unknown on the
+        # wire), never a fabricated terminal record.
+        assert _busy(store) is False, (
+            f"the contained run left the bench busy forever; run_states={_states(store)}"
+        )
+        row = store.get_run_state("run-era-5")
+        assert row is not None and row["state"] == "terminal", (
+            f"the contained run's projection must close; run_states={_states(store)}"
+        )
+        projection = _wire_projection(store, "run-era-5")
+        assert projection["state"] == "terminal", projection
+        assert projection["outcome"] == "outcome_unknown", projection
+        assert projection["safe_state"] == "unknown", projection
+        assert projection["terminal_record"] is None, projection
+        assert _run_changed(store, "run-era-5"), (
+            "the contained projection close is on the bench stream"
+        )
+        # Idempotent: a second sweep finds a terminal row and no work, and
+        # the durable record is still absent (no laundering on re-boot).
+        assert sweep(store) == []
+        assert _busy(store) is False
+        run_after = store.get_run("run-era-5")
+        assert run_after is not None
+        assert run_after["terminal"] is None, "no sweep may invent a record"
     finally:
         store.close()

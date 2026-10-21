@@ -389,6 +389,18 @@ rather than rewriting the history — that is how this file earns trust.
   `_refuse_execution_pin` fires it at the POST — and the floor shape-gates
   every raw pin before the interval comparator (typed-or-pass, never
   ValueError).
+  Issue #507 (2026-10-21): a contained run's queue projection closes
+  ``terminal`` at the recovery sweep that contains it, with NO durable
+  record (the interface's recovery loop owns the projection; the wire
+  reads ``outcome_unknown``/``unknown``/``terminal_record: null`` — the
+  frozen contract's terminal-evidence-gap shape). The §5 busy oracle
+  releases; CTL-9 is untouched — no terminal record is written, so no
+  outcome is invented; the closed row is the queue's own view, never a
+  record. The same reporting covers a per-run terminalization failure
+  (fold row 7's except): the record stays absent there too. The
+  containment log line stays the operator's evidence; a terminal
+  projection over a contained run is never re-judged by later sweeps
+  (the live-row skip), so corpus repair does not retro-terminalize it.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),

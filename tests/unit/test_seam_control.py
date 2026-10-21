@@ -27,7 +27,7 @@ import pytest
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import TestClock
-from benchweave.control.coordinator import _RunMonitor
+from benchweave.control.coordinator import RecoverySweep, _RunMonitor
 from benchweave.control.documents import admit_documents
 from benchweave.host.plugin import DevicePlugin
 from benchweave.interfaces import errors, operations
@@ -115,8 +115,8 @@ class FakeCoordinator:
     def cancel(self, run_id: str, principal_id: str) -> None:
         self.cancelled.append((run_id, principal_id))
 
-    def recover_interrupted(self) -> list[str]:
-        return []
+    def recover_interrupted(self) -> RecoverySweep:
+        return RecoverySweep([], [])
 
 
 @dataclass
