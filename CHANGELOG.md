@@ -59,6 +59,9 @@ All notable changes to this project will be documented in this file.
 - Second bounded fold — comparison-hostile status and hostile Reading subclasses
 - Narrow docs.yml Pages/OIDC grants to publish-docs job scope
 - Fold F1 — exclusion prover becomes exact conjunct equality
+- Fold the refute — hunk parsing, vocabulary allowlist, leak-proof citations, CI hardening
+- Re-fold — anchor rule, hosting-scoped git URLs, filename wirings, reachable version shape
+- Close the anchor class as a negative rule; exact version-shape wording
 
 ### Documentation
 
@@ -151,6 +154,10 @@ All notable changes to this project will be documented in this file.
 - Record addendum — base-commit correction (lane B) and the fold-1 mechanism note
 - Addendum line for the second bounded fold — contained classes and the named residual
 - Design record — docs.yml Pages/OIDC grants narrow to job scope
+- Default new design records to the public directory (#520)
+- Describe private/ as the trigger-carrying home in .gitignore comment (#520)
+- Design record for the public-repo name screen
+- G0/G0b rubric amendment, obligations row 31, install step, run record
 
 ### Features
 
@@ -195,6 +202,8 @@ All notable changes to this project will be documented in this file.
 - The L15 electronic_load class reference - the inverted direction pinned, nothing widened (gateway #463)
 - The L16 smu class reference - the sweep deferred by name, zero schema motion (gateway #463)
 - The L17 daq class reference - the sweep's first real consumer, zero schema motion (gateway #463)
+- Name-screen.mjs — the two-tier name screen
+- Wire the name screen — hooks, make hooks, PreToolUse, CI
 
 ### Miscellaneous
 
