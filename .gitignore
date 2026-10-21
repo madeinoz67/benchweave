@@ -122,7 +122,7 @@ plugins/*/*/contracts/*-*.*.*/
 # never be hidden.
 /.gate-logs/
 
-# Design records: private/ holds pre-promotion designs (see .claude/deep-review/README.md)
+# Design records: private/ is the gitignored home for records that must carry one of the README's five triggers (see .claude/deep-review/README.md)
 .claude/deep-review/private/
 
 # Parallel-lane worktrees (session-CWD-anchored gortex overlays; see AGENTS.md)
