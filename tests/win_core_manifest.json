@@ -744,6 +744,10 @@
       "core": 0,
       "total": 14
     },
+    "tests/ui_html/test_mockup_banner_stamps.py": {
+      "core": 0,
+      "total": 1
+    },
     "tests/ui_html/test_package_boundary.py": {
       "core": 0,
       "total": 2
