@@ -15,10 +15,13 @@ on:
       - main
   pull_request:
 
+# Workflow-wide token is read-only. This workflow also runs on every
+# pull_request — uv sync plus a third-party docs toolchain plus in-repo
+# Python — so the Pages-deploy and OIDC scopes must not ride along on PR
+# builds (#509; the same shape the SDK twin already runs). publish-docs, the
+# only job that deploys, carries pages/id-token itself.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Keyed by ref: only publish-docs touches Pages and it runs on main alone, so
 # a PR build and the main build must not share a group — when they did, the
@@ -99,6 +102,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: "build-docs"
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      # Exactly the two scopes actions/deploy-pages needs, granted only here
+      # so the PR-triggered build never holds a deploy-capable or OIDC token
+      # (#509; ported from the SDK twin).
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

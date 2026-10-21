@@ -163,8 +163,10 @@ gateway `v*` release would fire a ui-html publish:
   of the member, artifact upload refusing an empty dist.
 - **smoke** (ubuntu + macos) — fresh venv outside any checkout, the
   installed-wheel asserts and the resource census, re-proven at the tag.
-- **publish** — PyPI trusted publishing via OIDC: the repository's ONLY
-  `id-token: write`, job-scoped to this one job; no token secret anywhere.
+- **publish** — PyPI trusted publishing via OIDC: the repository's only
+  trusted-publishing (PyPI) `id-token: write`, job-scoped to this one job
+  (the docs.yml Pages deploy carries the other job-scoped one, on its
+  `publish-docs` since #509); no token secret anywhere.
   The publish action's `attestations` input defaults to true at the pinned
   version, so the first release emits PEP 740 attestations — disclosed, not
   configured; the `urls` payload stays file-only, so the verify job's
