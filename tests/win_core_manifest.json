@@ -878,7 +878,7 @@
     },
     "tests/unit/test_run_projection.py": {
       "core": 0,
-      "total": 2
+      "total": 3
     },
     "tests/unit/test_seam_admin.py": {
       "core": 0,

@@ -19,7 +19,12 @@ Be especially deliberate with **behavior-critical code** — database migrations
 ### Edit routing — which write path applies
 
 One decision point, not a per-edit judgment call. The mandate binds the main
-session's own edits, not only dispatched agents.
+session's own edits, not only dispatched agents. The card is wired for every
+clone: a tracked PreToolUse entry runs `gortex-write-gate.mjs` on
+Edit|Write|MultiEdit. Hosts without gortex or git fail open by design — the
+gate protects edit routing, not safety. A `disableAllHooks` setting (user or
+project-local) still silences every hook, this one included — the wiring is
+structural, not irrevocable.
 
 | Situation | Path |
 |---|---|

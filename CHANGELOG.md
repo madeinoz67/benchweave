@@ -49,6 +49,10 @@ All notable changes to this project will be documented in this file.
 - Read the belt cell in the driving-signal domain — the plan recording, re-derived evaluators, the corrected verdict
 - Pin the plan VALUE — the read-leg scale regression the retired ceiling used to catch (review fold MED-1)
 - Pin the capture construction — the chunk count and plan product (probe G's fold)
+- Close a contained run's projection — unwedge the bench
+- Ship the write-gate wiring — tracked PreToolUse entry, portable binary resolution, deliberate fail-open
+- Fold refute rows F1-F4 — shaped answers only, realpath, bounded walk, disableAllHooks named
+- Verdict stability under load — budget re-derived from measured spikes, walk cap added, residual disclosed
 
 ### Documentation
 
@@ -121,6 +125,10 @@ All notable changes to this project will be documented in this file.
 - The obligations walk — the plan-reading sentences and the #172 record's amendment lines
 - The trial count is ten, not eleven (review fold LOW-1)
 - The one-sided couplings' upper-side reason, corrected (review fold LOW-2)
+- Design record — recovery containment unwedge
+- Post-refute fold addendum — row b split, lane residuals
+- Design record — tracked wiring for the gortex write-gate
+- §12 F4 superseded — point the fold's reader at the stability numbers
 
 ### Features
 

@@ -565,7 +565,13 @@ retained bytes (never carried, a retired identifier, unclassifiable) is
 caller data and terminalizes exactly as before. The containment
 class is an unresolvable record — a doc/echo
 disagreement or an unjudgeable or const-less doc const — left
-non-terminal and logged `recovery_execution_version_unresolved:`. RETIRED
+non-terminal (no terminal record is written) and logged
+`recovery_execution_version_unresolved:`. Since issue #507 the same
+restart closes the run's queue state `terminal` with
+`outcome_unknown`/`unknown` and no terminal record on the wire: the
+bench is bookable again, the run reads "over, evidence missing", and
+the log line names the documents to repair. A contained run is not
+re-judged by later restarts. RETIRED
 vocabulary (an old log
 grep finds it here): `execution_version_not_runnable:` was the pre-record-
 lane run guard (superseded by the floor + threading above) and

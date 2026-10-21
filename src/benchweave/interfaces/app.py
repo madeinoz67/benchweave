@@ -93,6 +93,17 @@ RECOVERY_PROJECTION_REASON = (
     "gateway restart recovery: stale projection reconciled to the durable terminal record"
 )
 
+#: The recovery ``run_changed`` for a run the sweep CONTAINED (issue #507):
+#: no terminal record is safe, so the queue projection closes ``terminal``
+#: over the missing record — the frozen contract's outcome_unknown shape.
+#: The durable record stays absent (nothing is laundered); the containment
+#: log line is the operator's evidence, and the closed row releases the §5
+#: busy oracle that an unreported contained run would hold forever.
+RECOVERY_CONTAINED_REASON = (
+    "gateway restart recovery: run contained with no safe terminal record; "
+    "projection closed over missing evidence"
+)
+
 _LOG = logging.getLogger(__name__)
 
 
@@ -315,6 +326,12 @@ def _recover_interrupted_runs(
     reconciled (never re-finalised). Both dispositions close the queue
     projection below, so neither wedge can hold the §5 busy oracle past
     a restart.
+
+    Issue #507: a run the sweep CONTAINS (no safe terminal record) has
+    its projection closed ``terminal`` below too — over the missing
+    record, the contract's outcome_unknown shape. No record is written
+    for it, here or anywhere; the closed row is what releases the busy
+    oracle, and the containment log line is the operator's evidence.
     """
     docs = _recovery_documents(fixtures_dir, now_wall=now_iso(), contracts=contracts)
     if docs is None:
@@ -335,7 +352,8 @@ def _recover_interrupted_runs(
     coordinator = RunCoordinator(
         store, {}, SystemClock(), SystemClock(), docs, contracts=contracts
     )
-    recovered = coordinator.recover_interrupted()
+    sweep = coordinator.recover_interrupted()
+    recovered = sweep.recovered
     # D13 crash-window reconciliation rides the same startup path: a §9
     # RUN-request key filed by a process that died between
     # accept_request and create_run points at a run that never
@@ -367,6 +385,27 @@ def _recover_interrupted_runs(
         _LOG.info(
             "run_changed (recovery) run_id=%s reason=%s",
             run_id, reason,
+        )
+        append_bench_event(
+            store,
+            "run_changed",
+            bench_id,
+            run_id,
+            None,
+            keep=emit_keep,
+            now_iso=now_iso,
+        )
+    # Issue #507: contained runs close their projection terminal WITHOUT a
+    # durable record — the frozen contract's terminal-evidence-gap shape
+    # (outcome_unknown on the wire; the record stays absent, which is the
+    # line against laundering). The closed row is what releases the §5 busy
+    # oracle: an unreported contained run holds its bench forever, because
+    # containment is deterministic per boot over durable bytes.
+    for run_id in sweep.contained:
+        store.put_run_state(run_id, bench_id, "terminal", now_iso())
+        _LOG.info(
+            "run_changed (recovery-contained) run_id=%s reason=%s",
+            run_id, RECOVERY_CONTAINED_REASON,
         )
         append_bench_event(
             store,
