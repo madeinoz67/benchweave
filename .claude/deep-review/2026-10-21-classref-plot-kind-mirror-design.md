@@ -222,7 +222,7 @@ refused in §3 on the doctrine and the mirror discipline respectively.
 
 ## 7. Invariant and drift impacts
 
-- **CON-5** (the L4 amendment row, `docs/internal/invariants.md` ~line 497): the fix stays
+- **CON-5** (the L4 amendment row, `docs/internal/invariants.md` around line 497): the fix stays
   inside the read-time-composition frame (no store write, no control authority, derived
   marker unchanged). An AMENDMENT is warranted, appended with evidence: the derived plot's
   kind follows the reference's page-template plot kind — the founding-class emission
