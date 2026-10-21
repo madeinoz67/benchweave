@@ -158,6 +158,8 @@ All notable changes to this project will be documented in this file.
 - Describe private/ as the trigger-carrying home in .gitignore comment (#520)
 - Design record for the public-repo name screen
 - G0/G0b rubric amendment, obligations row 31, install step, run record
+- The two #463 gap-2 design records, at the head of the mirror slice
+- Approximation prose that trips the name screen's tilde class
 
 ### Features
 
@@ -204,6 +206,7 @@ All notable changes to this project will be documented in this file.
 - The L17 daq class reference - the sweep's first real consumer, zero schema motion (gateway #463)
 - Name-screen.mjs — the two-tier name screen
 - Wire the name screen — hooks, make hooks, PreToolUse, CI
+- Emit the reference's plot kind, gateway-side (#521)
 
 ### Miscellaneous
 
@@ -241,6 +244,7 @@ All notable changes to this project will be documented in this file.
 - Ruff-clean the L12 test modules — import order, signature wrap
 - The full-battery fold — win-core manifest refresh, the B3 specimen motion
 - Advance the pointer to v0.17.0 — the pairing window closes here
+- Advance packages/sdk to v0.18.0 (#463 gap 2, closes none)
 
 ### Refactoring
 
@@ -295,6 +299,7 @@ All notable changes to this project will be documented in this file.
 - The mockup banner stamps must match the package version (gateway #499)
 - Register the banner-stamp guard in the win-core manifest (gateway #499)
 - Lift lane A's named malformed-result shapes and the disclosed width pin
+- Pin the readings pairs' pre-existing finding as recorded state (#525)
 
 ### Build
 
