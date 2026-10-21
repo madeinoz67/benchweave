@@ -3,23 +3,34 @@
 //
 // Denies native file mutation inside a gortex-tracked PRIMARY checkout,
 // routing to mcp__gortex__edit per the CLAUDE.md edit-routing card.
+// Payload paths resolve through symlinks before the trackedness lookup.
 // Allowed through: linked worktrees (the overlay caveat row), files with
 // no git repo above them, and anything gortex does not track. No-ops
 // (exit 0) whenever the gortex CLI, the daemon, or git is unavailable, so
 // contributors without gortex are never blocked.
 import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 
 // Resolution order (issue #508): an explicit GORTEX_BIN, then `gortex` on PATH
 // (the resolution the `sh("git", …)` call below already relies on), then the
-// Homebrew absolute path. First candidate that returns output wins; a
-// candidate that cannot execute (or errors) falls through to the next.
+// Homebrew absolute path. The first candidate that returns a
+// workspace-info-shaped answer wins; a candidate that cannot execute, errors,
+// times out, or prints something that is not workspace info falls through to
+// the next (fold F1: a wrong binary that merely succeeds — /bin/echo, a
+// foreign PATH gortex — is not an answer).
 const GORTEX_CANDIDATES = [
   process.env.GORTEX_BIN,
   "gortex",
   "/opt/homebrew/bin/gortex",
 ].filter(Boolean);
+// Per-candidate budget (fold F4): a healthy full-hook run measured ~0.22s
+// wall (refute lane, 2026-10-21), so 500ms per candidate is over 2x the
+// entire healthy run — generous for the real CLI while bounding the
+// 3-candidate walk at <=1.5s (measured pre-fold: one hanging candidate
+// 5.36s, two ~10.3s). The git calls below keep the 5s sh default: separate
+// constant, separate call sites.
+const GORTEX_CANDIDATE_TIMEOUT_MS = 500;
 const ALLOW = 0;
 const DENY = 2;
 
@@ -36,10 +47,27 @@ function sh(cmd, args, opts) {
   }
 }
 
+// Workspace info, measured 2026-10-21, is a JSON object (members[].path
+// naming the tracked checkout); the not-tracked answer carries the marker
+// string the verdict arm already keys on. Both checks are cheap; anything
+// else is treated as no answer.
+function looksLikeWorkspaceInfo(out) {
+  if (out.includes("does not track")) return true;
+  try {
+    JSON.parse(out);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function gortexInfo(cwd) {
   for (const bin of GORTEX_CANDIDATES) {
-    const out = sh(bin, ["call", "workspace", "--arg", "operation=info"], { cwd });
-    if (out !== null) return out;
+    const out = sh(bin, ["call", "workspace", "--arg", "operation=info"], {
+      cwd,
+      timeout: GORTEX_CANDIDATE_TIMEOUT_MS,
+    });
+    if (out !== null && looksLikeWorkspaceInfo(out)) return out;
   }
   return null;
 }
@@ -63,8 +91,19 @@ try {
   );
   process.exit(ALLOW);
 }
-const filePath = input?.tool_input?.file_path;
+let filePath = input?.tool_input?.file_path;
 if (!filePath) process.exit(ALLOW);
+
+// Resolve symlinks before every path-based decision (fold F3): a link at an
+// untracked path aiming at a tracked file must reach the target's verdict.
+// A path that does not resolve (branch-new files, dangling links) keeps its
+// literal form — the untracked exemption below still applies. Real worktree
+// paths resolve to themselves, so the worktree row is untouched.
+try {
+  filePath = realpathSync(filePath);
+} catch {
+  // keep the literal path
+}
 
 // The overlay rows: linked worktrees and git internals never take the
 // gortex-edit path.

@@ -207,3 +207,38 @@ extends a five-entry tracked precedent with one config entry plus three small sc
 corrections, and the proof is executable in both directions with named underpowered
 cases. The adjacent MED/LOW items ride only where they make the tracked wiring honest
 (portability, deliberate posture); the rest defer with homes and triggers.
+
+## 12. Fold (2026-10-21) — refute rows F1-F4, called in by the owner
+
+Appended after the increment landed; §0-§11 above are the original record,
+unchanged. Decisions and pins:
+
+- **F1 wrong-binary allow (LOW-MED).** The §2.2 candidate list treated any
+  non-null output as an answer, so `/bin/echo` as GORTEX_BIN or a foreign
+  `gortex` on PATH silently allowed a tracked primary file (measured this
+  lane, both arms exit 0; the brew-absolute code denied both). Decision: an
+  output that is not workspace info is not an answer — the walk continues.
+  The shape check (JSON-parseable, or the pre-existing `does not track`
+  marker) is cheap and both forms are what the real CLI emits (measured this
+  fold: workspace info is a JSON object with `members[].path`), so deny stays
+  affordable. Pinned by the F1 test: garbage GORTEX_BIN falls through to a
+  PATH candidate answering shaped info → DENY.
+- **F2 disableAllHooks (LOW).** Documentation only: the CLAUDE.md routing card
+  names it — `disableAllHooks` (user or project-local settings) silences every
+  hook including this one; the wiring is structural, not irrevocable.
+- **F3 symlink bypass (LOW).** A symlink at an untracked path aiming at a
+  tracked file took the untracked exemption (measured: link exit 0, target
+  exit 2). Fix: `realpathSync` the payload path before every path-based
+  decision; unresolvable paths (branch-new files) keep the literal form so the
+  native-Write row is untouched. The worktree exemption is not weakened —
+  real worktree paths resolve to themselves, and the pre-existing worktree
+  test still guards that row. Pinned by the F3 parity test (link and target
+  reach the same verdict).
+- **F4 unbounded candidate walk (LOW).** Measured: one hanging candidate adds
+  ~5.36s wall (healthy full-hook baseline ~0.22s, refute lane), two ~10.3s
+  (this lane's RED). Decision: 500ms per candidate — over 2x the entire
+  healthy run, so generous for the real CLI, bounding the 3-candidate walk at
+  <=1.5s. The git calls keep the 5s `sh` default (separate constant, separate
+  call sites). Pinned by the F4 wall test: two hanging candidates, total
+  < 2500ms (the 1.5s walk cap plus <1s of measured host-dependent extras —
+  the surviving real candidate, the git calls, node boot).
