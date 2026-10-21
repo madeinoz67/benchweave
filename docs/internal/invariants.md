@@ -530,6 +530,21 @@ rather than rewriting the history — that is how this file earns trust.
   no input/select/button element, no control authority across the boundary — the
   live trio partials render only in hosts that own staging (the SDK host's
   render lane), never in the gateway's read-only page.
+  Amendment (2026-10-21, the plot-kind mirror — the #463 gap-2 mirror leg,
+  gateway issue #521): the derived plot's kind follows the reference's
+  page-template plot kind. The founding-class emission hardcoded
+  `digital_lanes` until the 0.3.0 vocabulary; the mirror emits
+  `time_series`/`waveform` per the reference — the per-slot dataset
+  shapes, the (channel, quantity) variable ids, the readings-page
+  observation expansion and the reading-tile layout strip all mirrored
+  from `benchweave_sdk.classref` at the v0.18.0 pin, byte-pinned by the
+  f6-smu fixture (B8). Same read-only posture as the L4 arms: the
+  zero-readable-parameters corpus examples derive without the readings
+  expansion (the composition's unchanged validator reports their
+  pre-existing `invalid_plot`; the SDK refuses the same shape at
+  authoring time), and an over-16 analog y refuses typed
+  (`classref_series_ceiling`) rather than emitting a manifest the schema
+  would refuse diffusely — `src/benchweave/presentation/classref.py`.
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller

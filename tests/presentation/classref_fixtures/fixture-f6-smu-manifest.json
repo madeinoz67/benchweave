@@ -1,0 +1,242 @@
+{
+  "contract_version": "0.4.0",
+  "plugin_id": "dev.veridian.smu",
+  "descriptor_sha256": "115ef4de97155ea0f534b536f6725d43723997a5ed5a895dff07a90cc5930bf3",
+  "bindings": [
+    {
+      "id": "measure",
+      "kind": "dataset",
+      "target_id": "measure"
+    },
+    {
+      "id": "measure-ch1-voltage",
+      "kind": "observation",
+      "target_id": "measure-ch1-voltage"
+    },
+    {
+      "id": "measure-ch1-current",
+      "kind": "observation",
+      "target_id": "measure-ch1-current"
+    },
+    {
+      "id": "measure-ch1-power",
+      "kind": "observation",
+      "target_id": "measure-ch1-power"
+    },
+    {
+      "id": "measure-ch2-voltage",
+      "kind": "observation",
+      "target_id": "measure-ch2-voltage"
+    },
+    {
+      "id": "measure-ch2-current",
+      "kind": "observation",
+      "target_id": "measure-ch2-current"
+    },
+    {
+      "id": "measure-ch2-power",
+      "kind": "observation",
+      "target_id": "measure-ch2-power"
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "target_id": "configure"
+    },
+    {
+      "id": "output",
+      "kind": "procedure",
+      "target_id": "output"
+    }
+  ],
+  "pages": [
+    {
+      "id": "output",
+      "title": "Output",
+      "kind": "readings",
+      "bindings": [
+        "measure-ch1-voltage",
+        "measure-ch1-current",
+        "measure-ch1-power",
+        "measure-ch2-voltage",
+        "measure-ch2-current",
+        "measure-ch2-power"
+      ],
+      "required": true,
+      "plots": [
+        {
+          "kind": "time_series",
+          "binding_id": "measure-ch1-voltage",
+          "x": "time",
+          "y": [
+            "ch1-voltage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "title": "Configuration",
+      "kind": "configuration",
+      "bindings": [
+        "configure"
+      ],
+      "required": true
+    },
+    {
+      "id": "device-features",
+      "title": "Device features",
+      "kind": "configuration",
+      "bindings": [],
+      "required": true
+    }
+  ],
+  "assets": [
+    {
+      "id": "settings/configure.schema.json",
+      "path": "settings/configure.schema.json",
+      "sha256": "133b14b471b08e30eab175a2c5a5eb3b422b06782b0b8792caa1ce9dcf1b11ac"
+    }
+  ],
+  "extensions": {
+    "plugin-ui-class-reference:layout": {
+      "contract_version": "0.3.0",
+      "pages": [
+        {
+          "page_id": "output",
+          "sections": [
+            {
+              "id": "trend",
+              "title": "Trend",
+              "surface": "recessed",
+              "span": 7,
+              "children": [
+                {
+                  "plot_index": 0
+                }
+              ]
+            },
+            {
+              "id": "table",
+              "title": "Table",
+              "surface": "raised",
+              "span": 5,
+              "children": [
+                {
+                  "binding_id": "measure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "configuration",
+          "sections": [
+            {
+              "id": "configuration-section",
+              "title": "Configuration",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "level"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "compliance_abs"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "device-features",
+          "sections": [
+            {
+              "id": "device-features-section",
+              "title": "Device features",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "abort",
+                  "kind": "text",
+                  "field": "acquisition_id"
+                },
+                {
+                  "binding_id": "abort",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "text",
+                  "field": "configuration_id"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "text",
+                  "field": "acquisition_id"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "numeric",
+                  "field": "max_duration_ms"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "numeric",
+                  "field": "max_duration_ms"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "fetch",
+                  "kind": "text",
+                  "field": "acquisition_id"
+                },
+                {
+                  "binding_id": "fetch",
+                  "kind": "numeric",
+                  "field": "max_bytes"
+                },
+                {
+                  "binding_id": "fetch",
+                  "kind": "boolean",
+                  "field": "allow_partial"
+                },
+                {
+                  "binding_id": "fetch",
+                  "kind": "numeric",
+                  "field": "max_bytes"
+                },
+                {
+                  "binding_id": "fetch",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "trigger",
+                  "kind": "text",
+                  "field": "acquisition_id"
+                },
+                {
+                  "binding_id": "trigger",
+                  "kind": "button"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

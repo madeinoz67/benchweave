@@ -29,9 +29,22 @@ Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
 (``_row_mode`` / ``_MODE_KIND`` / the widened ``_field_rows`` /
 ``_ladder_level`` / ``_staging_nodes``; the SDK branch above, landing as
-v0.15.0 at the pointer leg). A re-pin that moves the SDK derivation moves
-these functions in the same arc (the design's fixture-freeze re-pin rule);
-B8 reds otherwise.
+v0.15.0 at the pointer leg) PLUS the plot-kind mirror at v0.18.0
+(issue #521; design record 2026-10-21-classref-plot-kind-mirror-design):
+the per-slot plot kind, the (channel, quantity) variable ids, the
+readings-page observation expansion and the reading-tile layout strip,
+pinned byte for byte by the f6-smu fixture. A re-pin that moves the SDK
+derivation moves these functions in the same arc (the design's
+fixture-freeze re-pin rule); B8 reds otherwise.
+
+Disclosed residuals of the plot-kind mirror: (1) a decoder-carrying
+numeric descriptor keeps its decode binding and target — the lanes
+simply do not ride the analog plot (the schema bans decoder lanes
+there; the SDK's own emission, mirrored); (2) the SDK's empty-page
+disclosure fallback (a page whose every authored section is
+reading-tiles) is not mirrored — such a page is omitted from the
+layout block as before, and no committed pair carries one; (3) the
+serve-side parameter guard ``_resolve_parameters`` documents below.
 
 Corpus discipline: every corpus file this module reads is digest-verified
 against its corpus-manifest row before parsing (``_verify_corpus_pin`` —
@@ -71,6 +84,13 @@ LAYOUT_EXTENSION_KEY = "plugin-ui-class-reference:layout"
 
 _LANE_CEILING = 64
 _GROUP_SIZE = 8
+#: The manifest schema's analog-plot y ceiling (the ``$defs.plot`` analog
+#: branch, ``y maxItems 16``). The SDK expander ships no over-16 arm; the
+#: gateway refuses typed (``classref_series_ceiling``, the
+#: ``classref_lane_ceiling`` shape) rather than emitting a manifest the
+#: schema would refuse diffusely — the fail-closed-arm-the-SDK-lacks
+#: precedent (the non-object decoder-document arm).
+_ANALOG_Y_CEILING = 16
 _HOST_SUPPLIED_UNIVERSAL = ("acquisition_id", "configuration_id")
 _NUMERIC_TYPES = ("number", "integer")
 #: The layout-node kind each field-row mode emits (the L5 widening, gateway
@@ -803,6 +823,57 @@ def _resolve_channels(
     return list(lanes)
 
 
+def _resolve_parameters(
+    descriptor: Mapping[str, Any], lanes: list[dict[str, Any]]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """The descriptor parameters the channels bind to their declared
+    quantities: ``parameter_names`` positionally over ``quantities`` (the
+    descriptor's own channel-level mapping), mirrored from the SDK
+    expander at the v0.18.0 pin — a readings page that owes a tile per
+    scalar variable and meets a quantity with no named readable parameter
+    refuses typed (``classref_parameter_map``): the tile's data path is
+    structure the derivation cannot invent.
+
+    The gateway's one deliberate divergence from the SDK arm: a descriptor
+    that declares NO readable parameter at all derives WITHOUT the
+    readings expansion (no tiles, no observation bindings, the plot over
+    the dataset binding) instead of refusing — the committed OTDP class
+    examples ship exactly that shape (parameters empty), and their
+    derivability is pinned by the committed-pair suites; the SDK meets
+    the same descriptor at authoring time, where the refusal is the
+    honest gate. Every descriptor with at least one readable parameter
+    resolves exactly as the SDK does, refusals included (the f6-smu
+    parity fixture pins the agreement byte for byte)."""
+    parameters = {
+        str(row.get("name")): row
+        for row in descriptor.get("parameters", [])
+        if row.get("access") in ("ro", "rw")
+    }
+    if not parameters:
+        return {}
+    mapping: dict[tuple[str, str], dict[str, Any]] = {}
+    for channel in lanes:
+        names = [str(name) for name in channel.get("parameter_names") or []]
+        for index, quantity in enumerate(channel.get("quantities") or []):
+            if index >= len(names):
+                raise _refuse(
+                    "classref_parameter_map",
+                    f"channel {channel.get('id')!r} declares quantity "
+                    f"{quantity!r} with no named parameter (parameter_names "
+                    "covers quantities positionally)",
+                )
+            row = parameters.get(names[index])
+            if row is None:
+                raise _refuse(
+                    "classref_parameter_map",
+                    f"channel {channel.get('id')!r} quantity {quantity!r} "
+                    f"names {names[index]!r}, which is no declared readable "
+                    "parameter",
+                )
+            mapping[(str(channel.get("id")), str(quantity))] = row
+    return mapping
+
+
 # --- the layout block (parent record §2.6, mirrored) ---------------------------
 
 
@@ -916,10 +987,19 @@ def _build_layout(
         page_id = str(page["id"])
         authored_page = by_page.get(page_id)
         if authored_page is not None:
-            sections = [
-                {**section, "children": list(section.get("children", []))}
-                for section in authored_page.get("sections", [])
-            ]
+            # The reading-tile expansion consumes authored reading-tile
+            # children (they become the page's observation tiles — see
+            # _assemble_documents); a section left empty by the expansion
+            # drops with them. data-table children render as always.
+            sections = []
+            for section in authored_page.get("sections", []):
+                kept = [
+                    child
+                    for child in section.get("children", [])
+                    if child.get("kind") != "reading-tile"
+                ]
+                if kept:
+                    sections.append({**section, "children": kept})
         else:
             children: list[dict[str, Any]] = []
             if page.get("plots") and not plot_done and plots:
@@ -1169,6 +1249,75 @@ def _assemble_documents(
         for row in lanes
     ]
     x_var = {"id": "t", "type": "number", "unit": "s", "shape": "vector", "axis_role": "x"}
+    # The plot kind each dataset slot serves, from the reference's page
+    # templates (the 0.3.0 vocabulary widening; the SDK expander at the
+    # v0.18.0 pin): a slot's variables are the wire shape its kind
+    # declares — the digital_lanes logic alphabet, the scalar variables of
+    # a measure dataset (one per channel and declared quantity), or the
+    # array-valued traces of a waveform dataset over the explicit time
+    # axis. A slot with no plot keeps the founding shape.
+    plot_kind_for_slot: dict[str, str] = {}
+    for page in merged["pages"]:
+        spec = page.get("plot")
+        if spec:
+            plot_kind_for_slot.setdefault(
+                str(spec.get("over_slot", "")),
+                str(spec.get("kind", "digital_lanes")),
+            )
+    readings_slots = {
+        key
+        for page in merged["pages"]
+        if str(page.get("kind", "readings")) == "readings"
+        for key in page.get("_slot_keys", [])
+        if key in dataset_slots
+    }
+    parameter_rows = (
+        _resolve_parameters(descriptor, lanes) if readings_slots else {}
+    )
+    quantity_vars: list[dict[str, Any]] = [
+        {
+            "id": f"{row['id']}-{quantity}",
+            "type": "number",
+            "unit": (
+                parameter_rows.get((str(row["id"]), str(quantity))) or {}
+            ).get("unit"),
+            "shape": "scalar",
+            "axis_role": "value",
+        }
+        for row in lanes
+        for quantity in row.get("quantities") or []
+    ]
+    trace_vars: list[dict[str, Any]] = [
+        {
+            "id": f"{row['id']}-{quantity}",
+            "type": "number",
+            "unit": (
+                parameter_rows.get((str(row["id"]), str(quantity))) or {}
+            ).get("unit"),
+            "shape": "vector",
+        }
+        for row in lanes
+        for quantity in row.get("quantities") or []
+    ]
+    # time_series speaks receipt time (the canonical validator's own rule:
+    # the x axis is receipt_time in seconds, every axis scalar); waveform
+    # speaks the explicit time-axis vector alongside its traces.
+    receipt_var = {
+        "id": "time",
+        "type": "number",
+        "unit": "s",
+        "shape": "scalar",
+        "axis_role": "receipt_time",
+    }
+
+    def _dataset_shape(slot_key: str) -> list[dict[str, Any]]:
+        kind = plot_kind_for_slot.get(slot_key, "digital_lanes")
+        if kind == "time_series":
+            return [receipt_var, *quantity_vars]
+        if kind == "waveform":
+            return [x_var, *trace_vars]
+        return [x_var, *lane_vars]
+
     bindings: list[dict[str, Any]] = []
     targets: list[dict[str, Any]] = []
     assets: list[dict[str, Any]] = []
@@ -1180,7 +1329,7 @@ def _assemble_documents(
                 "action_id": capture_slot["action"],
                 "profile_ids": profile_ids,
                 "measurement_schema_id": measurement_id,
-                "variables": [x_var, *lane_vars],
+                "variables": _dataset_shape(capture_key),
             }
         )
         bindings.append({"id": capture_key, "kind": "dataset", "target_id": capture_key})
@@ -1259,10 +1408,69 @@ def _assemble_documents(
                 "action_id": decode_slot["action"],
                 "profile_ids": profile_ids,
                 "measurement_schema_id": measurement_id,
-                "variables": [x_var, *lane_vars],
+                "variables": _dataset_shape(decode_key),
             }
         )
         bindings.append({"id": decode_key, "kind": "dataset", "target_id": decode_key})
+    # The readings expansion (the L11 rule; the SDK expander at the pin):
+    # a readings page's rendered tiles are OBSERVATION bindings — one per
+    # scalar variable of its dataset slot — each naming the descriptor
+    # parameter the channel binds to that quantity. The layout's authored
+    # reading-tile nodes are consumed by this expansion (see
+    # _build_layout): one authored child becomes the page's observation
+    # tiles, never an admittance table beside them. A channel quantity
+    # with no named readable parameter SKIPS its tile only in the
+    # zero-readable-parameters shape (the _resolve_parameters guard);
+    # a descriptor with parameters resolves fully or refuses typed.
+    observation_ids_for_page: dict[str, list[str]] = {}
+    observation_value_ids: dict[str, str] = {}
+    for page in merged["pages"]:
+        if str(page.get("kind", "readings")) != "readings":
+            continue
+        page_id = str(page["id"])
+        for key in page.get("_slot_keys", []):
+            if key not in dataset_slots:
+                continue
+            ids: list[str] = []
+            for row in lanes:
+                for quantity in row.get("quantities") or []:
+                    parameter = parameter_rows.get((str(row["id"]), str(quantity)))
+                    if parameter is None:
+                        continue  # the guard's shape: no readable parameters
+                    binding_id = f"{key}-{row['id']}-{quantity}"
+                    value_id = f"{row['id']}-{quantity}"
+                    targets.append(
+                        {
+                            "id": binding_id,
+                            "kind": "observation",
+                            "parameter_id": str(parameter.get("name")),
+                            # The canonical observation shape (the
+                            # scaffold's own): receipt time in seconds plus
+                            # the one value variable this tile reads.
+                            "variables": [
+                                {
+                                    "id": "time",
+                                    "type": "number",
+                                    "unit": "s",
+                                    "shape": "scalar",
+                                    "axis_role": "receipt_time",
+                                },
+                                {
+                                    "id": value_id,
+                                    "type": "number",
+                                    "unit": parameter.get("unit"),
+                                    "shape": "scalar",
+                                    "axis_role": "value",
+                                },
+                            ],
+                        }
+                    )
+                    bindings.append(
+                        {"id": binding_id, "kind": "observation", "target_id": binding_id}
+                    )
+                    ids.append(binding_id)
+                    observation_value_ids[binding_id] = value_id
+            observation_ids_for_page.setdefault(page_id, []).extend(ids)
     configuration_slots = {
         key: slot
         for key, slot in merged["slots"].items()
@@ -1330,6 +1538,8 @@ def _assemble_documents(
     # Vendor actions carry no manifest target (the vendored validator
     # admits catalogue targets for profile actions only); their controls
     # render through the layout block on their plan page.
+    resolved = {row["id"] for row in bindings}
+    binding_kind = {row["id"]: row["kind"] for row in bindings}
     pages_out: list[dict[str, Any]] = []
     for page in merged["pages"]:
         page_id = str(page["id"])
@@ -1339,11 +1549,13 @@ def _assemble_documents(
             "configuration": {"configuration", "procedure"},
             "readings": {"observation"},
         }.get(kind, {"observation"})
+        candidates = list(page.get("bindings", [])) + observation_ids_for_page.get(
+            page_id, []
+        )
         rows = [
             b
-            for b in page.get("bindings", [])
-            if b in {row["id"] for row in bindings}
-            and {row["id"]: row["kind"] for row in bindings}.get(b, "") in allowed
+            for b in dict.fromkeys(candidates)
+            if b in resolved and binding_kind.get(b, "") in allowed
         ]
         pages_out.append(
             {
@@ -1376,9 +1588,47 @@ def _assemble_documents(
         if plot_spec is None:
             continue
         over_key = str(plot_spec.get("over_slot", ""))
-        if over_key not in merged["slots"] or over_key not in {
-            row["id"] for row in bindings
-        }:
+        if over_key not in merged["slots"] or over_key not in resolved:
+            continue
+        kind = str(plot_spec.get("kind", "digital_lanes"))
+        if kind in ("time_series", "waveform"):
+            # The scalar/trace plot (the 0.3.0 widening; the SDK expander
+            # at the pin): no group machinery (the schema bans it exactly
+            # as for the other non-lanes kind). A dataset-page plot binds
+            # its slot and carries one series per numeric variable (the
+            # closed ``series: "numeric_variables"`` rule); a READINGS
+            # page admits observation bindings only and one observation
+            # target carries one value variable, so its trend binds the
+            # page's first observation. A decoder-carrying numeric
+            # descriptor keeps its decode binding/target — the lanes
+            # simply do not ride the analog plot (a disclosed residual,
+            # the module docstring's).
+            if kind == "time_series" and observation_ids_for_page.get(
+                str(page["id"])
+            ):
+                bound = observation_ids_for_page[str(page["id"])][0]
+                y_ids = [observation_value_ids[bound]]
+                x_id = "time"
+            else:
+                shape = _dataset_shape(over_key)
+                x_id = "time" if kind == "time_series" else "t"
+                y_ids = [row["id"] for row in shape if row["id"] != x_id]
+                bound = over_key
+            if len(y_ids) > _ANALOG_Y_CEILING:
+                raise _refuse(
+                    "classref_series_ceiling",
+                    f"{len(y_ids)} numeric variables ride the {kind} plot "
+                    f"(ceiling {_ANALOG_Y_CEILING})",
+                )
+            plots.append(
+                {
+                    "kind": kind,
+                    "binding_id": bound,
+                    "x": x_id,
+                    "y": y_ids,
+                }
+            )
+            page["plots"] = [plots[-1]]
             continue
         groups = []
         full = len(lane_vars) // _GROUP_SIZE
