@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.
 - Ship the write-gate wiring — tracked PreToolUse entry, portable binary resolution, deliberate fail-open
 - Fold refute rows F1-F4 — shaped answers only, realpath, bounded walk, disableAllHooks named
 - Verdict stability under load — budget re-derived from measured spikes, walk cap added, residual disclosed
+- The dmm mock's outer frame is neutral light chrome, blocks sized to content
 
 ### Documentation
 
@@ -129,6 +130,17 @@ All notable changes to this project will be documented in this file.
 - Post-refute fold addendum — row b split, lane residuals
 - Design record — tracked wiring for the gortex write-gate
 - §12 F4 superseded — point the fold's reader at the stability numbers
+- L11 design record - dc_psu class reference, mockup-validated
+- L12 design record - dmm class reference, mockup authored, the batched promotion leg
+- L12 addendum — the standards-manifest census correction and the build's test-surface motions
+- L13 design record - oscilloscope class reference, the waveform plot widening, RC-L5-1 answered
+- L14 design record - function_generator class reference, nothing widened
+- L15 design record - electronic_load class reference, the inverted direction
+- L16 design record - smu class reference, the deferred sweep
+- L17 design record - daq class reference, mockup authored, zero schema motion
+- The composition gate design record - pair gate over the real merge, refusal set, the hazards scoped out and measured (gateway #500)
+- The cross-class composition requirement in the family README's normative section (gateway #500)
+- The contract-census digest paths name the vendored location (gateway #463)
 
 ### Features
 
@@ -166,6 +178,13 @@ All notable changes to this project will be documented in this file.
 - Plugin-ui 0.4.0 + class-reference 0.2.0 — the L5 corpus-and-version arc (gateway #463)
 - Interface 0.1.1 — the #450 corpus revision (rows 1b/2/3/5 + D1/D2/D4/D5/F4, fold-all)
 - The docs claim register and the train pre-flight orchestrator
+- Plugin-ui-class-reference 0.3.0 — the L11 dc_psu class reference (gateway #463)
+- The L12 dmm class reference — mockup, reference, series-required, the readings-page composer (gateway #463)
+- The L13 oscilloscope class reference - the waveform widening, mockup, capture composer (gateway #463)
+- The L14 function_generator class reference - the pure source, nothing widened (gateway #463)
+- The L15 electronic_load class reference - the inverted direction pinned, nothing widened (gateway #463)
+- The L16 smu class reference - the sweep deferred by name, zero schema motion (gateway #463)
+- The L17 daq class reference - the sweep's first real consumer, zero schema motion (gateway #463)
 
 ### Miscellaneous
 
@@ -198,6 +217,11 @@ All notable changes to this project will be documented in this file.
 - Pin reviewer to sonnet and doc writer to haiku (#496)
 - Advance the pointer to v0.16.0 — the interface 0.1.1 pairing (#450)
 - Refresh the win-core manifest count — the continuity file collects 67
+- Resolve the L11 rebase as the union of #498 and the classref bump
+- Reflow the fused comment line in test_train_window (ruff E501)
+- Ruff-clean the L12 test modules — import order, signature wrap
+- The full-battery fold — win-core manifest refresh, the B3 specimen motion
+- Advance the pointer to v0.17.0 — the pairing window closes here
 
 ### Refactoring
 
@@ -237,6 +261,20 @@ All notable changes to this project will be documented in this file.
 - F5 saturated window — re-cut the fixture's return margin at 200 ms
 - F5 fold F1 — a scenario-relative saturation gate on the slice
 - The committed load-shape replay control — the exact CI red, with both named RED plants
+- L12 RED arms — the shared census lift, the dmm arm set, the F4 series settlement's refuse arm
+- L13 RED arms - the shared census extension, the oscilloscope arm set, the widening's schema arms
+- The L13 fixture rotation — patterns counts, derive arms, win-core manifest
+- The L14 RED bank - 25 named arms for the function_generator class
+- The L14 fixture rotation - the unknown-class exemplar advances to electronic_load, win-core refreshed
+- The L15 RED bank - 26 named arms for the electronic_load class
+- The L15 fixture rotation - the unknown-class exemplar advances to smu, win-core refreshed
+- The L16 RED bank - 30 named arms for the smu class, the sweep-absence arm the design's central call rides
+- The L16 fixture rotation - the unknown-class exemplar advances to daq, win-core refreshed
+- The L17 fixture rotation - the unknown-class exemplar advances to embedded_controller, win-core refreshed
+- The cross-class composition gate - every family pair through the real selection and merge, refusal demonstrated both directions under either sort order (gateway #500)
+- The composition gate's win-core row - the manifest carries the new file, refreshed (gateway #500)
+- The mockup banner stamps must match the package version (gateway #499)
+- Register the banner-stamp guard in the win-core manifest (gateway #499)
 
 ### Build
 
@@ -251,6 +289,11 @@ All notable changes to this project will be documented in this file.
 - Issue #450 final fold — both refute lanes' findings (11 rows)
 - Issue #450 amendment — openapi's excluded copy pinned, the 18-copy pin, row-1 say-so
 - Issue #450 narrow fold — the refute's five residuals (rows A-E)
+- The L11 refute findings F1-F4 — placement-aware A3 census, both cross-constraints rows, the record's corrections
+
+### Release
+
+- Cut 0.3.1 and re-stamp the thirteen mockup banners
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
