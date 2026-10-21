@@ -152,6 +152,12 @@ class _FaultPsu:
         #: Reads of output_voltage_v raise (issue #506, arm 1): the read
         #: itself is the fault, not the value it would return.
         self.raise_on_reads = False
+        #: The invoke action whose dispatch RETURNS None — a malformed
+        #: plugin breaking the OTDP return contract (the fold wave's lane-A
+        #: MEDIUM: the wrap protected the call, not the returned object).
+        self.return_none_on_invoke_action: str | None = None
+        #: Reads of output_voltage_v return None (same malformed-return class).
+        self.return_none_on_reads = False
         #: A successful measure both tampers the voltage dataset (assertion
         #: failure) and arms the voltage fault (post-body violation).
         self.trip_after_measure = False
@@ -188,11 +194,19 @@ class _FaultPsu:
         ):
             raise RuntimeError("synthetic plugin raise inside a safe action")
         if (
+            self.return_none_on_invoke_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.return_none_on_invoke_action
+        ):
+            return None  # type: ignore[return-value]  # malformed by design
+        if (
             request.verb is OperationVerb.READ
             and request.arguments.get("parameter") == "output_voltage_v"
         ):
             if self.raise_on_reads:
                 raise RuntimeError("synthetic plugin raise inside a signal read")
+            if self.return_none_on_reads:
+                return None  # type: ignore[return-value]  # malformed by design
             index = self.read_index
             self.read_index += 1
             forced = self.force_voltage_v
@@ -1038,3 +1052,74 @@ def test_uncaught_protection_exception_still_terminalises_and_releases(
     assert monitor.phase == "idle", "the monitor must not stay protecting"
     assert monitor.on_violation is None, "on_violation must be disarmed"
     assert coordinator._active_monitor is None
+
+
+# --- issue #506 fold wave: the malformed-return twin (lane A, MEDIUM) ---------------
+
+
+def test_malformed_safe_action_return_is_contained_like_a_raise() -> None:
+    """Fold wave (lane A, MEDIUM): a plugin that RETURNS None where the
+    OTDP ABI promises an OperationResult is the raising half's twin. The
+    first wrap protected the call, not the returned object — the
+    AttributeError fired in the result processing OUTSIDE the except
+    region, escaped ``enter``, and abandoned the remaining safe actions
+    and the verify step (the same abandonment #506 was filed against,
+    arriving through the returning half). Contained: the malformed
+    return is recorded as INTERNAL_ERROR for that action, the loop
+    continues, and verify still decides."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.return_none_on_invoke_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its dispatch returns None instead of a result
+            "id": "silent-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["silent-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: AttributeError: 'NoneType' object has no attribute 'status'"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action silent-relay: error" in result.reasons
+    assert "fault-1" in result.reasons
+    # The verify conjunction — not the action failure — decides safety.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_malformed_read_return_is_a_failed_read_not_an_escape() -> None:
+    """Fold wave (lane A, MEDIUM), the read-site twin at :156: a signal
+    read that RETURNS None instead of an OperationResult is a failed
+    read — the signal is invalid evidence and the budget lapses to
+    ``unknown``, never an escape out of the transition."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.return_none_on_reads = True  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
