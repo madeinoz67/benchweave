@@ -4,6 +4,18 @@ Durable findings go through the proposal ledger — the contract, the bar, and t
 live in CLAUDE.md § Findings that outlive the session and `.claude/memory-protocol.md`.
 Tags required on every vault write.
 
+## Local hooks: `make hooks` (issue #518)
+
+Run once per clone, from the primary checkout — `core.hooksPath` is one setting shared
+across every worktree of this repo family. It installs the name-screen `pre-commit` and
+`pre-push` hooks (`.claude/hooks/name-screen.mjs`) plus chain shims that forward
+`post-commit`/`post-merge` to a global hooksPath when one is configured (a bare local
+override would silence the owner machine's gortex hooks). The screen refuses a real
+client/bench/operator name in staged content, commit messages and filenames; its optional
+local list lives OUTSIDE every repo of the family at `$BENCHWEAVE_NAME_LIST` (default
+`~/.config/benchweave/name-screen.list`) — never commit a list. Without the list, the
+public tier (pattern classes) runs alone, and says so.
+
 ## Two-repo discipline: the SDK submodule
 
 `packages/sdk` is a git submodule with its own repository

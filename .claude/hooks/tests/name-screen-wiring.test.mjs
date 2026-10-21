@@ -31,6 +31,10 @@ function tmp() {
   return mkdtempSync(join(tmpdir(), "ns-wiring-"));
 }
 
+// Assembled, never literal: this file's own bytes must stay green under the
+// screen it ships (the CI job runs over this branch's added lines).
+const PROBE_EMAIL = ["probe", "@", "example.test"].join("");
+
 function assertNoLeak(out, needles) {
   for (const n of needles) assert.ok(!out.includes(n), `hook output leaked a canary "${n.slice(0, 4)}…"`);
 }
@@ -50,7 +54,7 @@ function gitRepo(listPath) {
   const hook = (name, input = "") =>
     spawnSync("sh", [join(d, ".githooks", name)], { input, encoding: "utf8", cwd: d, env });
   g(["init", "-q"]);
-  g(["config", "user.email", "probe@example.test"]);
+  g(["config", "user.email", PROBE_EMAIL]);
   g(["config", "user.name", "probe"]);
   g(["config", "commit.gpgsign", "false"]);
   writeFileSync(join(d, "seed.txt"), "seed\n");

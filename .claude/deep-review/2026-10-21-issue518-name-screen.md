@@ -191,4 +191,62 @@ The review re-derives the tier independently.
 
 ## 11. Run record
 
-(to be appended after the acceptance runs — numbers only, per §7)
+Numbers only, per §7. Suite: `.claude/hooks/tests/name-screen.test.mjs` (16
+tests) + `name-screen-wiring.test.mjs` (8 tests); every count below is read
+from the suites' own tally asserts and the runner's counts (`tests/pass/fail`),
+never from a summary line.
+
+- Planted blocks: **36/36** at the CLI surfaces (12 names × content,
+  message-shaped text, filename) and **36/36** through the real hook scripts
+  (staged content via pre-commit, commit message via pre-push range, staged
+  filename via pre-commit — each case asserted to carry "name-screen: BLOCK"
+  so a missing script's exit 127 cannot count).
+- Negatives: **24/24** pass (no false block on project vocabulary).
+- Pattern cases: **8/8** BLOCK with the list absent, 8/8 with it present —
+  the public tier runs independently.
+- RED arm: with the list removed the same 36 planted cases PASS (36/36) —
+  the effect belongs to the list, not the rig. Suite-level RED: the
+  acceptance suite against the absent module ran 16 tests / 2 pass / 14
+  fail (12 × "Cannot find module"), exit 1; the wiring suite against the
+  absent wirings ran 8 tests / 1 pass / 7 fail, exit 1.
+- CI arm (the job's exact pipeline, run locally over a temp repo's range):
+  planted added line → exit 3; clean range → exit 0. The branch's own
+  added-lines diff under the same command: PASS (see below).
+- Canary-leak proof: asserted per block case — output carries `id=` or
+  `entry=`/`surface=filename ordinal=`, and the suite fails if any planted
+  string appears in any output.
+- Runtime (dev machine, whole process incl. node startup, best of 4):
+  64 KiB blob **70 ms**, 1 MiB blob **85 ms** — under the 100 ms bar.
+- **History audit: expectation 0 was wrong.** 2112 commits scanned (tier P,
+  no list): 268 hits — 211 content, 57 message; by class (content+message):
+  serial_like 91, email 76, ipv4 72, home_path 17, hex_dump 12. Sampled
+  characterization: platform noreply/trailer addresses, doc-fixture domains,
+  reserved documentation address ranges, fixture serials — intentional
+  public content, no sampled person/client/bench identifier; tier P cannot
+  distinguish fixture from real by shape, so confirmation is the owner's.
+  Detail (citations only, no matched text) is in
+  `.claude/deep-review/private/2026-10-21-issue518-audit-hits.txt` with a
+  triage note beside it. Hits outside the screen family's own canary class
+  fired **D4 + owner escalation**, as pre-committed — the mechanism stands.
+
+### Design vs contact (what the build found)
+
+- **PreToolUse deny needs exit 2**; the CLI contract is 0/3. The wiring is a
+  `--pretooluse` mode that translates (deny = 2), the same `--hook` posture
+  `memory-drain.mjs` uses — consistent with §3.1's "gortex-write-gate
+  pattern", now stated precisely.
+- **The `.codex` rubric mirror is untracked local tooling** (0 tracked
+  files; the #254 record's census) — the G0/G0b amendment lands in the
+  tracked rubric only; refreshing the local mirror is an owner-side
+  follow-up, disclosed here instead of a commit that cannot exist.
+- **Commit-message screening sits at pre-push, not pre-commit.** The design
+  enumerates four surfaces across the two hooks without allocating them;
+  the build allocates messages to the push boundary (a never-pushed local
+  message has left nothing) and keeps pre-commit to staged content +
+  filenames — reading `COMMIT_EDITMSG` at pre-commit time would screen a
+  stale file from a previous commit and false-block.
+- **The screen's own test corpus needs no exemption.** The suite assembles
+  its tier-P shape canaries at runtime, so its committed bytes never carry
+  the shapes it refuses — the branch is green under its own CI job with no
+  self-exemption list to launder a leak through.
+

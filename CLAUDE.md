@@ -252,6 +252,12 @@ messages, **and filenames**:
 Git history is forever and a scrub of the tip is not a scrub. Getting it right before the
 commit is the only version of this that works.
 
+Machine screen (issue #518): `.claude/hooks/name-screen.mjs` — `make hooks` installs the
+pre-commit/pre-push gate, a PreToolUse entry blocks at authoring time, and the
+`name-screen` CI job runs the public tier over added lines; the optional local list lives
+at `$BENCHWEAVE_NAME_LIST` (default `~/.config/benchweave/name-screen.list`), outside
+every repo of the family.
+
 ---
 
 ## The code-review agent
