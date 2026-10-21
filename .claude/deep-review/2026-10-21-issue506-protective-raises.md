@@ -168,3 +168,17 @@ INSIDE the protected region at both sites: a malformed return records
 read (invalid signal), exactly as a raise. Pinned by the two fold-wave rows in
 `tests/faults/test_protection.py`; the CTL-9 amendment in `docs/internal/invariants.md`
 carries the widened wording.
+
+**Second bounded fold (2026-10-21, lane A's re-run; attribute access, comparisons and
+Reading subclasses):** the malformed-result class is now contained for attribute
+access, comparisons and Reading subclasses — the recorded status is coerced to a plain
+string inside the region and checked against the closed status vocabulary (an
+out-of-vocabulary claim records plain `error`, keeping run-record reasons free of
+nondeterministic plugin text), and the Reading is rebuilt as a plain `Reading` inside
+the region so a hostile subclass cannot raise after the isinstance gate. Named
+residual, deliberately NOT folded: a `str` subclass whose `__eq__`/`__hash__` compare
+as a real status string but whose `__ne__` raises survives both `str()` and the
+vocabulary check (`str()` returns the subclass unchanged; membership uses
+`==`/`hash`, the later `!=` raises) — reproduced by a standalone probe; a
+join-flattening coercion (`"".join((text,))`) would close it if the shape ever stops
+being hypothetical.
