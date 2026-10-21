@@ -167,6 +167,12 @@ class _FaultPsu:
         #: raises (the second fold's shape 2: the raise lands after the
         #: isinstance gate, in the freshness derivation).
         self.hostile_reading_on_reads = False
+        #: The exact object returned by the PSU_MEASURE invoke — a malformed
+        #: result shape from lane A's probe set (raises on .status/.value/.error).
+        self.malformed_action_result: Any = None
+        #: The exact object returned by output_voltage_v reads (lane A's
+        #: read-site shapes: raises on .status/.data).
+        self.malformed_read_result: Any = None
         #: A successful measure both tampers the voltage dataset (assertion
         #: failure) and arms the voltage fault (post-body violation).
         self.trip_after_measure = False
@@ -203,6 +209,12 @@ class _FaultPsu:
         ):
             raise RuntimeError("synthetic plugin raise inside a safe action")
         if (
+            self.malformed_action_result is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == PSU_MEASURE
+        ):
+            return self.malformed_action_result  # type: ignore[no-any-return]
+        if (
             self.return_none_on_invoke_action is not None
             and request.verb is OperationVerb.INVOKE
             and str(request.arguments.get("action_id")) == self.return_none_on_invoke_action
@@ -230,6 +242,8 @@ class _FaultPsu:
         ):
             if self.raise_on_reads:
                 raise RuntimeError("synthetic plugin raise inside a signal read")
+            if self.malformed_read_result is not None:
+                return self.malformed_read_result  # type: ignore[no-any-return]
             if self.return_none_on_reads:
                 return None  # type: ignore[return-value]  # malformed by design
             if self.hostile_reading_on_reads:
@@ -328,6 +342,55 @@ class _WeirdNe:
 
     def __ne__(self, other: object) -> bool:
         raise RuntimeError("synthetic hostile __ne__")
+
+
+class _StatusRaises:
+    """A result object whose ``.status`` access raises (a lane-A named shape)."""
+
+    @property
+    def status(self) -> Any:
+        raise RuntimeError("synthetic status property raise")
+
+
+class _StatusValueRaises:
+    """``.status`` resolves, ``.status.value`` raises (a lane-A named shape)."""
+
+    @property
+    def status(self) -> Any:
+        return self
+
+    @property
+    def value(self) -> Any:
+        raise RuntimeError("synthetic status.value raise")
+
+
+class _ErrorRaises:
+    """A real error status whose ``.error`` access raises (a lane-A named shape)."""
+
+    status = OperationStatus.ERROR
+
+    @property
+    def error(self) -> Any:
+        raise RuntimeError("synthetic error property raise")
+
+
+class _DataRaises:
+    """An OK result whose ``.data`` access raises (a lane-A read-site shape)."""
+
+    status = OperationStatus.OK
+
+    @property
+    def data(self) -> Any:
+        raise RuntimeError("synthetic data property raise")
+
+
+class _KiStatus:
+    """``.status`` raises KeyboardInterrupt — the disclosed BaseException
+    width: process-control signals are the belt's, never swallowed locally."""
+
+    @property
+    def status(self) -> Any:
+        raise KeyboardInterrupt("synthetic ki from a status property")
 
 
 class _FakeStatus:
@@ -1284,3 +1347,110 @@ def test_read_signal_values_hostile_reading_subclass_is_invalid() -> None:
 
     assert snapshot["dut-voltage"].valid is False
     assert snapshot["dut-current"].valid is True  # the unforced signal stays fresh
+
+
+# --- issue #506, lane A's named malformed-result shapes + the disclosed width -------
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [_StatusRaises(), _StatusValueRaises(), _ErrorRaises()],
+    ids=["status-raises", "status-value-raises", "error-raises"],
+)
+def test_malformed_result_object_shapes_are_contained(malformed: Any) -> None:
+    """Lane A's three named action-site shapes: a result object whose
+    ``.status`` access raises, whose ``.status.value`` raises, or whose
+    ``.error`` access raises — each fires INSIDE the protected region, so
+    the action records INTERNAL_ERROR and the loop continues; the second
+    safe action still dispatches and verify still decides."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_action_result = malformed
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {
+            "id": "hostile-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["hostile-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    error = result.actions[0]["error"]
+    assert error is not None and "INTERNAL_ERROR: RuntimeError" in str(error), error
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action hostile-relay: error" in result.reasons
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [_StatusRaises(), _DataRaises()],
+    ids=["status-raises", "data-raises"],
+)
+def test_malformed_read_result_shapes_are_failed_reads(malformed: Any) -> None:
+    """Lane A's read-site shapes: a read result whose ``.status`` or
+    ``.data`` access raises is a failed read — the signal is invalid
+    evidence and the budget lapses to ``unknown``, no escape."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_read_result = malformed  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_baseexception_from_a_result_property_still_reaches_the_belt() -> None:
+    """The disclosed width (lane A's probe): the engine-local containment
+    is Exception-width BY DESIGN — a BaseException out of a result
+    property (here KeyboardInterrupt from ``.status``) is not contained
+    locally; it escapes ``enter`` to the coordinator's protection belt,
+    which terminalises the run and re-raises after the record lands. The
+    local catch must stay Exception-width: widening it would swallow
+    process-control signals."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_action_result = _KiStatus()
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its result raises KeyboardInterrupt on .status
+            "id": "hostile-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    with pytest.raises(KeyboardInterrupt):
+        engine.enter(["fault-1"], clock.now_ns())
+    assert not fault.disable_dispatches(), "the belt owns this run, not the loop"
