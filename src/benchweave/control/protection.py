@@ -14,12 +14,14 @@ Safe actions are the policy's own protective authority, admitted with the
 policy at commissioning time and carrying literal arguments; they are
 dispatched without a re-evaluation against the body's allow rules, because a
 rule mismatch must not be able to suppress the commissioned protective
-response. A failed or unknown safe action is recorded, and the remaining
-non-conflicting actions are still attempted within the remaining budget.
+response. A failed, unknown or RAISING safe action is recorded (a dispatch
+that raises is an internal error), and the remaining non-conflicting actions
+are still attempted within the remaining budget.
 
 Verification truth: a conjunction that cannot be observed stable within the
-budget yields ``unknown``, never ``verified`` — a missing, stale, wrong-unit
-or error-unknown signal invalidates its condition and resets the stability
+budget yields ``unknown``, never ``verified`` — a missing, stale, wrong-unit,
+error-unknown or RAISING read (a read that raises is a failed read)
+invalidates its condition and resets the stability
 window. This module never decides the terminal outcome; mapping body outcome
 plus safe state onto the terminal truth table is the coordinator's single
 §5 function.
@@ -124,8 +126,8 @@ def read_signal_values(
     refresh an old device buffer. A ``observed_at`` stamped in the future
     is physically impossible timing: unknown timing cannot satisfy a
     finite ``max_age_ms``, so the signal is INVALID, never maximally
-    fresh. A missing device, failed read, non-numeric value, bad quality
-    or lapsed freshness marks the signal invalid, which makes its
+    fresh. A missing device, failed or RAISING read, non-numeric value, bad
+    quality or lapsed freshness marks the signal invalid, which makes its
     conditions INVALID downstream. Live callers pass a clock callback, sampled
     after each dispatch; a fixed timestamp represents an already known receipt
     time for deterministic callers.
@@ -140,9 +142,19 @@ def read_signal_values(
             request = OperationRequest.read(
                 f"signal:{signal_id}", parameter=str(source.get("parameter"))
             )
-            result = plugin.dispatch(request, deadline_ns=deadline_ns)
-            if result.status is OperationStatus.OK and isinstance(result.data, Reading):
-                reading = result.data
+            try:
+                result = plugin.dispatch(request, deadline_ns=deadline_ns)
+            except Exception:
+                # A raising read is a failed read (issue #506, the :143
+                # half): the reading stays None, the signal is invalid
+                # downstream, and the poll loop continues — one derivation
+                # covering the verify loop's reads and the monitor tick's.
+                # Exception-width like run_body: a BaseException still
+                # propagates to the coordinator's protection belt.
+                reading = None
+            else:
+                if result.status is OperationStatus.OK and isinstance(result.data, Reading):
+                    reading = result.data
         now = _parse_wall(wall_now() if callable(wall_now) else wall_now)
         value: float | None = None
         unit: str | None = None
@@ -283,12 +295,24 @@ class ProtectionEngine:
             if plugin is None or request is None:
                 record["error"] = "unknown_device" if plugin is None else "unsupported_kind"
             else:
-                result = plugin.dispatch(request, deadline_ns=deadline_ns)
-                record["status"] = result.status.value
-                if result.status is not OperationStatus.OK and result.error is not None:
-                    record["error"] = (
-                        f"{result.error.code.value}: {result.error.message}"
-                    )
+                try:
+                    result = plugin.dispatch(request, deadline_ns=deadline_ns)
+                except Exception as exc:
+                    # run_body's L2-F1(c) family, protection-local (issue
+                    # #506, the :286 half): a dispatch that RAISES is
+                    # recorded as an internal error — the initialised
+                    # ``status: "error"`` stands, the loop CONTINUES to the
+                    # remaining safe actions, and the reason-append below
+                    # fires unchanged. Exception-width like run_body: a
+                    # BaseException still propagates to the coordinator's
+                    # protection belt.
+                    record["error"] = f"INTERNAL_ERROR: {type(exc).__name__}: {exc}"
+                else:
+                    record["status"] = result.status.value
+                    if result.status is not OperationStatus.OK and result.error is not None:
+                        record["error"] = (
+                            f"{result.error.code.value}: {result.error.message}"
+                        )
             self._actions.append(record)
             if record["status"] != "ok":
                 self._append_reason(f"safe_action {action_id}: {record['status']}")

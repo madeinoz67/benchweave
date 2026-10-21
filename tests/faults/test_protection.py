@@ -146,6 +146,12 @@ class _FaultPsu:
         #: Measure returns an UNKNOWN dispatch AND arms the voltage fault
         #: (uncertain body + post-body condition violation).
         self.unknown_measure_and_trip = False
+        #: The invoke action whose dispatch RAISES (issue #506, arm 1):
+        #: the raise fires before the inner plugin sees anything.
+        self.raise_on_invoke_action: str | None = None
+        #: Reads of output_voltage_v raise (issue #506, arm 1): the read
+        #: itself is the fault, not the value it would return.
+        self.raise_on_reads = False
         #: A successful measure both tampers the voltage dataset (assertion
         #: failure) and arms the voltage fault (post-body violation).
         self.trip_after_measure = False
@@ -176,9 +182,17 @@ class _FaultPsu:
 
     def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
         if (
+            self.raise_on_invoke_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.raise_on_invoke_action
+        ):
+            raise RuntimeError("synthetic plugin raise inside a safe action")
+        if (
             request.verb is OperationVerb.READ
             and request.arguments.get("parameter") == "output_voltage_v"
         ):
+            if self.raise_on_reads:
+                raise RuntimeError("synthetic plugin raise inside a signal read")
             index = self.read_index
             self.read_index += 1
             forced = self.force_voltage_v
@@ -906,3 +920,121 @@ def test_uncaught_body_exception_still_protects_and_terminalises(tmp_path: Path)
     run = store.get_run(run_id)
     assert run is not None and run["terminal"] is not None
     assert store.get_active_lease(BENCH_ID) is None, "the lease releases"
+
+
+# --- issue #506: protective-transition raise containment -----------------------------
+
+
+def test_raising_safe_action_is_contained_and_remaining_actions_still_dispatch() -> None:
+    """Arm 1, the :286 dispatch site: a safe action whose dispatch RAISES
+    (not returns a failure — the pinned :444 half) is contained
+    engine-locally. The action is recorded as an internal error, the
+    second safe action still dispatches IN ORDER, and verification still
+    decides the safe state. Without the wrap the raise escapes ``enter``
+    (try/finally only) and abandons the protective ending."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.raise_on_invoke_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its dispatch raises inside the wrapper
+            "id": "raising-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["raising-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: RuntimeError: synthetic plugin raise inside a safe action"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action raising-relay: error" in result.reasons
+    assert "fault-1" in result.reasons
+    # The verify conjunction — not the action failure — decides safety:
+    # output was never enabled, so the voltage verifies at 0 V.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_raising_verify_read_is_invalid_evidence_not_an_escape() -> None:
+    """Arm 1, the :143 read site: a signal read that RAISES is a failed
+    read — the reading stays None, the signal is invalid evidence, the
+    poll loop keeps running at its declared cadence, and the honest
+    answer at budget end is ``unknown``, never ``verified`` and never an
+    escape out of the transition."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.raise_on_reads = True  # dut-voltage reads raise; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_uncaught_protection_exception_still_terminalises_and_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Arm 2: an exception escaping ``engine.enter`` itself — a raise out
+    of the protective transition that arm 1 does not wrap (an engine bug,
+    a BaseException) — cannot skip the terminal record, the lease
+    release or the monitor teardown. The run terminalises with an honest
+    ``unknown`` safe state and the belt reason; the monitor returns to
+    idle; the lease releases. Pre-fix the raise escapes ``_finish_run``
+    entirely (the body belt wraps only ``_run_and_record``) and the run
+    row can stay non-terminal forever."""
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    captured: dict[str, Any] = {}
+    original_prepare = coordinator._prepare_run
+
+    def _capture_monitor(run_id: str, principal_id: str) -> Any:
+        prepared = original_prepare(run_id, principal_id)
+        captured["monitor"] = coordinator._active_monitor
+        return prepared
+
+    def _raising_enter(
+        self: ProtectionEngine, reasons: list[str], entered_at_ns: int
+    ) -> Any:
+        raise RuntimeError("synthetic protection-engine escape")
+
+    monkeypatch.setattr(coordinator, "_prepare_run", _capture_monitor)
+    monkeypatch.setattr(ProtectionEngine, "enter", _raising_enter)
+    run_id = "run-belt"
+
+    record = coordinator.start_run(run_id, "principal-a")
+
+    assert record["outcome"] == "outcome_unknown", record["reasons"]
+    assert record["safe_state"] == "unknown"
+    assert any(
+        "uncaught_protection_exception:" in reason and "RuntimeError" in reason
+        for reason in record["reasons"]
+    ), record["reasons"]
+    _validate_record(record)
+    run = store.get_run(run_id)
+    assert run is not None and run["terminal"] is not None
+    assert store.get_active_lease(BENCH_ID) is None, "the lease releases"
+    monitor = captured["monitor"]
+    assert monitor is not None
+    assert monitor.phase == "idle", "the monitor must not stay protecting"
+    assert monitor.on_violation is None, "on_violation must be disarmed"
+    assert coordinator._active_monitor is None
