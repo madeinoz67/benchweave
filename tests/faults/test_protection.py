@@ -822,7 +822,8 @@ def test_crashed_run_recovers_interrupted_and_suppresses_replay(tmp_path: Path) 
     coordinator_b = RunCoordinator(store_b, plugins_b, clock_b, clock_b, docs)
     recovered = coordinator_b.recover_interrupted()
 
-    assert recovered == ["run-1"]
+    assert recovered.recovered == ["run-1"]
+    assert recovered.contained == []
     run = store_b.get_run("run-1")
     assert run is not None
     terminal = run["terminal"]
@@ -837,7 +838,9 @@ def test_crashed_run_recovers_interrupted_and_suppresses_replay(tmp_path: Path) 
     with pytest.raises(ValueError):
         coordinator_b.start_run("run-1", "principal-a")
     # A repeated recovery sweep is idempotent.
-    assert coordinator_b.recover_interrupted() == []
+    repeat = coordinator_b.recover_interrupted()
+    assert repeat.recovered == []
+    assert repeat.contained == []
 
     # Occurrence identities from the crashed run suppress replay: re-running
     # the body through an executor over the rebuilt ledger dispatches nothing.
