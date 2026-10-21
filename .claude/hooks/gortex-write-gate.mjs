@@ -11,7 +11,15 @@ import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
 import { readFileSync } from "node:fs";
 
-const GORTEX = "/opt/homebrew/bin/gortex";
+// Resolution order (issue #508): an explicit GORTEX_BIN, then `gortex` on PATH
+// (the resolution the `sh("git", …)` call below already relies on), then the
+// Homebrew absolute path. First candidate that returns output wins; a
+// candidate that cannot execute (or errors) falls through to the next.
+const GORTEX_CANDIDATES = [
+  process.env.GORTEX_BIN,
+  "gortex",
+  "/opt/homebrew/bin/gortex",
+].filter(Boolean);
 const ALLOW = 0;
 const DENY = 2;
 
@@ -28,6 +36,14 @@ function sh(cmd, args, opts) {
   }
 }
 
+function gortexInfo(cwd) {
+  for (const bin of GORTEX_CANDIDATES) {
+    const out = sh(bin, ["call", "workspace", "--arg", "operation=info"], { cwd });
+    if (out !== null) return out;
+  }
+  return null;
+}
+
 let payload = "";
 try {
   payload = readFileSync(0, "utf8");
@@ -35,7 +51,18 @@ try {
   process.exit(ALLOW);
 }
 
-const input = JSON.parse(payload || "{}");
+// Unparseable payloads allow: exit 1 would be non-blocking (allow) anyway, but
+// with a SyntaxError trace — this makes the fail-open posture deliberate and
+// visible instead of accidental. Pinned by write-gate.test.mjs.
+let input;
+try {
+  input = JSON.parse(payload || "{}");
+} catch {
+  console.error(
+    "[GortexWriteGate] unparseable payload — allowing (fail-open by design, pinned by tests)",
+  );
+  process.exit(ALLOW);
+}
 const filePath = input?.tool_input?.file_path;
 if (!filePath) process.exit(ALLOW);
 
@@ -62,9 +89,7 @@ const gitDir = sh("git", ["-C", toplevel, "rev-parse", "--git-dir"])?.trim();
 const commonDir = sh("git", ["-C", toplevel, "rev-parse", "--git-common-dir"])?.trim();
 if (gitDir && commonDir && gitDir !== commonDir) process.exit(ALLOW);
 
-const info = sh(GORTEX, ["call", "workspace", "--arg", "operation=info"], {
-  cwd: toplevel,
-});
+const info = gortexInfo(toplevel);
 if (!info || info.includes("does not track")) process.exit(ALLOW);
 if (info.includes(`"${toplevel}"`)) {
   console.error(
