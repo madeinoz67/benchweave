@@ -250,3 +250,82 @@ never from a summary line.
   the shapes it refuses — the branch is green under its own CI job with no
   self-exemption list to launder a leak through.
 
+## 12. Fold record (adversarial review, 2026-10-21 — NOT DEFENDED → folded)
+
+Seven findings, all folded. Per-finding RED (against the first build) and
+GREEN (against the folded build), from the fold suite's own run counts.
+
+- **F1 hunk poisoning (HIGH).** An added line whose content begins "++ "
+  renders as a file-header-shaped line and was parsed as one: the rest of
+  that hunk was skipped by both tiers, and the refuter got an email, a home
+  path, a serial and a Bearer token through `.githooks/pre-commit`
+  verbatim. Fix: header position is real state — a header-shaped line is a
+  header only outside a hunk; inside one, a `+` line is content whatever
+  follows, and the no-newline marker never counts as a context line. RED:
+  the poisoned hunk passed (exit 0) with all four shapes and both list
+  names in it. GREEN: 5 hits + "and 1 more", correct new-file line numbers
+  past the poisoned line (pins: the exact poisoned shape).
+- **F2 tier P blocked the repository's own vocabulary (MED-HIGH).** 157
+  loopback occurrences alone; the operator guide instructs a loopback
+  bind; example domains, documentation ranges and version-shaped
+  four-part strings all blocked. Before: 57 of 674 tracked files in the
+  swept roots carried hits (189 total: ipv4 154, serial_like 19, email 10,
+  home_path 6; the refuter's whole-tree figure was 122 of 1432). Fix: a
+  measured allowlist (loopback, RFC 5737 documentation ranges, example
+  domains, version-shaped four-part strings, scp-style git URLs), a digit
+  requirement on serial tails ("serial attachment" is prose), and the
+  pinned tracked-tree sweep below. After: zero unpinned hits over the same
+  674 files; 19 pinned hits in 6 files (both-direction ratchet).
+  **Correction to the pre-committed rule, stated as a correction:** the
+  §7 "24 negatives" arm was under-powered — it omitted the commonest
+  forms in this repository. The negatives bar is now the tracked-tree
+  sweep over `docs/`, `src/`, `packages/`, `tests/`: zero blocks outside
+  the pinned table, any residual named with its justification. The 24
+  invented-word negatives remain only as the tier-L interaction arm.
+  The pinned table's two home-path rows are OWNER-TRIAGE (pre-existing
+  private-path occurrences in tracked public content, same class as the
+  §11 audit) — listed so they cannot be widened away, removed only by an
+  owner decision.
+- **F3 the block message could quote the leak (MED).** `src=` printed the
+  path when the path did not exactly contain the list entry — a spaced
+  entry vs a hyphenated filename leaked the name in the citation. Fix:
+  inflection-tolerant (canonical) matching for path hits AND for the
+  hot-path decision that suppresses `src=`; leak-needle assertions extend
+  to spaced/hyphenated/underscored/dotted inflections. RED: the hyphenated
+  filename arm's output carried the name. GREEN: every inflection hits the
+  filename surface (ordinal citation) and none of them appears in any
+  output.
+- **F4 publication-boundary gaps (MED).** (a) commit messages screened
+  only at pre-push — a `--no-verify` push published them uncaught; the CI
+  job now screens `git log --format=%B <base>..HEAD`, and the CI-map row
+  says so. (b) branch-creation pushes exited 0 unscreened; the job now
+  screens against the default branch, and the one residual (the first push
+  of the default branch itself — no base to diff) is disclosed in the
+  CI-map row rather than omitted. (c) the job ran the PR's own script —
+  a PR could neuter the screen and pass; the script is fetched from the
+  BASE side (`git show <base>:…`), with a notice-and-fallback only where
+  the base predates the screen's first landing. RED: the workflow text
+  lacked all three; GREEN: pinned by text arms plus a local run of the
+  message pipeline (exit 3 on a planted message).
+- **F5 present-but-unreadable list (LOW-MED).** a directory or unreadable
+  file degraded to "no name list", misdescribing an opted-in but broken
+  setup. Posture, chosen explicitly: an EXISTING but unreadable list
+  BLOCKS (fail closed where the operator opted in); a list that does not
+  exist passes on the public tier, announced. RED: a directory list passed
+  silently; GREEN: exit 3 with "name list present but unreadable".
+- **F6 home class naming (LOW).** the class missed windows drive homes,
+  lowercase `/users/`, and `~user`. Widened (all three hit now; the tilde
+  form requires a trailing separator so typing annotations and
+  approximations do not match — measured on this tree's own `~`-prose).
+- **F7 audit reproducibility.** The §11 audit ran through a one-shot
+  script, not a committed command. The exact invocation, for
+  re-derivation of the 268 count: for every commit `C` in
+  `git rev-list HEAD` (2112 at the run), diff `C^..C` (empty-tree for
+  roots) with `--no-renames --unified=0 --diff-filter=ACM` piped into
+  `name-screen.mjs --diff`, and `git log -1 --format=%B C` piped into
+  `name-screen.mjs --text`, each with `BENCHWEAVE_NAME_LIST` pointing at
+  an absent path (tier P only); any non-zero exit is a hit, recorded with
+  its commit sha and citation lines in the private hits file. Author
+  headers deliberately excluded (committer identities are public by
+  choice).
+

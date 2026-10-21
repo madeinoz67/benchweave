@@ -9,19 +9,25 @@
 //
 //   Tier P (public, listless): the privacy screen's deterministic pattern
 //   classes plus the review rubric G0 secret-literal shapes, over content AND
-//   filenames. Secret prefixes are matched as prefix-plus-tail shapes, never
-//   bare prefixes, so prose that merely names the prefixes (the rubric's own
-//   G0 text) cannot self-trip the screen.
+//   filenames, with a measured allowlist for shapes this repository's own
+//   legitimate vocabulary carries (loopback and RFC 5737 documentation
+//   addresses, example-domain emails, version-shaped four-part strings) —
+//   RFC 1918 private ranges stay BLOCKED: a bench's internal addressing is
+//   operational specificity, and the fold's tracked-tree sweep pins the test
+//   fixtures that carry them.
 //   Tier L (local list): plain names at $BENCHWEAVE_NAME_LIST (default
 //   ~/.config/benchweave/name-screen.list — OUTSIDE every repo of the family,
 //   so the list itself can never land in one). One per line, minimum length
-//   4, case-insensitive substring. List absent -> "public tier only",
-//   announced, never silent.
+//   4, case-insensitive substring — plus INFLECTION-tolerant matching
+//   (spaced entry vs hyphenated/underscored/dotted filename) through a
+//   canonical form. A list that exists but cannot be read (directory,
+//   permissions) BLOCKS: the operator opted into this tier, and silently
+//   dropping it is the worse failure. A list that does not exist announces
+//   "public tier only" — never silent.
 //
 // THE SCREEN NEVER PRINTS MATCHED TEXT. A block cites the pattern id or the
-// list-entry index, with file/line or a surface ordinal — a screen whose block
-// message restates the leak is a second leak. When the FILENAME is the match,
-// the path is not quoted either; it is cited by ordinal.
+// list-entry index, with file:line or a surface ordinal — and never a path
+// that itself carries the name in any inflection.
 //
 // Usage:
 //   node name-screen.mjs [--text]   [file]   # screen text (stdin default)
@@ -35,14 +41,16 @@
 // Keep-in-step: the tier-P pattern set mirrors privacy-screen.mjs's
 // deterministic classes (email, home path, hex dump, MAC, IPv4, serial-like);
 // a pattern added there belongs here too, and vice versa. The secret shapes
-// come from review-rubric G0's literal list.
+// come from review-rubric G0's literal list. This screen's home class is
+// deliberately WIDER than privacy-screen's (windows drive homes, lowercase
+// /users/, ~user — the fold's F6); keep-in-step means intent, not bytes.
 //
-// Disclosed residuals (design record §6): names split across lines are missed
-// (substring per line); content past the first 1 MiB of a blob is missed with
-// the truncation announced; a name absent from the list is invisible to every
-// tier.
+// Disclosed residuals (design record §6): names split across lines are
+// missed (substring per line); content past the first 1 MiB of a blob is
+// missed with the truncation announced; a name absent from the list is
+// invisible to every tier.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,20 +59,48 @@ export const MAX_BYTES = 1048576;
 export const MIN_ENTRY = 4;
 
 // ---- tier P: the pattern classes ------------------------------------------------
-// Mirrors privacy-screen.mjs's PATTERNS + scanEmails (kept in step; see the
-// header comment). Secret shapes are prefix + tail of a minimum length, so a
-// bare prefix in prose never matches. The bearer tail requires a digit or
-// punctuation somewhere in it — pure letter-hyphen runs are ordinary prose.
 const LOCAL_CHAR = /[A-Za-z0-9._%+-]/;
 const DOMAIN_CHAR = /[A-Za-z0-9.-]/;
 const EMAIL_SHAPE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
 
+// The measured allowlist (fold F2): shapes the repository's own vocabulary
+// carries, so tier P must not block them. Private ranges are NOT here.
+const EXAMPLE_DOMAINS = ["example.com", "example.net", "example.org", "example.test", "example.invalid", "example.example", "localhost"];
+
+function allowedEmail(candidate) {
+  const at = candidate.indexOf("@");
+  if (at === -1) return false;
+  const local = candidate.slice(0, at);
+  const domain = candidate.slice(at + 1).toLowerCase();
+  if (local.toLowerCase() === "git") return true; // scp-style git URL (git@host:path), not a mailbox
+  return EXAMPLE_DOMAINS.some((d) => domain === d);
+}
+
+function allowedIpv4(candidate) {
+  const parts = candidate.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true; // not an address (version-shaped)
+  const [a, b, c] = parts;
+  if (a === 0) return true; // version-shaped / this-network — never a host address in this repo's docs
+  if (a === 127) return true; // loopback
+  if (a === 192 && b === 0 && c === 2) return true; // RFC 5737 documentation
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  return false;
+}
+
 const PATTERNS = [
-  { id: "home_path", re: /\/(?:Users|home)\/[A-Za-z0-9_.-]+/g },
+  // left-boundary anchored: slash-list prose ("email/home/serial") is not a home path
+  { id: "home_path", re: /(^|[\s"'`=(\[:,;{])\/(?:Users|home)\/[A-Za-z0-9_.-]+/gi },
+  { id: "win_home", re: /(^|[\s"'`=(\[:,;{])[A-Za-z]:[\\/](?:Users|home)[\\/][A-Za-z0-9_.-]+/gi },
+  // tilde homes are a tilde, a name, then a path separator — the trailing
+  // separator is the discriminator against typing annotations (a tilde before
+  // a dotted module path) and approximate-value prose
+  { id: "tilde_home", re: /(^|[\s"'`=(\[:,;{])~[A-Za-z][A-Za-z0-9._-]{2,}\//g },
   { id: "hex_dump", re: /(?:[0-9a-f]{2} ){8,}/gi },
   { id: "mac", re: /\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi },
-  { id: "ipv4", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g },
-  { id: "serial_like", re: /\b(?:SN|S\/N|serial)[:#= ]+[A-Z0-9-]{6,}\b/gi },
+  { id: "ipv4", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, allow: allowedIpv4 },
+  // serial tails must carry a digit: "serial attachment" is prose, an id is not
+  { id: "serial_like", re: /\b(?:SN|S\/N|serial)[:#= ]+(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/gi },
   { id: "secret_ghp", re: /\bghp_[A-Za-z0-9]{30,}/g },
   { id: "secret_github_pat", re: /\bgithub_pat_[A-Za-z0-9_]{30,}/g },
   { id: "secret_sk", re: /\bsk-[A-Za-z0-9_-]{32,}/g },
@@ -86,7 +122,8 @@ function scanEmailsLine(line, lineNo, hits) {
     let e = at + 1;
     while (e < line.length && e - at - 1 < 255 && DOMAIN_CHAR.test(line[e])) e++;
     while (e > at + 1 && (line[e - 1] === "." || line[e - 1] === "-")) e--;
-    if (EMAIL_SHAPE.test(line.slice(s, e))) {
+    const cand = line.slice(s, e);
+    if (EMAIL_SHAPE.test(cand) && !allowedEmail(cand)) {
       hits.push({ tier: "P", id: "email", surface: "content", line: lineNo, col: s + 1 });
       return;
     }
@@ -105,7 +142,9 @@ export function publicScan(text) {
       p.re.lastIndex = 0;
       let m;
       while ((m = p.re.exec(line)) !== null) {
-        hits.push({ tier: "P", id: p.id, surface: "content", line: n + 1, col: m.index + 1 });
+        if (!p.allow || !p.allow(m[0])) {
+          hits.push({ tier: "P", id: p.id, surface: "content", line: n + 1, col: m.index + 1 });
+        }
         if (m.index === p.re.lastIndex) p.re.lastIndex++; // zero-width safety
         if (hits.length > 500) return hits; // pathological input stays bounded
       }
@@ -116,14 +155,23 @@ export function publicScan(text) {
 
 // ---- tier L: the local list -------------------------------------------------------
 
-/** Load the name list. Absent/unreadable -> present:false, entries:[], note announcing it. */
+/** Load the name list. Absent -> public tier only, announced. Present but unreadable -> unreadable:true (callers BLOCK). */
 export function loadList(env = process.env) {
   const p = env.BENCHWEAVE_NAME_LIST || join(env.HOME || homedir(), ".config", "benchweave", "name-screen.list");
   let raw;
   try {
     raw = readFileSync(p, "utf8");
-  } catch {
-    return { present: false, entries: [], ignored: 0, source: p, note: "public tier only (no name list)" };
+  } catch (err) {
+    let present = false;
+    try {
+      present = statSync(p) !== undefined;
+    } catch {
+      present = false;
+    }
+    if (present) {
+      return { present: true, unreadable: true, entries: [], ignored: 0, source: p, note: `name list present but unreadable (${err.code || "error"}) — refusing to screen as listless; fix the file or unset BENCHWEAVE_NAME_LIST` };
+    }
+    return { present: false, unreadable: false, entries: [], ignored: 0, source: p, note: "public tier only (no name list)" };
   }
   const entries = [];
   let ignored = 0;
@@ -134,21 +182,26 @@ export function loadList(env = process.env) {
       ignored++;
       continue;
     }
-    entries.push({ value: t, lower: t.toLowerCase() });
+    entries.push({ value: t, lower: t.toLowerCase(), canon: t.toLowerCase().replace(/[^a-z0-9]+/g, "") });
   }
-  return { present: true, entries, ignored, source: p, note: `public tier + list tier (${entries.length} entries)` };
+  return { present: true, unreadable: false, entries, ignored, source: p, note: `public tier + list tier (${entries.length} entries)` };
 }
 
-/** Tier-L scan. Hits cite the 1-based entry index — never the entry text. */
+/** Tier-L scan of content. Hits cite the 1-based entry index — never the entry text. */
 export function listScan(text, entries) {
   const hits = [];
   const lines = text.split("\n");
   for (let n = 0; n < lines.length; n++) {
     const lower = lines[n].toLowerCase();
+    const canon = lower.replace(/[^a-z0-9]+/g, "");
     for (let e = 0; e < entries.length; e++) {
-      const col = lower.indexOf(entries[e].lower);
-      if (col !== -1) {
-        hits.push({ tier: "L", entry: e + 1, surface: "content", line: n + 1, col: col + 1 });
+      const ent = entries[e];
+      const entLower = ent.lower ?? String(ent).toLowerCase();
+      const entCanon = ent.canon ?? entLower.replace(/[^a-z0-9]+/g, "");
+      const raw = lower.indexOf(entLower) !== -1;
+      const inflected = !raw && entCanon.length >= MIN_ENTRY && canon.includes(entCanon);
+      if (raw || inflected) {
+        hits.push({ tier: "L", entry: e + 1, surface: "content", line: n + 1, col: 1, inflected });
         if (hits.length > 500) return hits;
       }
     }
@@ -157,6 +210,18 @@ export function listScan(text, entries) {
 }
 
 // ---- verdict assembly --------------------------------------------------------------
+
+function forcedByList(list) {
+  return list.unreadable ? list.note : null;
+}
+
+function assemble(hits, list, extraNotes = []) {
+  const notes = [list.note, ...extraNotes];
+  if (list.ignored) notes.push(`${list.ignored} list entries shorter than ${MIN_ENTRY} ignored`);
+  const forced = forcedByList(list);
+  const verdict = hits.length || forced ? "BLOCK" : "PASS";
+  return { verdict, hits, notes, forced };
+}
 
 /** Screen one text blob against both tiers. Verdict + hits + notes. */
 export function screenText(text, list) {
@@ -167,20 +232,22 @@ export function screenText(text, list) {
     notes.push(`input truncated at ${MAX_BYTES} bytes — misses past the cut are possible`);
   }
   const hits = [...publicScan(body), ...listScan(body, list.entries)];
-  notes.push(list.note);
-  if (list.ignored) notes.push(`${list.ignored} list entries shorter than ${MIN_ENTRY} ignored`);
-  return { verdict: hits.length ? "BLOCK" : "PASS", hits, notes };
+  return assemble(hits, list, notes);
 }
 
 /** Screen path strings (one per input line). Filename hits cite the ordinal, never the path. */
 export function screenPaths(paths, list) {
   const hits = [];
-  const ordinal = (i) => i + 1;
   paths.forEach((path, i) => {
-    for (const h of publicScan(path)) hits.push({ ...h, surface: "filename", ordinal: ordinal(i) });
-    for (const h of listScan(path, list.entries)) hits.push({ ...h, surface: "filename", ordinal: ordinal(i) });
+    for (const h of publicScan(path)) hits.push({ ...h, surface: "filename", ordinal: i + 1 });
+    hits.push(...listScan(path, list.entries).map((h) => ({ ...h, surface: "filename", ordinal: i + 1 })));
   });
   return hits;
+}
+
+/** A path carries an entry or pattern in any inflection (canonical form). */
+function pathIsHot(path, list) {
+  return screenPaths([path], list).length > 0;
 }
 
 // ---- diff mode ---------------------------------------------------------------------
@@ -200,23 +267,30 @@ export function screenDiff(diffText, list) {
   let newLine = 0;
   let inHunk = false;
   for (const line of body.split("\n")) {
+    // F1: a header-shaped line is a header ONLY at header position. Inside a
+    // hunk an added line whose CONTENT begins "++ " also renders as "+++ …" —
+    // treating it as a header skipped the rest of the hunk (the fold's
+    // poisoning). "diff --git" ends the previous file's hunks wherever it
+    // appears — a multi-file diff otherwise parses the next file's headers as
+    // content and misattributes every hit after it (the fold's F1b).
     if (line.startsWith("diff ")) {
       inHunk = false;
+      path = null;
       continue;
     }
-    if (line.startsWith("+++ ")) {
-      inHunk = false;
-      path = line.slice(4).replace(/^b\//, "").replace(/\t.*$/, "");
-      if (path === "/dev/null") {
-        path = null;
-        continue;
+    if (!inHunk && (line.startsWith("--- ") || line.startsWith("+++ "))) {
+      if (line.startsWith("+++ ")) {
+        path = line.slice(4).replace(/^b\//, "").replace(/\t.*$/, "");
+        if (path === "/dev/null") {
+          path = null;
+          continue;
+        }
+        seenPaths.push(path);
+        const ordinal = seenPaths.length;
+        for (const h of publicScan(path)) hits.push({ ...h, surface: "filename", ordinal });
+        hits.push(...listScan(path, list.entries).map((h) => ({ ...h, surface: "filename", ordinal })));
+        pathHot = pathIsHot(path, list);
       }
-      seenPaths.push(path);
-      // The path itself is a surface: a new file whose NAME carries the plant.
-      const pathIdx = seenPaths.length - 1;
-      for (const h of publicScan(path)) hits.push({ ...h, surface: "filename", ordinal: pathIdx + 1 });
-      for (const h of listScan(path, list.entries)) hits.push({ ...h, surface: "filename", ordinal: pathIdx + 1 });
-      pathHot = hits.some((h) => h.surface === "filename");
       continue;
     }
     const at = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
@@ -229,7 +303,7 @@ export function screenDiff(diffText, list) {
     if (line.startsWith("+")) {
       const t = line.slice(1);
       for (const h of publicScan(t)) hits.push({ ...h, src: pathHot ? undefined : path, line: newLine });
-      for (const h of listScan(t, list.entries)) hits.push({ ...h, src: pathHot ? undefined : path, line: newLine });
+      hits.push(...listScan(t, list.entries).map((h) => ({ ...h, src: pathHot ? undefined : path, line: newLine })));
       newLine++;
     } else if (line.startsWith("-")) {
       // removed content leaves the tree — not screened
@@ -237,20 +311,18 @@ export function screenDiff(diffText, list) {
       newLine++; // context line; the "\ No newline" marker is not one
     }
   }
-  notes.push(list.note);
-  if (list.ignored) notes.push(`${list.ignored} list entries shorter than ${MIN_ENTRY} ignored`);
-  return { verdict: hits.length ? "BLOCK" : "PASS", hits, notes };
+  return assemble(hits, list, notes);
 }
 
 // ---- citation rendering (the no-matched-text contract) -------------------------------
 
 function cite(h) {
-  const where = h.src !== undefined ? ` src=${h.src}:${h.line}` : h.line !== undefined && h.surface === "content" ? ` line=${h.line}` : "";
-  const col = h.col !== undefined ? ` col=${h.col}` : "";
   if (h.surface === "filename") {
     // Never quote the path here: for a filename hit the path IS the match.
     return `tier=${h.tier} ${h.tier === "P" ? `id=${h.id}` : `entry=${h.entry}`} surface=filename ordinal=${h.ordinal}`;
   }
+  const where = h.src !== undefined ? ` src=${h.src}:${h.line}` : ` line=${h.line}`;
+  const col = h.col !== undefined ? ` col=${h.col}` : "";
   return `tier=${h.tier} ${h.tier === "P" ? `id=${h.id}` : `entry=${h.entry}`} surface=content${where}${col}`;
 }
 
@@ -258,7 +330,12 @@ function report(result) {
   const lines = [];
   if (result.verdict === "BLOCK") {
     lines.push(`name-screen: BLOCK (${result.hits.length} hit(s)) — refused under the never-name rule (CLAUDE.md §4, issue #518): use an invented name or "a real bench"; the matched text is deliberately not shown`);
-    lines.push(`  ${cite(result.hits[0])}`);
+    if (result.forced) {
+      lines.push(`  ${result.forced}`);
+    } else {
+      for (const h of result.hits.slice(0, 5)) lines.push(`  ${cite(h)}`);
+      if (result.hits.length > 5) lines.push(`  … and ${result.hits.length - 5} more`);
+    }
   } else {
     lines.push("name-screen: PASS");
   }
@@ -278,18 +355,17 @@ function screenPayload(input, list) {
     if (typeof e?.new_string === "string") texts.push(e.new_string);
   }
   const hasPath = typeof ti.file_path === "string";
-  // If the path itself is a hit, content citations must not quote it either.
+  // F3: a path that carries the name in ANY inflection is hot — content
+  // citations must not quote it either.
   const fnHits = hasPath ? screenPaths([ti.file_path], list) : [];
-  const pathHot = fnHits.length > 0;
-  const src = hasPath && !pathHot ? ti.file_path : undefined;
+  const src = hasPath && fnHits.length === 0 ? ti.file_path : undefined;
   for (const t of texts) {
     const body = t.length > MAX_BYTES ? t.slice(0, MAX_BYTES) : t;
     for (const h of publicScan(body)) hits.push({ ...h, src });
-    for (const h of listScan(body, list.entries)) hits.push({ ...h, src });
+    hits.push(...listScan(body, list.entries).map((h) => ({ ...h, src })));
   }
   hits.push(...fnHits);
-  const notes = [list.note];
-  return { verdict: hits.length ? "BLOCK" : "PASS", hits, notes };
+  return assemble(hits, list);
 }
 
 // ---- CLI (guarded: importing this module for its exports must never read stdin) -----
@@ -328,8 +404,7 @@ if (isMain) {
     const paths = readInput()
       .split(/\r?\n/)
       .filter((l) => l.trim() !== "");
-    const hits = screenPaths(paths, list);
-    result = { verdict: hits.length ? "BLOCK" : "PASS", hits, notes: [list.note] };
+    result = assemble(screenPaths(paths, list), list);
     exit = result.verdict === "BLOCK" ? 3 : 0;
   } else {
     result = screenText(readInput(), list);

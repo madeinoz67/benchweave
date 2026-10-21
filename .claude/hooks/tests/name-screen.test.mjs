@@ -38,9 +38,13 @@ export const NEGATIVES = [
 // The 8 pattern cases (tier P), assembled. Keys are the pattern ids of §2.
 export const PATTERN_CASES = [
   ["home_path", ["/Users/", "zorblat", "/bench/notes.md"].join("")],
-  ["email", ["quimbus", "@", "example.test"].join("")],
+  // NOT an example domain — the fold (F2) allows example.com/net/org/test
+  // and friends by design; a canary must stay in the blocking class
+  ["email", ["quimbus", "@", "zorblat", ".internal"].join("")],
   ["mac", ["02", "1a", "2b", "3c", "4d", "5e"].join(":")],
-  ["ipv4", ["192", "0", "2", "77"].join(".")],
+  // routable address, NOT a documentation range — the fold (F2) allows
+  // 192.0.2.x/198.51.100.x/203.0.113.x and loopback by design
+  ["ipv4", ["8", "8", "4", "4"].join(".")],
   ["hex_dump", Array.from({ length: 12 }, (_, i) => (i * 7 + 3).toString(16).padStart(2, "0")).join(" ")],
   ["serial_like", ["SN", ": ", "QX", "-", "991234"].join("")],
   ["secret_ghp", ["ghp_", "a1"].join("") + "k".repeat(30)],

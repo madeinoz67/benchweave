@@ -83,7 +83,7 @@ test("settings.json carries the second PreToolUse entry (name-screen --pretoolus
 test("ci.yml carries the name-screen job over the added-lines diff", () => {
   const y = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
   assert.match(y, /^  name-screen:/m, "no name-screen job");
-  assert.match(y, /name-screen\.mjs --diff/, "the job does not pipe the diff into the screen");
+  assert.match(y, /"?\$script"? --diff/, "the job does not pipe the diff into the screen");
   assert.match(y, /github\.event_name != 'schedule'/, "the job must guard out of the weekly schedule run");
 });
 
