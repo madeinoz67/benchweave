@@ -143,3 +143,40 @@ frozen interface contract's terminal-evidence-gap clause; the §5 busy
 oracle releases; CTL-9 is untouched (no terminal record is written, so
 no outcome is invented — the projection is the queue's view, not a
 record). The containment log line stays the operator's evidence.
+
+## Addendum — 2026-10-21, post-refute fold (no code change)
+
+Both refute lanes are in; neither found a code defect. This note corrects
+one deferral row's wording and records two residuals lane A pinned
+empirically. The frozen prose above is not rewritten.
+
+**Row b correction (lane B's MEDIUM — a record defect, not a code
+defect).** Deferral row b as written says terminalization-failure runs
+"stay non-terminal" and, read as a whole, unreported. The shipped code
+reports BOTH except arms into `contained` — coordinator.py:947 (lease
+leg) and coordinator.py:1048 (ghost leg) in the shipped tree — because
+this record's own pre-committed SHIP rule is unsatisfiable without that
+reporting: 0/2 busy across both fixture classes, with the unrowed-schema
+fixture contained through the except path (the RED run's captured log is
+the evidence; it fired `terminalization failed: AdmissionRejected:
+corpus_file_unpinned`). The claim splits: the DURABLE record stays
+absent exactly as deferred (A06/A07 store-failure posture; nothing is
+written by either except arm, pinned by the `terminal is None` asserts);
+the PROJECTION closes terminal-without-record as shipped. Lane B
+verified the contract sanction at the machine level: the frozen
+`standards/interface/0.1.0/interface.schema.json` carries it as the
+FINAL branch of `$defs.run.allOf` — `if state=terminal AND
+terminal_record=null` then `outcome ∈ {outcome_unknown, interrupted}` —
+which is what makes the projection close a legal wire object rather
+than a laundered one. (Line citations are this tree at 6f638a61; the
+fold wave's "~:948 and ~:1052" drift by a few lines from the same
+code.)
+
+**Lane A residuals — the design's own deferrals, now empirically
+pinned.** (a) The stop-sweep leg remains uncollected: a run contained at
+stop keeps state `accepted` and holds the §5 busy oracle until the next
+boot's recovery closes it — reachable only inside that stop-to-start
+window (deferral row a). (c) The corpus-repair heal is genuinely
+removed: after repairing the corpus, a re-sweep still writes no record —
+the live-row skip ends re-judgment — while the run row, binding, binding
+document and run event stream all survive on disk (deferral row c).
