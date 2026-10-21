@@ -102,6 +102,24 @@ rather than rewriting the history — that is how this file earns trust.
   a PLAIN stop over any live run is a typed refusal naming the run. Pinned by
   `tests/cli/test_lifecycle.py` (L2's refusal-is-never-a-terminal-write, L3b's
   one-writer-per-run) and `tests/faults/test_lifecycle_faults.py`.
+  Amendment (2026-10-21, issue #506): no exception class skips the ending's own
+  protection half either — `engine.enter` in `_finish_run` carries a
+  BaseException-width belt in the body belt's exact shape (monitor teardown in a
+  finally; a synthesized `unknown` safe state — the transition did not complete —
+  with the open reason prefix `uncaught_protection_exception:`; record, finalize
+  and release proceed; a non-Exception pending re-raises after the record lands,
+  and a body-belt non-Exception pending is never displaced by a later protection
+  Exception). Engine-local Exception-width containment covers the transition's two
+  plugin dispatch sites AND their result processing: a safe action that raises or
+  returns a malformed object records `INTERNAL_ERROR: …` and the remaining actions
+  still dispatch; a signal read that raises or returns a malformed object is a
+  failed read → an invalid signal, one derivation covering verify reads and
+  monitor ticks (a persistent failure yields `unknown`, never `verified`). The
+  run-record schema is
+  untouched — reasons are open strings and `ProtectionResult.actions` never enters
+  the record. Pinned by `tests/faults/test_protection.py` (issue #506's
+  raising-safe-action, raising-verify-read and belt rows, alongside the L2-F1(c)
+  body pin and the unchanged returned-failure row).
 - **[CTL-10]** A run start over a `gateway_owned` procedure requires the commissioned
   unattended grant — `commissioning.modes` contains `"unattended"` with a passing
   `unattended`-category evidence row — and every run's window

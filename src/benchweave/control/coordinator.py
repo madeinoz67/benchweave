@@ -71,7 +71,9 @@ from benchweave.control.executor import (
 )
 from benchweave.control.policy import evaluate_conditions
 from benchweave.control.protection import (
+    SAFE_UNKNOWN,
     ProtectionEngine,
+    ProtectionResult,
     bench_poll_ns,
     read_signal_values,
 )
@@ -1335,10 +1337,36 @@ class RunCoordinator:
         monitor.phase = "protecting"
         monitor.on_violation = engine.enter  # later faults escalation, never extension
         enter_reasons = body_reasons if monitor.cause is not None else []
-        result = engine.enter(enter_reasons, entered_at_ns)
-        monitor.phase = "idle"
-        monitor.on_violation = None
-        self._active_monitor = None
+        try:
+            result = engine.enter(enter_reasons, entered_at_ns)
+        except BaseException as exc:  # A04, the protection half of the body
+            # belt above: the protective ending itself raised — an engine
+            # bug, or a BaseException out of an unwrapped site — and without
+            # this belt the terminal record, finalize and lease release are
+            # ALL skipped (the monitor stays phase="protecting" with
+            # on_violation armed, the lease held to horizon). The run still
+            # terminalises: the transition did not complete, so safe_state
+            # is honestly ``unknown`` with the exception class in the open
+            # reasons; the record, finalize and release proceed; a
+            # non-Exception pending re-raises AFTER the record lands. The
+            # pending keeps a body-belt non-Exception (a later protection
+            # Exception must not displace and swallow a process-control
+            # signal); otherwise the protection failure, as the more
+            # recent, owns the re-raise.
+            if pending is None or isinstance(pending, Exception):
+                pending = exc
+            result = ProtectionResult(
+                safe_state=SAFE_UNKNOWN,
+                reasons=[f"uncaught_protection_exception: {type(exc).__name__}: {exc}"],
+                actions=[],
+                entered_at_ns=entered_at_ns,
+                deadline_ns=entered_at_ns
+                + int(self._docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000,
+            )
+        finally:
+            monitor.phase = "idle"
+            monitor.on_violation = None
+            self._active_monitor = None
 
         reasons: list[str] = []
         for reason in [*body_reasons, *result.reasons]:

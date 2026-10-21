@@ -298,7 +298,7 @@
     },
     "tests/faults/test_protection.py": {
       "core": 0,
-      "total": 24
+      "total": 38
     },
     "tests/faults/test_recovery_sweep_faults.py": {
       "core": 0,

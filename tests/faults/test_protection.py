@@ -35,6 +35,7 @@ from benchweave.host.services import HostServices
 from benchweave.host.types import (
     DispatchState,
     ErrorCode,
+    OperationError,
     OperationRequest,
     OperationResult,
     OperationStatus,
@@ -146,6 +147,32 @@ class _FaultPsu:
         #: Measure returns an UNKNOWN dispatch AND arms the voltage fault
         #: (uncertain body + post-body condition violation).
         self.unknown_measure_and_trip = False
+        #: The invoke action whose dispatch RAISES (issue #506, arm 1):
+        #: the raise fires before the inner plugin sees anything.
+        self.raise_on_invoke_action: str | None = None
+        #: Reads of output_voltage_v raise (issue #506, arm 1): the read
+        #: itself is the fault, not the value it would return.
+        self.raise_on_reads = False
+        #: The invoke action whose dispatch RETURNS None — a malformed
+        #: plugin breaking the OTDP return contract (the fold wave's lane-A
+        #: MEDIUM: the wrap protected the call, not the returned object).
+        self.return_none_on_invoke_action: str | None = None
+        #: Reads of output_voltage_v return None (same malformed-return class).
+        self.return_none_on_reads = False
+        #: The invoke action whose result carries a comparison-hostile fake
+        #: status (the second fold's shape 1: the post-region ``!= "ok"``
+        #: escapes when the recorded status is a plugin object).
+        self.weird_ne_status_action: str | None = None
+        #: Reads of output_voltage_v return a Reading SUBCLASS whose .value
+        #: raises (the second fold's shape 2: the raise lands after the
+        #: isinstance gate, in the freshness derivation).
+        self.hostile_reading_on_reads = False
+        #: The exact object returned by the PSU_MEASURE invoke — a malformed
+        #: result shape from lane A's probe set (raises on .status/.value/.error).
+        self.malformed_action_result: Any = None
+        #: The exact object returned by output_voltage_v reads (lane A's
+        #: read-site shapes: raises on .status/.data).
+        self.malformed_read_result: Any = None
         #: A successful measure both tampers the voltage dataset (assertion
         #: failure) and arms the voltage fault (post-body violation).
         self.trip_after_measure = False
@@ -176,9 +203,63 @@ class _FaultPsu:
 
     def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
         if (
+            self.raise_on_invoke_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.raise_on_invoke_action
+        ):
+            raise RuntimeError("synthetic plugin raise inside a safe action")
+        if (
+            self.malformed_action_result is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == PSU_MEASURE
+        ):
+            return self.malformed_action_result  # type: ignore[no-any-return]
+        if (
+            self.return_none_on_invoke_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.return_none_on_invoke_action
+        ):
+            return None  # type: ignore[return-value]  # malformed by design
+        if (
+            self.weird_ne_status_action is not None
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == self.weird_ne_status_action
+        ):
+            return OperationResult(
+                operation_id=request.operation_id,
+                verb=request.verb,
+                status=_FakeStatus(),  # type: ignore[arg-type]  # hostile by design
+                data=None,
+                error=OperationError(
+                    code=ErrorCode.INTERNAL_ERROR,
+                    message="synthetic comparison-hostile status",
+                    dispatch_state=DispatchState.UNKNOWN,
+                ),
+            )
+        if (
             request.verb is OperationVerb.READ
             and request.arguments.get("parameter") == "output_voltage_v"
         ):
+            if self.raise_on_reads:
+                raise RuntimeError("synthetic plugin raise inside a signal read")
+            if self.malformed_read_result is not None:
+                return self.malformed_read_result  # type: ignore[no-any-return]
+            if self.return_none_on_reads:
+                return None  # type: ignore[return-value]  # malformed by design
+            if self.hostile_reading_on_reads:
+                return OperationResult.ok(
+                    request.operation_id,
+                    request.verb,
+                    _HostileReading(
+                        parameter="output_voltage_v",
+                        value=0.0,
+                        unit="V",
+                        observed_at=self._now(),
+                        age_ms=0,
+                        quality=Quality.VALID,
+                        source=ReadingSource.DEVICE,
+                    ),
+                )
             index = self.read_index
             self.read_index += 1
             forced = self.force_voltage_v
@@ -254,6 +335,83 @@ class _FaultPsu:
                     for variable in dataset.get("variables", []):
                         if variable.get("id") == "voltage":
                             variable["values"] = [self.force_measure_voltage_v]
+
+
+class _WeirdNe:
+    """A comparison-hostile object: ``!=`` raises (the second fold's shape 1)."""
+
+    def __ne__(self, other: object) -> bool:
+        raise RuntimeError("synthetic hostile __ne__")
+
+
+class _StatusRaises:
+    """A result object whose ``.status`` access raises (a lane-A named shape)."""
+
+    @property
+    def status(self) -> Any:
+        raise RuntimeError("synthetic status property raise")
+
+
+class _StatusValueRaises:
+    """``.status`` resolves, ``.status.value`` raises (a lane-A named shape)."""
+
+    @property
+    def status(self) -> Any:
+        return self
+
+    @property
+    def value(self) -> Any:
+        raise RuntimeError("synthetic status.value raise")
+
+
+class _ErrorRaises:
+    """A real error status whose ``.error`` access raises (a lane-A named shape)."""
+
+    status = OperationStatus.ERROR
+
+    @property
+    def error(self) -> Any:
+        raise RuntimeError("synthetic error property raise")
+
+
+class _DataRaises:
+    """An OK result whose ``.data`` access raises (a lane-A read-site shape)."""
+
+    status = OperationStatus.OK
+
+    @property
+    def data(self) -> Any:
+        raise RuntimeError("synthetic data property raise")
+
+
+class _KiStatus:
+    """``.status`` raises KeyboardInterrupt — the disclosed BaseException
+    width: process-control signals are the belt's, never swallowed locally."""
+
+    @property
+    def status(self) -> Any:
+        raise KeyboardInterrupt("synthetic ki from a status property")
+
+
+class _FakeStatus:
+    """Pretends to be an OperationStatus whose ``.value`` is comparison-hostile."""
+
+    value: Any = _WeirdNe()
+
+
+class _HostileReading(Reading):
+    """A Reading subclass that passes the isinstance gate and raises on
+    ``.value`` READS (the second fold's shape 2). The setter exists only
+    so the frozen dataclass ``__init__`` can construct the instance; the
+    stashed value is unreachable behind the raising getter."""
+
+    @property
+    def value(self) -> Any:
+        raise RuntimeError("synthetic hostile Reading.value")
+
+    @value.setter
+    def value(self, raw: Any) -> None:
+        self.__dict__["value"] = raw  # never read back: the getter raises
 
 
 def _plugins(clock: TestClock) -> dict[str, DevicePlugin]:
@@ -909,3 +1067,393 @@ def test_uncaught_body_exception_still_protects_and_terminalises(tmp_path: Path)
     run = store.get_run(run_id)
     assert run is not None and run["terminal"] is not None
     assert store.get_active_lease(BENCH_ID) is None, "the lease releases"
+
+
+# --- issue #506: protective-transition raise containment -----------------------------
+
+
+def test_raising_safe_action_is_contained_and_remaining_actions_still_dispatch() -> None:
+    """Arm 1, the :286 dispatch site: a safe action whose dispatch RAISES
+    (not returns a failure — the pinned :444 half) is contained
+    engine-locally. The action is recorded as an internal error, the
+    second safe action still dispatches IN ORDER, and verification still
+    decides the safe state. Without the wrap the raise escapes ``enter``
+    (try/finally only) and abandons the protective ending."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.raise_on_invoke_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its dispatch raises inside the wrapper
+            "id": "raising-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["raising-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: RuntimeError: synthetic plugin raise inside a safe action"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action raising-relay: error" in result.reasons
+    assert "fault-1" in result.reasons
+    # The verify conjunction — not the action failure — decides safety:
+    # output was never enabled, so the voltage verifies at 0 V.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_raising_verify_read_is_invalid_evidence_not_an_escape() -> None:
+    """Arm 1, the :143 read site: a signal read that RAISES is a failed
+    read — the reading stays None, the signal is invalid evidence, the
+    poll loop keeps running at its declared cadence, and the honest
+    answer at budget end is ``unknown``, never ``verified`` and never an
+    escape out of the transition."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.raise_on_reads = True  # dut-voltage reads raise; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_uncaught_protection_exception_still_terminalises_and_releases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Arm 2: an exception escaping ``engine.enter`` itself — a raise out
+    of the protective transition that arm 1 does not wrap (an engine bug,
+    a BaseException) — cannot skip the terminal record, the lease
+    release or the monitor teardown. The run terminalises with an honest
+    ``unknown`` safe state and the belt reason; the monitor returns to
+    idle; the lease releases. Pre-fix the raise escapes ``_finish_run``
+    entirely (the body belt wraps only ``_run_and_record``) and the run
+    row can stay non-terminal forever."""
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    captured: dict[str, Any] = {}
+    original_prepare = coordinator._prepare_run
+
+    def _capture_monitor(run_id: str, principal_id: str) -> Any:
+        prepared = original_prepare(run_id, principal_id)
+        captured["monitor"] = coordinator._active_monitor
+        return prepared
+
+    def _raising_enter(
+        self: ProtectionEngine, reasons: list[str], entered_at_ns: int
+    ) -> Any:
+        raise RuntimeError("synthetic protection-engine escape")
+
+    monkeypatch.setattr(coordinator, "_prepare_run", _capture_monitor)
+    monkeypatch.setattr(ProtectionEngine, "enter", _raising_enter)
+    run_id = "run-belt"
+
+    record = coordinator.start_run(run_id, "principal-a")
+
+    assert record["outcome"] == "outcome_unknown", record["reasons"]
+    assert record["safe_state"] == "unknown"
+    assert any(
+        "uncaught_protection_exception:" in reason and "RuntimeError" in reason
+        for reason in record["reasons"]
+    ), record["reasons"]
+    _validate_record(record)
+    run = store.get_run(run_id)
+    assert run is not None and run["terminal"] is not None
+    assert store.get_active_lease(BENCH_ID) is None, "the lease releases"
+    monitor = captured["monitor"]
+    assert monitor is not None
+    assert monitor.phase == "idle", "the monitor must not stay protecting"
+    assert monitor.on_violation is None, "on_violation must be disarmed"
+    assert coordinator._active_monitor is None
+
+
+# --- issue #506 fold wave: the malformed-return twin (lane A, MEDIUM) ---------------
+
+
+def test_malformed_safe_action_return_is_contained_like_a_raise() -> None:
+    """Fold wave (lane A, MEDIUM): a plugin that RETURNS None where the
+    OTDP ABI promises an OperationResult is the raising half's twin. The
+    first wrap protected the call, not the returned object — the
+    AttributeError fired in the result processing OUTSIDE the except
+    region, escaped ``enter``, and abandoned the remaining safe actions
+    and the verify step (the same abandonment #506 was filed against,
+    arriving through the returning half). Contained: the malformed
+    return is recorded as INTERNAL_ERROR for that action, the loop
+    continues, and verify still decides."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.return_none_on_invoke_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its dispatch returns None instead of a result
+            "id": "silent-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["silent-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: AttributeError: 'NoneType' object has no attribute 'status'"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action silent-relay: error" in result.reasons
+    assert "fault-1" in result.reasons
+    # The verify conjunction — not the action failure — decides safety.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_malformed_read_return_is_a_failed_read_not_an_escape() -> None:
+    """Fold wave (lane A, MEDIUM), the read-site twin at :156: a signal
+    read that RETURNS None instead of an OperationResult is a failed
+    read — the signal is invalid evidence and the budget lapses to
+    ``unknown``, never an escape out of the transition."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.return_none_on_reads = True  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+# --- issue #506 second fold: comparison-hostile and subclass shapes ----------------
+
+
+def test_weird_ne_status_is_coerced_inside_the_region_not_an_escape() -> None:
+    """Second fold, shape 1 (lane A): the loop's post-region comparison
+    ``record["status"] != "ok"`` must never touch a plugin object — a
+    result whose ``status.value`` is comparison-hostile raised ``__ne__``
+    there, outside the region, and escaped to the belt with the remaining
+    actions abandoned. The status is coerced to a plain string INSIDE the
+    region: the recorded status is the plugin's own claimed (garbage)
+    string, the reason-append fires, and the loop continues."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.weird_ne_status_action = PSU_MEASURE
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its result carries the comparison-hostile status
+            "id": "lying-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["lying-relay", "disable"]
+    assert result.actions[0]["status"] == "error"  # out-of-vocabulary -> plain error
+    assert result.actions[0]["error"] == (
+        "INTERNAL_ERROR: synthetic comparison-hostile status"
+    )
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action lying-relay: error" in result.reasons
+    # The verify conjunction — not the action failure — decides safety.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+def test_hostile_reading_subclass_is_a_failed_read_not_an_escape() -> None:
+    """Second fold, shape 2 (lane A), engine-level: a Reading SUBCLASS
+    that passes the isinstance gate and raises on ``.value`` access used
+    to raise in the freshness derivation, outside the region, escaping
+    the verify loop to the belt. Contained: the Reading is rebuilt as a
+    plain Reading inside the region, so a hostile subclass can raise
+    only where a raise is a failed read — invalid signal, budget lapse,
+    ``unknown``."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.hostile_reading_on_reads = True  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_read_signal_values_hostile_reading_subclass_is_invalid() -> None:
+    """Second fold, shape 2, the direct-function arm: read_signal_values
+    itself must treat a hostile Reading subclass as a failed read — the
+    signal is invalid, its sibling stays fresh, and nothing escapes the
+    function."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    fault.hostile_reading_on_reads = True
+    plugins["psu"] = fault
+    docs = _admit()
+
+    snapshot = read_signal_values(
+        plugins,
+        docs.bench,
+        deadline_ns=clock.now_ns() + 1_000_000,
+        wall_now=clock.now_iso,
+    )
+
+    assert snapshot["dut-voltage"].valid is False
+    assert snapshot["dut-current"].valid is True  # the unforced signal stays fresh
+
+
+# --- issue #506, lane A's named malformed-result shapes + the disclosed width -------
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [_StatusRaises(), _StatusValueRaises(), _ErrorRaises()],
+    ids=["status-raises", "status-value-raises", "error-raises"],
+)
+def test_malformed_result_object_shapes_are_contained(malformed: Any) -> None:
+    """Lane A's three named action-site shapes: a result object whose
+    ``.status`` access raises, whose ``.status.value`` raises, or whose
+    ``.error`` access raises — each fires INSIDE the protected region, so
+    the action records INTERNAL_ERROR and the loop continues; the second
+    safe action still dispatches and verify still decides."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_action_result = malformed
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {
+            "id": "hostile-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["hostile-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    error = result.actions[0]["error"]
+    assert error is not None and "INTERNAL_ERROR: RuntimeError" in str(error), error
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action hostile-relay: error" in result.reasons
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [_StatusRaises(), _DataRaises()],
+    ids=["status-raises", "data-raises"],
+)
+def test_malformed_read_result_shapes_are_failed_reads(malformed: Any) -> None:
+    """Lane A's read-site shapes: a read result whose ``.status`` or
+    ``.data`` access raises is a failed read — the signal is invalid
+    evidence and the budget lapses to ``unknown``, no escape."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_read_result = malformed  # dut-voltage; dut-current stays live
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    max_protection_ns = int(docs.policy["safe_transition"]["max_duration_ms"]) * 1_000_000
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + max_protection_ns  # the budget fully lapsed
+    assert "fault-1" in result.reasons
+
+
+def test_baseexception_from_a_result_property_still_reaches_the_belt() -> None:
+    """The disclosed width (lane A's probe): the engine-local containment
+    is Exception-width BY DESIGN — a BaseException out of a result
+    property (here KeyboardInterrupt from ``.status``) is not contained
+    locally; it escapes ``enter`` to the coordinator's protection belt,
+    which terminalises the run and re-raises after the record lands. The
+    local catch must stay Exception-width: widening it would swallow
+    process-control signals."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.malformed_action_result = _KiStatus()
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order; its result raises KeyboardInterrupt on .status
+            "id": "hostile-relay",
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_MEASURE,
+            "input": {},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    with pytest.raises(KeyboardInterrupt):
+        engine.enter(["fault-1"], clock.now_ns())
+    assert not fault.disable_dispatches(), "the belt owns this run, not the loop"
