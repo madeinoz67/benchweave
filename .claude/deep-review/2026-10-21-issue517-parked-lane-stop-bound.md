@@ -219,3 +219,25 @@ discipline) with no new architecture, the proof is executable in both
 directions (RED-rule T1; false-kill Drill B), and the harness primitive it
 depends on (TaskStop) is first-hand-verified to exist and fire in this
 installation.
+
+## 12. Correction (2026-10-21, build lane) — §6 missed the win-core manifest ratchet
+
+The original §6 "CI cost" line ("one fast unit module in gates") understated
+one obligation: `tests/win_core_manifest.json` is a ratcheted inventory of
+every collected test file's `{core, total}` counts (the CI map's `windows` row
+— "refuses any count growth/shrinkage ... every selection change is a visible
+diff"), so a NEW test file is a selection-surface change that must land with
+its manifest row. The pre-push battery caught exactly this:
+
+    win_core_manifest: 1 drift problem(s) ... file not in manifest:
+    tests/unit/test_lane_park.py (total 7)
+
+Deterministic, not a parallelism artifact — the same test fails identically in
+isolation on identical bytes (serial `uv run pytest -q
+tests/contract/test_win_core_partition.py::test_committed_manifest_is_check_green`,
+exit 1). Fixed by the sanctioned `scripts/ci/win_core_manifest.py --refresh`:
+one row added (`tests/unit/test_lane_park.py: core 0, total 7` — no wincore
+marks, so the module rides the weekly windows-full complement), folded into
+the code commit so the slice is atomic; `--check` green after (244 files, 214
+core of 4654 tests). The §6 walk is corrected in effect by this note; the
+original text stands as history.
