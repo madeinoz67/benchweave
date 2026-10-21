@@ -1,0 +1,18 @@
+#!/bin/sh
+# name-screen pre-commit (issue #518) — staged added content + staged
+# filenames, piped into .claude/hooks/name-screen.mjs --diff (the diff's
+# +++ headers carry the filenames). Installed by `make hooks`.
+# The screen refuses a real client/bench/operator name (CLAUDE.md §4) and
+# never prints the matched text. Exit 0 allows the commit; the screen's
+# exit 3 blocks it. node absent = announced skip, never a silent one.
+set -eu
+hookdir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+screen="$hookdir/../.claude/hooks/name-screen.mjs"
+if ! command -v node >/dev/null 2>&1; then
+  echo "name-screen: node absent — commit proceeds UNSCREENED (install node to enable the screen)" >&2
+  exit 0
+fi
+git diff --cached --no-renames --unified=0 --diff-filter=ACM | node "$screen" --diff
+# FOLD-C: binary adds and mode-change-only entries carry no diff headers to
+# parse — screen the staged path LIST as its own surface too.
+git diff --cached --name-only --no-renames --diff-filter=ACM | node "$screen" --paths

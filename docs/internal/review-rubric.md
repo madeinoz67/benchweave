@@ -103,7 +103,19 @@ you cannot APPROVE.
 fixtures, commit message, and filenames — for `mk_`, `mdb_`, `gorag_`, `ghp_`, `github_pat_`,
 `sk-`, `Bearer ` literals, and private paths. Any hit → **BLOCK**. This is the one finding
 whose severity is never downgraded; a key in git history is unfixable after the fact, and a
-scrub of the tip is not a scrub.
+scrub of the tip is not a scrub. Since issue #518 the secret shapes and private paths are
+machine-run: `node .claude/hooks/name-screen.mjs --diff <added.diff>` (tier P of the name
+screen, over added lines and filenames).
+
+**G0b Names (all tiers).** The client/bench/operator-name class — CLAUDE.md §4's
+never-name rule — is the class the literal scan cannot see, because a plain name has no
+literal shape. It is machine-screened by the same command's list tier: tier L reads plain
+names from `$BENCHWEAVE_NAME_LIST` (default
+`~/.config/benchweave/name-screen.list`, outside every repo of the family; absent list →
+the public tier only, announced). A reviewer STILL reads the diff for names: a name absent
+from the list is invisible to every tier — the screen's honest residual (design record
+#518 §6) — and the screen's block output never carries the matched text, only the pattern
+id or the list-entry index, so a reviewer who runs it learns WHERE, not WHAT.
 
 **G-render (UI diffs): render companions (#69).** A payload-pinned test (asserting on
 what was passed to a mocked renderer) cannot falsify a *draw-visibility* claim — the

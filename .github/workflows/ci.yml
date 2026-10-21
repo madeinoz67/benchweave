@@ -426,3 +426,66 @@ jobs:
 
       - name: Check the packages/sdk gitlink against its declared pin
         run: python3 scripts/check_sdk_submodule_drift.py
+
+  name-screen:
+    if: github.event_name != 'schedule'
+    # The public-repo name screen's CI leg (issue #518): tier P over the
+    # added-lines diff AND the range's commit messages — the bypassed-hook
+    # path (a --no-verify push skips local hooks, and commit messages have
+    # no machine catch before push otherwise). The local hooks
+    # (`make hooks`) and the PreToolUse entry catch earlier. Tier L (the
+    # local list) does NOT run here: an Actions-secret list is invisible
+    # to fork PRs and is a new exfiltration primitive for same-repo
+    # branches (design record D2). The screen SCRIPT is taken from the
+    # BASE side, never the range's own copy — a PR that neuters the screen
+    # cannot pass itself (fold F4c; where the base predates the screen's
+    # first landing there is no base copy and the range's copy runs, with
+    # a notice). Uses the runner's preinstalled node — no third-party
+    # action joins this job's supply chain.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff base must be present
+
+      - name: Screen the range's commit messages and added lines (tier P)
+        run: |
+          set -euo pipefail
+          if ! command -v node >/dev/null 2>&1; then
+            echo "::error::node is required by the name-screen job but is absent on this runner"
+            exit 1
+          fi
+          default_branch="${{ github.event.repository.default_branch || 'main' }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            script_ref="$base"
+          else
+            base="${{ github.event.before }}"
+            script_ref="$base"
+            if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              # branch creation is publication too: screen against the
+              # default branch instead of the unavailable before-sha
+              base="origin/$default_branch"
+              script_ref="$base"
+            fi
+          fi
+          if ! git rev-parse -q --verify "$base" >/dev/null 2>&1; then
+            echo "::notice::base $base unavailable (first push of the default branch?); nothing to screen — disclosed in the CI map"
+            exit 0
+          fi
+          if git cat-file -e "$script_ref:.claude/hooks/name-screen.mjs" 2>/dev/null; then
+            git show "$script_ref:.claude/hooks/name-screen.mjs" > /tmp/name-screen-base.mjs
+            script=/tmp/name-screen-base.mjs
+          else
+            echo "::notice::screen absent at $script_ref (first landing?); using the range's own copy"
+            script=.claude/hooks/name-screen.mjs
+          fi
+          git log --format=%B "$base..HEAD" | node "$script" --text
+          git diff --no-renames --unified=0 --diff-filter=ACM "$base"...HEAD \
+            | node "$script" --diff
+          # FOLD-C: binary adds and mode-change-only entries carry no diff
+          # headers to parse — screen the changed-file LIST as its own surface.
+          git diff --no-renames --name-only --diff-filter=ACM "$base"...HEAD \
+            | node "$script" --paths

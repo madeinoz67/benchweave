@@ -1,4 +1,4 @@
-.PHONY: sync-sdk-standards check-sdk-standards
+.PHONY: sync-sdk-standards check-sdk-standards hooks
 
 # One source of truth for uv's project environment (non-dot venv/, per the
 # repo convention). := deliberately: an ambient value must not reintroduce
@@ -35,3 +35,15 @@ check-sdk-standards:
 	uv run python -m benchweave.standards check
 	uv run python -m benchweave.standards matrix --check
 	uv run python scripts/standards/count_version_literals.py --scope sdk
+
+# Install the name-screen git hooks (issue #518): .githooks/pre-commit and
+# .githooks/pre-push, wired to .claude/hooks/name-screen.mjs, PLUS the chain
+# shims (post-commit/post-merge) that forward to a GLOBAL hooksPath when one
+# is configured — a bare local core.hooksPath override would silence the
+# global hooks (the gortex post-commit/post-merge on the owner machine).
+# Run from the PRIMARY checkout: core.hooksPath is one setting shared across
+# every worktree of this repository family.
+hooks:
+	chmod +x .githooks/pre-commit .githooks/pre-push .githooks/post-commit .githooks/post-merge
+	git config core.hooksPath .githooks
+	@echo "name-screen hooks installed (core.hooksPath=.githooks; chain shims forward post-commit/post-merge to a global hooksPath when set)"

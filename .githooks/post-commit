@@ -1,0 +1,10 @@
+#!/bin/sh
+# Chain shim (issue #518): `make hooks` points core.hooksPath at this
+# directory, which would otherwise SILENCE a globally configured hooksPath
+# (the owner machine runs gortex's post-commit from one). Forward to the
+# global hook when it exists and is executable; otherwise exit 0 quietly.
+g=$(git config --global --get core.hooksPath)
+if [ -n "$g" ] && [ -x "$g/post-commit" ]; then
+  exec "$g/post-commit" "$@"
+fi
+exit 0
