@@ -1,0 +1,194 @@
+# Name screen for the public repository — design record
+
+Tracker: madeinoz67/benchweave#518 (single issue stream; gateway-only diff)
+Date: 2026-10-21 · Branch: `fix/name-screen` (off `origin/main` at `5ff6668b`) ·
+Status: PRE-COMMITTED — the acceptance rule in §7 was written and committed before any
+measurement in this arc ran.
+
+## 1. Root cause
+
+CLAUDE.md §4 ("This repository is public") forbids naming a real bench, client or
+operator in source, tests, comments, design records, commit messages and filenames, and
+says getting it right before the commit is the only version that works — git history is
+forever. Enforcement today is prose and shape:
+
+- Review rubric G0 (`docs/internal/review-rubric.md`) scans secret literals and private
+  paths only, and it is an agent-run instruction, not a command — a reviewer who never
+  runs it ships nothing detectable.
+- `privacy-screen.mjs` is wired only into measurement-report delivery; it sees
+  mechanical shapes (emails, home paths, addresses, serial-like strings), and a plain
+  name has none of those shapes.
+- No `.pre-commit-config.yaml` exists; the CI map has no content-screen job.
+
+The class that passes every gate today: a real name as plain prose in a fixture, test
+name, comment, commit message or filename — no email shape, no path shape, no serial
+shape. Nothing mechanical looks at it, and no machine boundary refuses it.
+
+## 2. Mechanism — a two-tier screen whose failure mode is BLOCK
+
+New committed `.claude/hooks/name-screen.mjs`, node stdlib only, exit 0 PASS / 3 BLOCK.
+
+- **Tier P (public, listless):** the privacy screen's deterministic pattern classes
+  (email, home path, hex dump, MAC, IPv4, serial-like) plus G0's secret-literal shapes
+  (`mk_`, `mdb_`, `gorag_`, `ghp_`, `github_pat_`, `sk-`, Bearer-token forms — matched
+  as prefix-plus-tail shapes, not bare prefixes, so the rubric's own prose that names
+  the prefixes cannot self-trip the screen), run over content AND filenames. This makes
+  G0 machine-run for the first time.
+- **Tier L (local list):** plain names at `$BENCHWEAVE_NAME_LIST`, default
+  `~/.config/benchweave/name-screen.list` — outside every repository of the family, so
+  the list itself can never land in one. One name per line, minimum length 4,
+  case-insensitive substring. List absent → the tool prints "public tier only" and
+  continues; it is never silent about which tiers ran.
+
+**The screen never prints matched text.** A block cites `file:line` (or the surface
+label `filename` with the input ordinal, when the filename itself is the match — a
+filename citation would quote the very thing being refused) plus the pattern id or the
+list-entry index. A screen whose block message restates the leak is a second leak; this
+one structurally cannot quote its own matches.
+
+Names split across lines are missed (substring per line), and blobs over 1 MiB are
+scanned only to the first 1 MiB with the truncation announced — both disclosed residuals,
+not silent behavior.
+
+## 3. Three wirings
+
+1. **Authoring time (every clone):** a second PreToolUse `Edit|Write|MultiEdit` entry in
+   tracked `.claude/settings.json` — the gortex-write-gate pattern (#508) — running
+   `name-screen.mjs --pretooluse`. Deny is exit 2 (the PreToolUse block code); the
+   module's CLI contract stays 0/3 and the hook mode is the wiring's own translation,
+   the same `--hook` posture `memory-drain.mjs` uses.
+2. **Commit/push time (opt-in per clone):** committed `.githooks/pre-commit` and
+   `.githooks/pre-push`, installed by `make hooks`, which sets repo-local
+   `core.hooksPath=.githooks`. Allocation of the scanned surfaces:
+   `pre-commit` → staged added content + staged filenames; `pre-push` → the pushed
+   range's added-line diff, every commit message in the range, and the changed
+   filenames in the range. The publication boundary is the push; a name in a commit
+   message that is never pushed never left the machine. `make hooks` ALSO installs
+   chain shims `.githooks/post-commit` and `.githooks/post-merge` that exec the
+   global-hooksPath hooks when one is configured — required because the owner machine
+   runs gortex's post-commit/post-merge from a global `core.hooksPath`, which a bare
+   local override would silence.
+3. **CI (the bypassed-hook path):** a `name-screen` job running tier P over the PR
+   added-lines diff (`git diff --unified=0 <base>...HEAD | name-screen.mjs --diff`).
+   Tier L does not run in CI (deferral D2). The branch that lands this screen is
+   itself green under it: the test corpus builds its tier-P canaries by assembly, so
+   the suite's own added lines never carry the shapes it refuses.
+
+## 4. Alternatives rejected
+
+- **A committed digest set** (store hashes of the names, match by hashing the diff) —
+  a guess-confirmation oracle: hash a guess, compare. It confirms the very names it
+  hides, to anyone with the list's hash set and a candidate. Rejected on that ground
+  alone.
+- **A judgment layer in the gate** (an LLM or service verdict) — the gate's egress
+  sends text externally before any verdict exists, and its clean-fallback path wedges
+  every offline push. The privacy screen can afford both because it gates one outbound
+  document; a commit-time gate cannot.
+- **Shape heuristics alone** — they cannot see a class that has no shape. A plain name
+  is exactly the shapeless class. Two-tier wins: precise where the list can live
+  (tier L), mechanical everywhere (tier P).
+
+## 5. Scope
+
+In scope: `name-screen.mjs` and its tests in `.claude/hooks/tests/`; all three wirings
+(the settings entry, `.githooks/` + `make hooks`, the CI job); the G0 amendment naming
+the client/bench/operator class and the machine command; a one-line pointer at
+CLAUDE.md §4's close; a new drift-and-obligations row plus a CI-map row; an install
+step in AGENTS.md.
+
+Known at design time: the `.codex` rubric mirror is untracked local tooling on the
+owner machine (0 tracked files — the #254 record's census), so the committed G0
+amendment lands in the tracked rubric only and the mirror's refresh is an owner-side
+follow-up, not a commit.
+
+### Deferrals
+
+| id | deferred | home | reopen trigger |
+|---|---|---|---|
+| D1 | SDK and registry repo wiring (their own hooks/jobs/CI) | follow-on issue on the single tracker, filed when this lands | a PR in `benchweave-sdk` or `benchweave-registry` touching hook wiring or their CI files — the first sibling-repo change that should have carried the screen |
+| D2 | CI tier L via Actions secret | documentation here | an Actions capability change (GitHub changelog entry) that exposes secrets to fork-PR read-only steps without a new exfiltration surface, or the owner's explicit call to accept same-repo-branch exposure |
+| D3 | optional `--semantic` pre-push mode | documentation here | a recorded miss in the tracker where tiers P and L both passed a name a semantic pass would have caught on this repository's diff |
+| D4 | scheduled full-history re-scan | documentation here | any history-audit hit outside the screen family's own synthetic-canary class (§7's one-shot audit), or the owner's explicit call |
+| D5 | operator-doc mention of `make hooks` | documentation in `docs/operator-guide.md` | the list distribution to all three developers completing (maintainer decision 1) — the moment the list exists out of band, the install step is load-bearing |
+
+## 6. Honest residual
+
+- A list-holder who bypasses their own pre-push (`--no-verify`, or never running
+  `make hooks`) can still publish a name. The screen is an accident barrier, not an
+  adversary barrier; it is not aimed at a malicious actor inside the trusted ring.
+- A name missing from the list is invisible to every tier — tier L is exactly as good
+  as its list.
+- Names split across lines, and content past the first 1 MiB of a blob, are missed and
+  the miss is reported.
+- CI runs tier P only; the PR-added-lines screen does not run tier L (D2), so the
+  bypassed-hook path is pattern-class only.
+
+## 7. Pre-committed acceptance rule
+
+Written before any run. Kill conditions are absolute; "close enough" is not a verdict
+here, because a screen with a hole or a screen that blocks normal work both get
+uninstalled — which is how screens die.
+
+Synthetic corpus: 12 obviously-invented org/bench names planted in a temp list; 24
+negatives drawn from real project vocabulary (the project's own name, OTDP, existing
+fixture names, the phrase "a real bench"); 8 pattern cases (fake home path, email,
+serial-like, and so on). Every canary is invented — a canary that is a real name is
+the leak this increment exists to stop.
+
+- With the list present: BLOCK 12/12 planted across all three surfaces (staged
+  content, commit message, filename = 36 block cases total). Anything under 36/36
+  KILLS.
+- PASS 24/24 negatives. Any false block KILLS.
+- With the list absent: those 36 must pass tier L while the 8 pattern cases still
+  BLOCK 8/8, proving the public tier runs independently rather than going blind.
+- RED: removing the list makes the planted names pass — the effect belongs to the
+  mechanism, not the test rig.
+- "0 cases collected" is INVALID, not a pass (CLAUDE.md §3.3). Only the 8-case arm can
+  be underpowered.
+- CI RED/GREEN: a branch adding a fixture with a synthetic home path must redden the
+  `name-screen` job; without it, green.
+- Canary-leak proof: every canary is invented, and the no-matched-text property is
+  itself asserted — output carries the entry index, never the planted string.
+- One-shot history audit over the full log (tier P, no list — none exists yet): the
+  public record carries the COUNT only; any hit's detail goes to
+  `.claude/deep-review/private/` exclusively. Expectation: 0 hits. A hit fires D4 plus
+  owner escalation rather than killing the mechanism.
+
+## 8. Risks, with falsifiers
+
+- **Hook fatigue / uninstall** — held by the 24/24 zero-false-block bar and sub-100 ms
+  runtime (measured on the dev machine at acceptance time and recorded in §10).
+- **A local hooksPath override silencing the global gortex hooks** — chain shims
+  (§3.2); falsified by a hermetic harness (temp HOME with a global hooksPath) plus the
+  owner's own test commit after `make hooks`.
+- **Stale list** — the list lives outside the repos; staleness is invisible to the
+  screen. Mitigation is process (the maintainer decision-1 distribution), not code;
+  named here because "the screen passed" can otherwise be read as "the list is
+  current".
+- **Substring false positives** — an entry that collides with project vocabulary
+  blocks ordinary work; held by the 24/24 bar over the real vocabulary corpus, and by
+  the list's documented minimum length 4.
+- **The list file itself landing in a repo** — its default path is outside every
+  repository of the family, and no wiring reads a repo-relative path.
+
+## 9. Maintainer decisions (not made here; the build blocks on neither)
+
+1. How the list is distributed to the three developers out of band.
+2. Whether the one-shot history audit runs before merge — this arc assumes NO list
+   exists yet, so the public tier stands alone and every run must behave correctly
+   with the list absent.
+
+## 10. Design-time tier call (issue #254)
+
+Tier: **Tier 2** by the default rule (`.github/` and root config are in the Tier-2
+set; no Tier-3 path rule or keyword matches). Step-1 keyword scan over the expected
+diff (this record, the hook, the hooks, the tests, the CI job, the docs rows):
+`threading` 0, `asyncio` 0, `subprocess` 0, `sha256` 0, `hashlib` 0, `migrate` 0,
+`recovery` 0, `protection` 0 — 0 hits for all eight. The enumeration in this
+paragraph is the scan statement itself (the rubric's intended self-fire); the
+expected diff text outside this paragraph is written to carry none of the eight.
+The review re-derives the tier independently.
+
+## 11. Run record
+
+(to be appended after the acceptance runs — numbers only, per §7)
