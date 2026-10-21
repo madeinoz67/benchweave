@@ -426,3 +426,40 @@ jobs:
 
       - name: Check the packages/sdk gitlink against its declared pin
         run: python3 scripts/check_sdk_submodule_drift.py
+
+  name-screen:
+    if: github.event_name != 'schedule'
+    # The public-repo name screen's CI leg (issue #518): tier P over the
+    # added-lines diff — the bypassed-hook path. The local hooks
+    # (`make hooks`) and the PreToolUse entry catch earlier; this job
+    # catches whatever reaches a pushed branch without them. Tier L (the
+    # local list) does NOT run here: an Actions-secret list is invisible
+    # to fork PRs and is a new exfiltration primitive for same-repo
+    # branches (design record D2). Uses the runner's preinstalled node —
+    # no third-party action joins this job's supply chain.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff base must be present
+
+      - name: Screen the added-lines diff (tier P)
+        run: |
+          set -euo pipefail
+          if ! command -v node >/dev/null 2>&1; then
+            echo "::error::node is required by the name-screen job but is absent on this runner"
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+            if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              echo "::notice::push range unavailable (new branch); nothing to screen"
+              exit 0
+            fi
+          fi
+          git diff --no-renames --unified=0 --diff-filter=ACM "$base"...HEAD \
+            | node .claude/hooks/name-screen.mjs --diff

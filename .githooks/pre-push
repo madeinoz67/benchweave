@@ -1,0 +1,43 @@
+#!/bin/sh
+# name-screen pre-push (issue #518) — the publication boundary. For every ref
+# being pushed: the range's added-line diff, its commit messages, and its
+# changed filenames. Installed by `make hooks`.
+# stdin lines: <local-ref> <local-sha> <remote-ref> <remote-sha> (git's
+# pre-push contract). A deletion push (local sha all zeros) carries nothing
+# new and is skipped. A NEW ref screens the commits no remote has — the
+# full-history rescan stays deferred (design D4), so the scope is exactly
+# what this push would publish. Exit 0 allows the push; exit 3 blocks it.
+set -eu
+hookdir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+screen="$hookdir/../.claude/hooks/name-screen.mjs"
+if ! command -v node >/dev/null 2>&1; then
+  echo "name-screen: node absent — push proceeds UNSCREENED (install node to enable the screen)" >&2
+  exit 0
+fi
+zero=0000000000000000000000000000000000000000
+while read -r lref lsha rref rsha; do
+  [ -n "$lsha" ] || continue
+  [ "$lsha" = "$zero" ] && continue
+  if [ "$rsha" = "$zero" ]; then
+    new=$(git rev-list "$lsha" --not --remotes 2>/dev/null || true)
+    [ -n "$new" ] || continue
+    oldest=$(printf '%s\n' "$new" | tail -n 1)
+    if git rev-parse -q --verify "$oldest^" >/dev/null 2>&1; then
+      diffbase="$oldest^"
+    else
+      diffbase=$(git hash-object -t tree /dev/null) # root commit: diff from nothing
+    fi
+    tip="$lsha"
+    mrange="$lsha --not --remotes"
+  else
+    diffbase="$rsha"
+    tip="$lsha"
+    mrange="$rsha..$lsha"
+  fi
+  # commit messages of the range (subject + body, %B)
+  git log --format=%B $mrange | node "$screen" --text
+  # added lines + new-file paths of the range
+  git diff --no-renames --unified=0 --diff-filter=ACM "$diffbase..$tip" | node "$screen" --diff
+  # changed filenames of the range, screened as their own surface
+  git diff --no-renames --name-only --diff-filter=ACMR "$diffbase..$tip" | node "$screen" --paths
+done
