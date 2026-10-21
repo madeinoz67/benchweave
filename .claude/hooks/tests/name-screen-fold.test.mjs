@@ -161,14 +161,26 @@ test("F2 unit: loopback, doc ranges, example domains, version shapes pass; real 
 // fails it too (the ratchet moves only by visible editorial diff — the
 // version-literal register's discipline). Justifications are load-bearing:
 // the two private-path rows are OWNER-TRIAGE entries from the #518 history
-// audit — deliberately NOT allowlisted into silence.
+// audit — deliberately NOT allowlisted into silence. The tilde rows are the
+// bare tilde-home class's documented narrowing (re-fold FOLD-A): this repo's
+// approximation notation (a tilde before an ordinary word) is structurally
+// identical to a bare home reference, so it is pinned, not silently allowed
+// — rewording to "about"/"approx." shrinks the table.
 const PINNED = [
-  { path: "docs/internal/public-site-mockup.html", id: "ipv4", count: 7, why: "SVG path-data numeric runs in a generated mockup — not addresses" },
+  { path: "docs/internal/public-site-mockup.html", id: "ipv4", count: 5, why: "SVG path-data numeric runs in a generated mockup — not addresses (the leading-zero version shape now allows 2 of the original 7)" },
   { path: "tests/interfaces_ui/test_ui_guards.py", id: "ipv4", count: 4, why: "private-range (RFC 1918) host-matching fixtures — private ranges stay blocked by design, these are pinned test literals" },
   { path: "tests/standards/test_zero_literal_gate.py", id: "ipv4", count: 2, why: "private-range literals the zero-gate's own snapshot tests assert on" },
   { path: "docs/superpowers/plans/2026-09-15-sdk-pypi-brew-publishing.md", id: "home_path", count: 4, why: "OWNER TRIAGE (#518 audit class): pre-existing private home-dir occurrences in tracked public content — removal is an owner decision, never an allowlist" },
   { path: "docs/implementation-planning/04-wp01-completion.md", id: "home_path", count: 1, why: "OWNER TRIAGE (#518 audit class): pre-existing private home-dir occurrence" },
   { path: "tests/contracts/test_architecture.py", id: "home_path", count: 1, why: "docstring documenting the home-path SHAPE itself (ellipsised, no real user)" },
+  { path: "tests/cli/test_render.py", id: "tilde_home", count: 4, why: "approximation notation (tilde before a word) — bare tilde homes and this prose are indistinguishable; FOLD-A companion" },
+  { path: "tests/cli/test_retention.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
+  { path: "tests/unit/test_otdp_bridge.py", id: "tilde_home", count: 2, why: "approximation notation — FOLD-A companion" },
+  { path: "tests/unit/test_store_busy_window.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
+  { path: "tests/integration/test_capture_sequential_model.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
+  { path: "tests/integration/test_cross_instance_continuity.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
+  { path: "src/benchweave/cli/report.py", id: "tilde_home", count: 1, why: "docstring quantity name in approximation notation — FOLD-A companion" },
+  { path: "docs/superpowers/specs/2026-09-15-sdk-pypi-brew-publishing-design.md", id: "tilde_home", count: 2, why: "approximation notation in a planning date — FOLD-A companion" },
 ];
 
 test("F2: tracked-tree sweep (docs/ src/ packages/ tests/) — zero blocks outside the pinned table", async () => {
@@ -290,14 +302,14 @@ test("F5: a present-but-unreadable list BLOCKS with its own message (fail closed
 
 // ---- F6: the home-path family ------------------------------------------------------
 
-test("F6: windows drive homes, lowercase /users/, and ~user all hit; ~/. does not", async () => {
+test("F6: windows drive homes, lowercase users-dirs, and bare tilde-name homes all hit; a tilde-slash config path does not", async () => {
   const m = await import("../name-screen.mjs");
   const hits = (t) => m.publicScan(t).filter((h) => h.id.includes("home")).length;
   assert.ok(hits(["C:", "\\", "Users", "\\", "poisonbox", "\\", "x"].join("")), "windows drive home missed");
   // assembled: these paths exist at run time, never as shapes in this file
   assert.ok(hits(["/", "users", "/", "poisonbox", "/notes"].join("")), "lowercase users-dir missed");
   assert.ok(hits(["/", "Users", "/", "poisonbox", "/notes"].join("").toLowerCase()), "case-insensitive posix home missed");
-  assert.ok(hits(["~", "poisonbox", "/bench"].join("")), "~user missed");
+  assert.ok(hits(["~", "poisonbox", "/bench"].join("")), "bare tilde home missed");
   assert.deepEqual(m.publicScan(["~/", ".config/benchweave/name-screen.list"].join("")).filter((h) => h.id.includes("home")), [], "literal tilde-config path false-positives");
 });
 
@@ -340,4 +352,106 @@ test("F4: the CI message pipeline blocks a planted commit message (local shape)"
   } finally {
     rmSync(d, { recursive: true, force: true });
   }
+});
+
+// ---- second refutation (2026-10-21): FOLD-A / FOLD-B / FOLD-C / R2b ----------
+
+test("FOLD-A: every anchor character that can abut a path still hits; mid-token slashes do not", async () => {
+  const m = await import("../name-screen.mjs");
+  const home = ["/", "Users", "/", "poisonbox", "/x"].join("");
+  // each of these characters legitimately precedes a path in this repo's prose
+  for (const anchor of ["blockquote>", "bullet*", "atsign@", "tilde~", "bang!", "quest?", "plus+", "rbracket]", "rbrace}", "pipe|", "quote\"", "paren(", "lbracket[", "brace{", "colon:", "semi;", "comma,", "eq="]) {
+    // the anchor character abuts the path with no separator (a bullet or bold marker abutting the path)
+    assert.ok(m.publicScan(`${anchor}${home}`).some((h) => h.id === "home_path"), `anchor ${anchor.slice(-1)} missed`);
+  }
+  assert.ok(m.publicScan(`> ${home}`).some((h) => h.id === "home_path"), "spaced blockquote path missed");
+  // bare tilde-name homes hit without a trailing slash
+  const bare = ["~", "poisonbox"].join("");
+  assert.ok(m.publicScan(`see ${bare} for the rig`).some((h) => h.id === "tilde_home"), "bare tilde home missed");
+  // typing annotations are not homes
+  assert.deepEqual(m.publicScan(["~", "benchweave.content.store.Context"].join("")).filter((h) => h.id === "tilde_home"), [], "typing annotation false-positives on tilde_home");
+  // mid-token slashes never match (the anchor rule's other half)
+  assert.deepEqual(m.publicScan("email/home/serial and docs/Users/index"), [], "mid-token path matched");
+});
+
+test("FOLD-B: the git-URL exemption is hosting-scoped; a client hostname is an ordinary hit", async () => {
+  const m = await import("../name-screen.mjs");
+  const ok = ["git@", "github.com:example/benchweave.git"].join("");
+  assert.deepEqual(m.publicScan(ok).filter((h) => h.id === "email"), [], "hosting git URL false-positives");
+  const client = ["git@", "acmecorp", "-", "client.internal"].join("");
+  assert.ok(m.publicScan(client).some((h) => h.id === "email"), "client-identifying git@ host passed");
+});
+
+test("FOLD-C: binary-add and mode-only filenames are screened through the real hook and the CI command", () => {
+  const d = tmp();
+  try {
+    const list = join(d, "l.list");
+    writeFileSync(list, [...MULTI, "Filler-entry"].join("\n") + "\n");
+    const env = { ...process.env, BENCHWEAVE_NAME_LIST: list };
+    const nameEmail = ["contact-", ["alice", "@", "corp.example.com"].join(""), ".png"].join("");
+    const nameHyphen = `${MULTI[0].toLowerCase().replaceAll(" ", "-")}-deploy.sh`;
+
+    // (1) binary add through the real pre-commit hook — no +++ header exists
+    for (const [label, fname, body] of [["binary", nameEmail, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00])], ["mode-only", nameHyphen, Buffer.from("#!/bin/sh\n")]]) {
+      const repo = tmp();
+      try {
+        const g = (args) => spawnSync("git", ["-C", repo, ...args], { encoding: "utf8", env });
+        const hook = (name, input = "") => spawnSync("sh", [join(ROOT, ".githooks", name)], { input, encoding: "utf8", cwd: repo, env });
+        g(["init", "-q"]);
+        g(["config", "user.email", ["probe", "@", "example.test"].join("")]);
+        g(["config", "user.name", "probe"]);
+        writeFileSync(join(repo, "seed.txt"), "seed\n");
+        g(["add", "."]);
+        g(["commit", "-q", "-m", "seed"]);
+        if (label === "mode-only") {
+          // the canary NAME is already committed; only the mode changes now
+          writeFileSync(join(repo, fname), body);
+          g(["add", fname]);
+          g(["commit", "-q", "-m", "seed the canary name"]);
+          spawnSync("chmod", ["+x", join(repo, fname)]);
+          g(["add", fname]);
+        } else {
+          writeFileSync(join(repo, fname), body);
+          g(["add", fname]);
+        }
+        const r = hook("pre-commit");
+        const out = r.stdout + r.stderr;
+        assert.ok(r.status !== 0 && /name-screen: BLOCK/.test(out), `${label} filename not blocked by pre-commit\n${out}`);
+        assertNoLeak(out, [...MULTI.flatMap(inflections), nameEmail, nameHyphen, "alice", "acmecorp"]);
+
+        // (2) the CI command shape over the same staged state
+        const names = spawnSync("git", ["-C", repo, "diff", "--cached", "--name-only", "--no-renames", "--diff-filter=ACM"], { encoding: "utf8", env });
+        const screen = spawnSync(process.execPath, [SCREEN, "--paths"], { input: names.stdout, encoding: "utf8", cwd: ROOT, env });
+        assert.equal(screen.status, 3, `${label} filename passed the CI paths leg\n${screen.stdout}${screen.stderr}`);
+        assertNoLeak(screen.stdout + screen.stderr, [...MULTI.flatMap(inflections), nameEmail, nameHyphen, "alice", "acmecorp"]);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("FOLD-C: --diff itself screens binary/mode-change names via the diff --git line", async () => {
+  const m = await import("../name-screen.mjs");
+  const fname = ["docs/", MULTI[1].toLowerCase().replaceAll(" ", "-"), ".bin"].join("");
+  const diff = [
+    `diff --git a/${fname} b/${fname}`,
+    "new file mode 100644",
+    "index 0000000..1234abc",
+    "Binary files /dev/null and b/x differ",
+  ].join("\n");
+  const list = { present: true, entries: MULTI.map((v) => ({ value: v, lower: v.toLowerCase(), canon: v.toLowerCase().replace(/[^a-z0-9]+/g, "") })), ignored: 0, note: "t" };
+  const r = m.screenDiff(diff, list);
+  assert.equal(r.verdict, "BLOCK", "binary-add name passed in --diff mode");
+  assert.ok(r.hits.some((h) => h.surface === "filename"), "no filename-surface hit from the diff --git line");
+});
+
+test("R2b: leading-zero four-part strings are the reachable version shape (SVG path data class)", async () => {
+  const m = await import("../name-screen.mjs");
+  const versionish = ["7", "59", "4", "07"].join(".");
+  assert.deepEqual(m.publicScan(versionish), [], "leading-zero version shape still blocks — the claim outran the mechanism");
+  // a clean routable address with no leading zeros still blocks
+  assert.ok(m.publicScan(["1", "23", "82", "72"].join(".")).some((h) => h.id === "ipv4"), "routable four-part string passed");
 });

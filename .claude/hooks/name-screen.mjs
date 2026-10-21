@@ -11,10 +11,11 @@
 //   classes plus the review rubric G0 secret-literal shapes, over content AND
 //   filenames, with a measured allowlist for shapes this repository's own
 //   legitimate vocabulary carries (loopback and RFC 5737 documentation
-//   addresses, example-domain emails, version-shaped four-part strings) —
-//   RFC 1918 private ranges stay BLOCKED: a bench's internal addressing is
-//   operational specificity, and the fold's tracked-tree sweep pins the test
-//   fixtures that carry them.
+//   addresses, example-domain emails, scp git URLs on known hosting domains,
+//   and version-shaped four-part strings — exactly: leading-zero, out-of-range
+//   or first-octet-zero quads) — RFC 1918 private ranges stay BLOCKED: a
+//   bench's internal addressing is operational specificity, and the fold's
+//   tracked-tree sweep pins the test fixtures that carry them.
 //   Tier L (local list): plain names at $BENCHWEAVE_NAME_LIST (default
 //   ~/.config/benchweave/name-screen.list — OUTSIDE every repo of the family,
 //   so the list itself can never land in one). One per line, minimum length
@@ -43,7 +44,7 @@
 // a pattern added there belongs here too, and vice versa. The secret shapes
 // come from review-rubric G0's literal list. This screen's home class is
 // deliberately WIDER than privacy-screen's (windows drive homes, lowercase
-// /users/, ~user — the fold's F6); keep-in-step means intent, not bytes.
+// users-dirs and bare tilde-name homes — the fold's F6); keep-in-step means intent, not bytes.
 //
 // Disclosed residuals (design record §6): names split across lines are
 // missed (substring per line); content past the first 1 MiB of a blob is
@@ -66,19 +67,33 @@ const EMAIL_SHAPE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])
 // The measured allowlist (fold F2): shapes the repository's own vocabulary
 // carries, so tier P must not block them. Private ranges are NOT here.
 const EXAMPLE_DOMAINS = ["example.com", "example.net", "example.org", "example.test", "example.invalid", "example.example", "localhost"];
+// The scp-style git URL exemption is HOSTING-scoped (re-fold FOLD-B): only a
+// git@ address on a known hosting domain is a remote URL, never a mailbox.
+// Any other git@ domain is an ordinary candidate — a client hostname must not
+// walk in through the URL exemption.
+const HOSTING_DOMAINS = ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"];
 
 function allowedEmail(candidate) {
   const at = candidate.indexOf("@");
   if (at === -1) return false;
   const local = candidate.slice(0, at);
   const domain = candidate.slice(at + 1).toLowerCase();
-  if (local.toLowerCase() === "git") return true; // scp-style git URL (git@host:path), not a mailbox
+  if (local.toLowerCase() === "git") {
+    return HOSTING_DOMAINS.some((h) => domain === h || domain.endsWith("." + h));
+  }
   return EXAMPLE_DOMAINS.some((d) => domain === d);
 }
 
 function allowedIpv4(candidate) {
-  const parts = candidate.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true; // not an address (version-shaped)
+  const rawParts = candidate.split(".");
+  if (rawParts.length !== 4) return true;
+  // version-shaped four-part strings (re-fold R2b, reachable branch): a
+  // leading-zero octet is not a canonical address and reads as version or
+  // vector-path data. Out-of-range octets and a first octet of zero are the
+  // same class. The claim names exactly this mechanism.
+  if (rawParts.some((s) => /^0\d/.test(s))) return true;
+  const parts = rawParts.map(Number);
+  if (parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true;
   const [a, b, c] = parts;
   if (a === 0) return true; // version-shaped / this-network — never a host address in this repo's docs
   if (a === 127) return true; // loopback
@@ -88,14 +103,24 @@ function allowedIpv4(candidate) {
   return false;
 }
 
+// The ANCHOR RULE (re-fold FOLD-A): a home-path candidate must BEGIN at a
+// token boundary — start of line, whitespace, or one of the punctuation
+// characters that can abut a path in this repo's own prose (quotes, brackets,
+// `> * @ ~ ! ? + ] } |` and the map/separators `= ( : , ; {`). A path inside a
+// longer token ("email/home/serial", "docs/Users/index") never matches,
+// because the character before it is a word character or a slash.
+const ANCHOR = String.raw`(^|[\s"'` + "`" + String.raw`=(\[:,;{> *@~!?+\]}|])`;
+
 const PATTERNS = [
-  // left-boundary anchored: slash-list prose ("email/home/serial") is not a home path
-  { id: "home_path", re: /(^|[\s"'`=(\[:,;{])\/(?:Users|home)\/[A-Za-z0-9_.-]+/gi },
-  { id: "win_home", re: /(^|[\s"'`=(\[:,;{])[A-Za-z]:[\\/](?:Users|home)[\\/][A-Za-z0-9_.-]+/gi },
-  // tilde homes are a tilde, a name, then a path separator — the trailing
-  // separator is the discriminator against typing annotations (a tilde before
-  // a dotted module path) and approximate-value prose
-  { id: "tilde_home", re: /(^|[\s"'`=(\[:,;{])~[A-Za-z][A-Za-z0-9._-]{2,}\//g },
+  { id: "home_path", re: new RegExp(`${ANCHOR}\\/(?:Users|home)\\/[A-Za-z0-9_.-]+`, "gi") },
+  { id: "win_home", re: new RegExp(`${ANCHOR}[A-Za-z]:[\\\\/](?:Users|home)[\\\\/][A-Za-z0-9_.-]+`, "gi") },
+  // tilde homes: a tilde + a name, bare or with a path. The name run is
+  // MAXIMAL (the char after it is not a name char) and may not continue as
+  // dot-plus-letter, which is a typing annotation, not a home; a dotted
+  // personal name is indistinguishable from one and is the class's documented
+  // narrowing (A1a's companion). Approximation prose that begins with a
+  // tilde word is pinned in the tracked-tree sweep, not silently allowed.
+  { id: "tilde_home", re: new RegExp(`${ANCHOR}~[A-Za-z][A-Za-z0-9_-]{2,}(?![A-Za-z0-9_-])(?!\\.[A-Za-z])`, "g") },
   { id: "hex_dump", re: /(?:[0-9a-f]{2} ){8,}/gi },
   { id: "mac", re: /\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi },
   { id: "ipv4", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, allow: allowedIpv4 },
@@ -266,6 +291,16 @@ export function screenDiff(diffText, list) {
   let pathHot = false;
   let newLine = 0;
   let inHunk = false;
+  const registerPath = (p) => {
+    const prior = seenPaths.indexOf(p);
+    if (prior === -1) {
+      seenPaths.push(p);
+      const ordinal = seenPaths.length;
+      for (const h of publicScan(p)) hits.push({ ...h, surface: "filename", ordinal });
+      hits.push(...listScan(p, list.entries).map((h) => ({ ...h, surface: "filename", ordinal })));
+    }
+    pathHot = pathIsHot(p, list);
+  };
   for (const line of body.split("\n")) {
     // F1: a header-shaped line is a header ONLY at header position. Inside a
     // hunk an added line whose CONTENT begins "++ " also renders as "+++ …" —
@@ -273,9 +308,17 @@ export function screenDiff(diffText, list) {
     // poisoning). "diff --git" ends the previous file's hunks wherever it
     // appears — a multi-file diff otherwise parses the next file's headers as
     // content and misattributes every hit after it (the fold's F1b).
+    // FOLD-C: the diff --git line also REGISTERS the b-side path — binary
+    // adds and mode-change-only entries carry no "+++" header at all, and
+    // their names are exactly the surface this mode claims to screen.
     if (line.startsWith("diff ")) {
       inHunk = false;
       path = null;
+      const mm = line.match(/^diff --git .* b\/(.+)$/);
+      if (mm) {
+        path = mm[1].replace(/^"|"$/g, "");
+        registerPath(path);
+      }
       continue;
     }
     if (!inHunk && (line.startsWith("--- ") || line.startsWith("+++ "))) {
@@ -285,11 +328,7 @@ export function screenDiff(diffText, list) {
           path = null;
           continue;
         }
-        seenPaths.push(path);
-        const ordinal = seenPaths.length;
-        for (const h of publicScan(path)) hits.push({ ...h, surface: "filename", ordinal });
-        hits.push(...listScan(path, list.entries).map((h) => ({ ...h, surface: "filename", ordinal })));
-        pathHot = pathIsHot(path, list);
+        registerPath(path);
       }
       continue;
     }

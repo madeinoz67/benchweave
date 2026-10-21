@@ -122,6 +122,13 @@ follow-up, not a commit.
   the miss is reported.
 - CI runs tier P only; the PR-added-lines screen does not run tier L (D2), so the
   bypassed-hook path is pattern-class only.
+- There is no integrity pin on the screen itself: a PR that only neuters
+  `name-screen.mjs` carries no name-shaped content, passes the honest base copy's
+  screening, and becomes the base for every later PR — human review of a hook diff is
+  the only catch (next to the first-landing fallback note in the CI job).
+- Letter-only asset tags (a serial with no digit in the tail) pass by design — the
+  serial class requires a digit, accepting that narrow miss so "serial attachment"
+  prose does not block.
 
 ## 7. Pre-committed acceptance rule
 
@@ -314,7 +321,7 @@ GREEN (against the folded build), from the fold suite's own run counts.
   exist passes on the public tier, announced. RED: a directory list passed
   silently; GREEN: exit 3 with "name list present but unreadable".
 - **F6 home class naming (LOW).** the class missed windows drive homes,
-  lowercase `/users/`, and `~user`. Widened (all three hit now; the tilde
+  lowercase `/users/`, and a bare tilde-name home. Widened (all three hit now; the tilde
   form requires a trailing separator so typing annotations and
   approximations do not match — measured on this tree's own `~`-prose).
 - **F7 audit reproducibility.** The §11 audit ran through a one-shot
@@ -328,4 +335,48 @@ GREEN (against the folded build), from the fold suite's own run counts.
   its commit sha and citation lines in the private hits file. Author
   headers deliberately excluded (committer identities are public by
   choice).
+
+## 13. Re-fold record (second refutation, 2026-10-21 — all four folded)
+
+- **FOLD-A anchors + bare tilde.** The anchor set was closed and real
+  paths abutted by `> * @ ~ ! ? + ] } |` and the map/separators passed;
+  bare tilde-name homes (no trailing separator) passed. RED: the anchor pin
+  failed on those characters and on the bare tilde form. GREEN: the
+  ANCHOR RULE, stated in the code — a home-path candidate must BEGIN at
+  a token boundary (start of line, whitespace, or one of the punctuation
+  characters above); a path inside a longer token never matches, because
+  the character before it is a word character or a slash. The tilde form
+  is a maximal name run not continuing as dot-plus-letter (typing
+  annotations are not homes); the narrowing this accepts: a dotted
+  personal name is indistinguishable from a typing annotation and is
+  missed, and the repo's approximation notation (a tilde before an
+  ordinary word) is indistinguishable from a bare home reference — 13
+  such hits in 8 files are PINNED in the tracked-tree sweep table with
+  that justification, never silently allowed. All anchor characters are
+  pinned individually in the suite.
+- **FOLD-B git@ hosting scope.** The scp-URL exemption keyed on the
+  local part alone, so a client hostname walked in as a "git URL". RED:
+  a client-identifying git@ host passed. GREEN: the exemption is
+  HOSTING-scoped (an explicit hosting-domain allowlist); any other git@
+  domain is an ordinary email candidate. Both directions pinned.
+- **FOLD-C filename wirings (merge hold).** Binary adds and
+  mode-change-only entries carry no file headers, so the diff leg never
+  screened their names — the filename claim failed on 2 of 3 wirings.
+  RED: a binary add and a mode-only change passed pre-commit and the CI
+  command with canary names. GREEN: the diff parser registers the b-side
+  path from the `diff --git` line itself (binary/mode entries carry that
+  even with no hunk), AND pre-commit + the CI job screen the changed-file
+  LIST through the same `--paths` arm the pre-push leg uses. Both cases
+  pinned end to end through the real hook and the CI command shape.
+- **R2b unreachable claim.** The header claimed "version-shaped
+  four-part strings" are allowlisted while the branch keyed only on
+  out-of-range groups the regex never yields. RED: the leading-zero
+  version shape still blocked. GREEN: the branch is REACHABLE — the
+  version rule is exactly leading-zero, out-of-range or first-octet-zero
+  quads — and the header claim now names that mechanism. A clean
+  routable quad with no leading zeros still blocks (pinned).
+- **DISCLOSE-D** landed as the two §6 residual sentences: no integrity
+  pin on the screen itself (human review of a hook diff is the only
+  catch), and letter-only asset tags pass by design (the serial class
+  requires a digit).
 

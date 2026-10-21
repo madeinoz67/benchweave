@@ -485,3 +485,7 @@ jobs:
           git log --format=%B "$base..HEAD" | node "$script" --text
           git diff --no-renames --unified=0 --diff-filter=ACM "$base"...HEAD \
             | node "$script" --diff
+          # FOLD-C: binary adds and mode-change-only entries carry no diff
+          # headers to parse — screen the changed-file LIST as its own surface.
+          git diff --no-renames --name-only --diff-filter=ACM "$base"...HEAD \
+            | node "$script" --paths

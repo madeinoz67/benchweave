@@ -13,3 +13,6 @@ if ! command -v node >/dev/null 2>&1; then
   exit 0
 fi
 git diff --cached --no-renames --unified=0 --diff-filter=ACM | node "$screen" --diff
+# FOLD-C: binary adds and mode-change-only entries carry no diff headers to
+# parse — screen the staged path LIST as its own surface too.
+git diff --cached --name-only --no-renames --diff-filter=ACM | node "$screen" --paths
