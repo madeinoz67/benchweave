@@ -144,3 +144,27 @@ issue; D2 and D3 live in this record.
 - **KILL** if any arm passes pre-fix (fluff), or any CTL-1/CTL-2/CTL-9 pin reddens.
 - **UNDERPOWERED** if A3 needs new production seams — then A3 joins D1's follow-on
   issue, arms 1-2 ship, and the shortfall is disclosed in the report.
+
+## Addendum (2026-10-21, fold wave — corrections under the addenda convention; §1-§5
+above are frozen as authored)
+
+**Base-commit correction (lane B, LOW; measured independently at fold time):** the
+branch was created from `origin/main` at `05958386`. The header's "cut from
+`origin/main` at `b905b19a` … two later commits" is wrong — `b905b19a` lies **33
+commits (8 first-parent)** behind `05958386` (`git rev-list --count` both ways,
+re-measured this session; the "two" was an inference from a 3-line `git log` output).
+The LOAD-BEARING claim is unaffected and verified true: `git diff --name-only
+b905b19a..05958386 -- src/benchweave/control/ src/benchweave/interfaces/
+tests/faults/` is empty (0 files), so every §1 cite was authored against bytes
+identical to this branch's base.
+
+**Fold-1 mechanism note (lane A, MEDIUM; folded, not deferred):** the §2 wrap shape
+protected the call, not the returned object — the `else`-clause result processing sat
+outside the except region at both sites (action site `:311`, read site `:156` at the
+fold), so a plugin RETURNING `None` raised `AttributeError` there and escaped with the
+same abandonment the issue was filed against. The fold moved the result processing
+INSIDE the protected region at both sites: a malformed return records
+`INTERNAL_ERROR: AttributeError: …` for that action (loop continues) / is a failed
+read (invalid signal), exactly as a raise. Pinned by the two fold-wave rows in
+`tests/faults/test_protection.py`; the CTL-9 amendment in `docs/internal/invariants.md`
+carries the widened wording.
