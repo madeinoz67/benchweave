@@ -2,7 +2,7 @@
 
 A device class gives one class of instrument its shared page shape. The class reference is data that the gateway expands into pages. The mockup is the visual specification of the result. You write two files, and they land as one change.
 
-The machine corpus lives in the `standards/plugin-ui-class-reference/` directory of the repository. The family overview and the schemas are in [that directory](../standards/plugin-ui-class-reference/). The [Device classes table](device-classes.md) shows every class that the corpus implements today.
+The machine corpus lives in the `standards/plugin-ui-class-reference/` directory of the repository. The family overview and the schemas are in [that directory](../standards/plugin-ui-class-reference/). The Device classes page of this documentation site shows every class that the corpus implements today.
 
 ## The class file
 

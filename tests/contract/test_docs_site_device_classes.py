@@ -414,26 +414,10 @@ def test_t7c_generated_page_links_the_authoring_guide() -> None:
     page = _asm.render_device_classes_page(_asm.device_class_rows())
     assert "](adding-a-device-class.md)" in page, (
         "the table page links the authoring guide (the staged .md link; "
-        "the renderer resolves it)"
+        "the renderer resolves it — the reverse direction carries no link, "
+        "a generated page has no repository file for the documents gate's "
+        "local-link arm to resolve)"
     )
-
-
-def test_t7d_staged_name_links_rewrite_to_the_rendered_path() -> None:
-    # The link rewriter's generated-page branch: a guide page linking a
-    # generated page by its staged name resolves to the site path, relative
-    # to the rendered page — never the GitHub blob fallback (which would
-    # point at a repository file that does not exist).
-    paths = _asm.site_paths()
-    assert paths.get("docs/adding-a-device-class.md") == (
-        "user-guide/adding-a-device-class.html"
-    )
-    out = _asm.rewrite_links(
-        "see [Device classes](device-classes.md)",
-        ROOT / "docs/adding-a-device-class.md",
-        "user-guide/adding-a-device-class.html",
-        paths,
-    )
-    assert out == "see [Device classes](../user-guide/device-classes.html)"
 
 
 # --- T8: the authoring guide pins its load-bearing sentences --------------------

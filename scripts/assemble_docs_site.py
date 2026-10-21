@@ -252,13 +252,6 @@ def strip_prefixes(staged: str) -> str:
     return Path(*[re.sub(r"^\d+-", "", part) for part in Path(staged).parts]).as_posix()
 
 
-def _site_relative(staged_html: str, target: str) -> str:
-    """A docs-relative target as a link relative to the staged page's
-    rendered location (both render under the same docs tree shape)."""
-    here = Path(staged_html).parent
-    return Path(*([".."] * len(here.parts)), target).as_posix() if here.parts else target
-
-
 def rewrite_links(
     content: str, src: Path, staged_html: str, paths: dict[str, str], *, keep_relative: bool = False
 ) -> str:
@@ -276,13 +269,13 @@ def rewrite_links(
         except ValueError:
             return m.group(0)  # escapes the repository — leave it
         if rel in paths:
-            return f"[{text}]({_site_relative(staged_html, paths[rel])}{frag}{title})"
-        if "/" not in path and path in GENERATED_PAGES:
-            # A generated page linked by its staged name (guide prose links
-            # the Device classes page this way): the page has NO repository
-            # source, so the blob fallback would point at a file that does
-            # not exist — resolve to the rendered path instead.
-            return f"[{text}]({_site_relative(staged_html, GENERATED_PAGES[path])}{frag}{title})"
+            here = Path(staged_html).parent
+            new = (
+                Path(*([".."] * len(here.parts)), paths[rel]).as_posix()
+                if here.parts
+                else paths[rel]
+            )
+            return f"[{text}]({new}{frag}{title})"
         if keep_relative and resolved.is_file() and resolved.suffix != ".md":
             return m.group(0)  # machine corpus beside the prose — copied alongside after the build
         base = GITHUB_TREE if resolved.is_dir() else GITHUB_BLOB
