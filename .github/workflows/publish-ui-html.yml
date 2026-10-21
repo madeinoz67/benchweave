@@ -175,12 +175,13 @@ jobs:
     needs: smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The only JOB-SCOPED id-token grant in this repository's workflows (the
-    # docs.yml Pages deploy carries a separate workflow-level one — refute
-    # lane B, F1): trusted publishing via OIDC, no token secret anywhere.
-    # Job-scoped so the grant exists nowhere else in this run.
+    # The repository's only TRUSTED-PUBLISHING (PyPI) id-token grant (the
+    # docs.yml Pages deploy carries the other job-scoped one, on its
+    # publish-docs since #509 — was workflow-level, refute lane B, F1):
+    # trusted publishing via OIDC, no token secret anywhere. Job-scoped so
+    # the grant exists nowhere else in this run.
     permissions:
-      id-token: write # trusted-publishing OIDC claim — the only job in this repo carrying it
+      id-token: write # trusted-publishing OIDC claim — this repo's only PyPI-publishing id-token grant
       contents: read
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
