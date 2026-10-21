@@ -373,6 +373,16 @@ def _versioned_dest(
         p = docs / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(_asm.SITE_LINK_MARKER if rel == "index.html" else "", encoding="utf-8")
+    # verify_tree's device-class preview probes (issue #499) are
+    # CURRENT-tree arms (the same fold A-F1 reason as the render map): the
+    # root when zero tags, the dev bucket when tagged — a release tag's own
+    # bucket legitimately lacks previews for classes that landed after it.
+    preview_base = docs / "v" / "dev" if tags else docs
+    for row in _asm.device_class_rows():
+        if row["state"] == "implemented":
+            p = preview_base / "user-guide" / _asm.PREVIEW_DIR_NAME / f"class-{row['slug']}.html"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
     if tags:
         for html in paths.values():
             p = docs / "v" / "dev" / html

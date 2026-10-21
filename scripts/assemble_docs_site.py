@@ -133,6 +133,7 @@ USER_GUIDE: dict[str, str] = {
     "docs/operator-guide.md": "operator-guide.md",
     "docs/device-developer-guide.md": "device-developer-guide.md",
     "docs/develop-your-device.md": "develop-your-device.md",
+    "docs/adding-a-device-class.md": "adding-a-device-class.md",
     "docs/ai-device-reviewer.md": "ai-device-reviewer.md",
     "docs/plugin-sdk.md": "plugin-sdk.md",
     "docs/development.md": "development.md",
@@ -158,8 +159,11 @@ USER_GUIDE: dict[str, str] = {
 # build time from a live capture, so the key here is the staged name alone.
 # Merged into site_paths() below; verify_tree then pins the rendered page's
 # presence, so a listed-but-missing page fails assembly (the wiring hole).
+# device-classes.md derives from committed corpus state instead of a live
+# capture (issue #499) — the same discipline, one more input family.
 GENERATED_PAGES: dict[str, str] = {
     "standards-cli.md": "user-guide/standards-cli.html",
+    "device-classes.md": "user-guide/device-classes.html",
 }
 
 LINK_RE = re.compile(r"(?<!\!)\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
@@ -248,6 +252,13 @@ def strip_prefixes(staged: str) -> str:
     return Path(*[re.sub(r"^\d+-", "", part) for part in Path(staged).parts]).as_posix()
 
 
+def _site_relative(staged_html: str, target: str) -> str:
+    """A docs-relative target as a link relative to the staged page's
+    rendered location (both render under the same docs tree shape)."""
+    here = Path(staged_html).parent
+    return Path(*([".."] * len(here.parts)), target).as_posix() if here.parts else target
+
+
 def rewrite_links(
     content: str, src: Path, staged_html: str, paths: dict[str, str], *, keep_relative: bool = False
 ) -> str:
@@ -265,13 +276,13 @@ def rewrite_links(
         except ValueError:
             return m.group(0)  # escapes the repository — leave it
         if rel in paths:
-            here = Path(staged_html).parent
-            new = (
-                Path(*([".."] * len(here.parts)), paths[rel]).as_posix()
-                if here.parts
-                else paths[rel]
-            )
-            return f"[{text}]({new}{frag}{title})"
+            return f"[{text}]({_site_relative(staged_html, paths[rel])}{frag}{title})"
+        if "/" not in path and path in GENERATED_PAGES:
+            # A generated page linked by its staged name (guide prose links
+            # the Device classes page this way): the page has NO repository
+            # source, so the blob fallback would point at a file that does
+            # not exist — resolve to the rendered path instead.
+            return f"[{text}]({_site_relative(staged_html, GENERATED_PAGES[path])}{frag}{title})"
         if keep_relative and resolved.is_file() and resolved.suffix != ".md":
             return m.group(0)  # machine corpus beside the prose — copied alongside after the build
         base = GITHUB_TREE if resolved.is_dir() else GITHUB_BLOB
@@ -575,6 +586,8 @@ def render_device_classes_page(rows: list[dict[str, str]]) -> str:
         "",
         "The state column is derived from the corpus, so the table cannot "
         "become stale by hand.",
+        "To add a class to the corpus, read [Add a device class]"
+        "(adding-a-device-class.md).",
         "",
     ]
     return "\n".join(lines)
@@ -1326,6 +1339,16 @@ def verify_tree(
             failures.append(f"docs/{rel} missing")
     if not (current / ACTIVE_OTDP_RUNTIME_SCHEMA).is_file():
         failures.append(f"{rendered_at}/{ACTIVE_OTDP_RUNTIME_SCHEMA} missing")
+    # The device-class previews are CURRENT-tree arms for the same reason as
+    # the render map (fold A-F1): a release tag's bucket build produces its
+    # own preview set, so the root (the latest tag's bucket) legitimately
+    # lacks previews for a class that landed after that tag.
+    for slug in (
+        row["slug"] for row in device_class_rows() if row["state"] == "implemented"
+    ):
+        preview = f"user-guide/{PREVIEW_DIR_NAME}/class-{slug}.html"
+        if not (current / preview).is_file():
+            failures.append(f"{rendered_at}/{preview} missing")
     for src, html in paths.items():
         if not (current / html).is_file():
             failures.append(f"{src} did not render to {rendered_at}/{html}")
@@ -1628,6 +1651,7 @@ def main() -> None:
         try:
             stage_pages(USER_GUIDE, staging, paths)
             write_standards_cli_page(staging)
+            write_device_classes_page(staging)
             stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
             cache = REPO / ".great-docs-cache"
             if cache.exists():
@@ -1648,6 +1672,7 @@ def main() -> None:
         rename_standards_section(docs_root)
         copy_standards_resources(docs_root)
         stage_pattern_library(docs_root)
+        publish_device_class_previews(docs_root)
         complete_favicons(docs_root, REPO / "website" / "assets" / "logo.svg")
         write_llms_txt(docs_root)
         fix_root_doc_links(docs_root)
@@ -1684,6 +1709,7 @@ def main() -> None:
     try:
         stage_pages(USER_GUIDE, staging, paths)
         write_standards_cli_page(staging)
+        write_device_classes_page(staging)
         stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
         cache = REPO / ".great-docs-cache"
         if cache.exists():
@@ -1718,6 +1744,7 @@ def main() -> None:
     rename_standards_section(docs_root if not tags else docs_root / "v" / "dev")
     copy_standards_resources(docs_root if not tags else docs_root / "v" / "dev")
     stage_pattern_library(docs_root if not tags else docs_root / "v" / "dev")
+    publish_device_class_previews(docs_root if not tags else docs_root / "v" / "dev")
     if not tags:
         write_llms_txt(docs_root)
         fix_root_doc_links(docs_root)

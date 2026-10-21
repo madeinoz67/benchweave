@@ -381,3 +381,79 @@ def test_t6_preview_copy_is_byte_identical_and_total(tmp_path: Path) -> None:
         p.name for p in (out / "user-guide/device-classes").iterdir() if p.name not in copied
     )
     assert extra == [], f"the preview directory carries non-mockup files: {extra}"
+
+
+# --- T7: the wiring — the page, the previews and the front door -----------------
+
+AUTHORING_PAGE = ROOT / "docs/adding-a-device-class.md"
+
+
+def test_t7_wiring_maps_and_listings() -> None:
+    assert _asm.GENERATED_PAGES.get("device-classes.md") == "user-guide/device-classes.html", (
+        "site_paths carries the generated mapping, so verify_tree pins the "
+        "rendered page's presence"
+    )
+    assert "docs/adding-a-device-class.md" in _asm.USER_GUIDE, (
+        "the authoring page stages with the user guides"
+    )
+    yml = (ROOT / "great-docs.yml").read_text(encoding="utf-8")
+    guides = yml.index('section: "Guides"')
+    for staged in ("- device-classes.md", "- adding-a-device-class.md"):
+        assert yml.index(staged) > guides, f"{staged} must be listed in the Guides section"
+
+
+def test_t7b_the_front_door_links_the_table() -> None:
+    index = (ROOT / "website/index.html").read_text(encoding="utf-8")
+    assert 'href="{{stg-docs-prefix}}user-guide/device-classes.html"' in index, (
+        "the front door links the table through the docs-prefix token, so the "
+        "link resolves in both release regimes (issue #456)"
+    )
+
+
+def test_t7c_generated_page_links_the_authoring_guide() -> None:
+    page = _asm.render_device_classes_page(_asm.device_class_rows())
+    assert "](adding-a-device-class.md)" in page, (
+        "the table page links the authoring guide (the staged .md link; "
+        "the renderer resolves it)"
+    )
+
+
+def test_t7d_staged_name_links_rewrite_to_the_rendered_path() -> None:
+    # The link rewriter's generated-page branch: a guide page linking a
+    # generated page by its staged name resolves to the site path, relative
+    # to the rendered page — never the GitHub blob fallback (which would
+    # point at a repository file that does not exist).
+    paths = _asm.site_paths()
+    assert paths.get("docs/adding-a-device-class.md") == (
+        "user-guide/adding-a-device-class.html"
+    )
+    out = _asm.rewrite_links(
+        "see [Device classes](device-classes.md)",
+        ROOT / "docs/adding-a-device-class.md",
+        "user-guide/adding-a-device-class.html",
+        paths,
+    )
+    assert out == "see [Device classes](../user-guide/device-classes.html)"
+
+
+# --- T8: the authoring guide pins its load-bearing sentences --------------------
+
+
+def test_t8_authoring_guide_carries_the_convention() -> None:
+    text = AUTHORING_PAGE.read_text(encoding="utf-8")
+    # The theme-block convention, stated exactly (the owner corrected this
+    # wording twice — it must not drift):
+    assert (
+        "Each theme block is a complete page. The banner, the ground and the "
+        "footer sit inside the block. `body` and `html` own no theme."
+    ) in text
+    # Guides, not walls:
+    assert "The mockup is a guide, not a wall." in text
+    assert "Do not add vocabulary only to copy a decorative detail of the mockup." in text
+    # The profiles array:
+    assert "The array has no maximum" in text and "unique" in text
+    # The census instrument and the exact gate commands:
+    assert "tests/ui_html/classref_census.py" in text
+    assert "uv run pytest tests/ui_html/test_classref_" in text
+    assert "uv run ruff check ." in text
+    assert "uv run mypy" in text
