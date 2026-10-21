@@ -1,0 +1,8 @@
+{
+  "planned": [
+    {"slug": "embedded_controller", "slot": "L18"},
+    {"slug": "switch_matrix", "slot": "L19"},
+    {"slug": "spectrum_analyser", "slot": "L20"},
+    {"slug": "vna", "slot": "L21"}
+  ]
+}
