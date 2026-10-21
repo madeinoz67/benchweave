@@ -19,7 +19,7 @@ the summary and these have the working.
 
 This directory is **public**. `private/` is gitignored.
 
-A design record goes in `private/` if it contains any of:
+A design record goes in `private/` only when it must carry one of:
 
 - **A real person's name** — contributors, colleagues, clients, investors. Test fixtures may
   use invented names; use obviously-invented ones.
@@ -35,8 +35,16 @@ Everything else — mechanisms, measurements, invariants, prior art, negative re
 adversarial findings — belongs in public. Honest negative results are first-class here; a
 killed idea is a real result and worth publishing.
 
-**Default new work to `private/` and promote it deliberately.** Promotion is a review;
-demotion after the fact is a leak, and git remembers.
+**Default new work to this directory.** The directory's whole value is that a pre-committed
+acceptance rule is provably pre-committed only when the document is in git history before
+the measurement ran, and `private/` is gitignored — a record drafted there has no such
+history. A record goes to `private/` only when it must carry one of the five triggers
+above. Where the trigger content can be left out, leave it out and keep the record
+public: a record may state that an alias resolves per installation without naming the
+installation's router, vendors or model identifiers. If a record genuinely cannot shed a
+trigger, say so in the pull request body and accept that its acceptance rule will not be
+provably pre-committed, rather than routing it quietly. Promotion is a review; demotion
+after the fact is a leak, and git remembers.
 
 ## The deferral-row contract (issue #99)
 
