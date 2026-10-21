@@ -26,6 +26,7 @@ from benchweave.presentation.classref import (
     derive_attachment,
     select_references,
 )
+from benchweave.standards.manifest import active_version_from_corpus
 from benchweave.vendoring import corpus_root
 
 FIXTURES = Path(__file__).parent / "classref_fixtures"
@@ -58,15 +59,20 @@ def _serialize(document: dict[str, Any]) -> bytes:
 
 class TestParityB8:
     def test_f1_f2_triples_byte_equal_committed_sdk_fixtures(self) -> None:
-        """B8 (4/4 after the L5 widening): the gateway derivation's
+        """B8 (5/5 after the plot-kind mirror): the gateway derivation's
         canonical-JSON triples equal the committed SDK-expansion fixtures
         byte for byte — the two derivations agree over the same corpus
-        reference bytes, decoder-carrying descriptors AND the F5 trio
-        descriptor included. The F5 arm is the widening's parity proof:
-        the SDK derives the device-features section at L2 with the
-        [text, select, boolean] staging triad and the button; the mirrored
-        gateway derivation emits the same bytes."""
-        for tag in ("f1", "f2", "f1-da", "f5-trio"):
+        reference bytes, decoder-carrying descriptors, the F5 trio
+        descriptor AND the numeric smu pair included. The F5 arm is the
+        L5 widening's parity proof: the SDK derives the device-features
+        section at L2 with the [text, select, boolean] staging triad and
+        the button; the mirrored gateway derivation emits the same bytes.
+        The f6-smu arm is the plot-kind mirror's: the readings expansion
+        (observation bindings and tiles), the slot-aware measure target
+        and the time_series plot bound to the page's first observation —
+        generated from the widened SDK expander at the v0.18.0 pin (the
+        convention's oracle, design record §5.2)."""
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -79,7 +85,14 @@ class TestParityB8:
                 )
                 # The JSON loads too: bytes equal, documents equal.
                 assert json.loads(produced) == json.loads(committed)
-            assert derived.profile_ids == ("otdp.logic_analyser/1.0.0",)
+            # The founding tags derive the analyser; the numeric tag the
+            # smu pair (the mirror's own class).
+            expected_profile = (
+                "otdp.smu/1.0.0"
+                if tag == "f6-smu"
+                else "otdp.logic_analyser/1.0.0"
+            )
+            assert derived.profile_ids == (expected_profile,)
 
     def test_f5_trio_derives_the_staging_section_at_l2(self) -> None:
         """The L5 widening's proof surface (B1 extends to F5): the invented
@@ -209,7 +222,7 @@ class TestParityB8:
         from benchweave.presentation.admission import validate_attachment
         from benchweave.presentation.panels import SUPPORTED_PANELS
 
-        for tag in ("f1", "f2", "f1-da", "f5-trio"):
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
             derived = _derive(tag)
             descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
             report = validate_attachment(
@@ -223,6 +236,285 @@ class TestParityB8:
                 firmware="1.0",
             )
             assert report.valid, report.findings
+
+
+# --- the plot-kind mirror (issue #521; design record §5.3) -----------------------
+
+
+def _active_family() -> dict[str, tuple[str, dict[str, Any]]]:
+    """The ACTIVE family's classes, discovered by walking the corpus's
+    ``class-*.json`` (the census instrument's family_profile_ids pattern):
+    profile id -> (slug, reference document). The family's schema files
+    also match the glob and are skipped; membership is never a literal
+    list, so a ninth class widens the plot-kind arms by itself."""
+    family_dir = (
+        corpus_root()
+        / "plugin-ui-class-reference"
+        / active_version_from_corpus(corpus_root(), "plugin-ui-class-reference")
+    )
+    family: dict[str, tuple[str, dict[str, Any]]] = {}
+    for path in sorted(family_dir.glob("class-*.json")):
+        document = json.loads(path.read_bytes())
+        if not isinstance(document, dict) or "profile_id" not in document:
+            continue  # the family schema files also match the glob
+        family[str(document["profile_id"])] = (
+            path.stem.removeprefix("class-"),
+            document,
+        )
+    return family
+
+
+def _plot_classes(kind: str) -> dict[str, tuple[str, dict[str, Any]]]:
+    """The family members whose page template authors a plot of ``kind`` —
+    the reference's own declaration, never a class list."""
+    return {
+        profile_id: pair
+        for profile_id, pair in _active_family().items()
+        if any(
+            str((page.get("plot") or {}).get("kind")) == kind
+            for page in pair[1].get("pages", [])
+        )
+    }
+
+
+def _committed_example(slug: str) -> Path:
+    """The committed OTDP class example paired with a reference — the
+    corpus's own descriptor for the class, at the ACTIVE otdp version."""
+    return (
+        corpus_root()
+        / "otdp"
+        / active_version_from_corpus(corpus_root(), "otdp")
+        / "examples"
+        / f"class-{slug}.json"
+    )
+
+
+def _numeric_channels(
+    reference: dict[str, Any], descriptor: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """The channels the reference's channels-kind slot resolves (the slot
+    found BY KIND — the key varies across classes: channels, inputs,
+    outputs — with the slot's own role filter, declaration order): the
+    derivation's lane input."""
+    slot = next(
+        (row for row in reference["slots"].values() if row.get("kind") == "channels"),
+        None,
+    )
+    assert slot is not None, sorted(reference["slots"])
+    role = str(slot.get("where_role", ""))
+    return [row for row in descriptor["channels"] if str(row.get("role")) == role]
+
+
+def _variable_ids(reference: dict[str, Any], descriptor: dict[str, Any]) -> list[str]:
+    """The (channel, quantity) variable ids the widened SDK expander emits —
+    ``{channel id}-{quantity}``, lane-major over quantity declaration order
+    (the convention read from ``benchweave_sdk.classref`` at the v0.18.0
+    pin; the f6-smu parity fixture pins it byte for byte)."""
+    return [
+        f"{row['id']}-{quantity}"
+        for row in _numeric_channels(reference, descriptor)
+        for quantity in (row.get("quantities") or [])
+    ]
+
+
+def _the_plot(derived: DerivedAttachment) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(page row, plot row) for the derived manifest's plot page — the
+    numeric classes author exactly one plot page with one plot."""
+    pages_with_plots = [page for page in derived.manifest["pages"] if page.get("plots")]
+    assert len(pages_with_plots) == 1, [page["id"] for page in pages_with_plots]
+    page = pages_with_plots[0]
+    assert len(page["plots"]) == 1, page["plots"]
+    return page, page["plots"][0]
+
+
+def _bound_variables(
+    derived: DerivedAttachment, plot: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """The plot's bound target's variables, by id — the axes' resolution
+    (the manifest's binding row through to the catalogue's target)."""
+    bindings = {row["id"]: row for row in derived.manifest["bindings"]}
+    targets = {row["id"]: row for row in derived.catalogue["targets"]}
+    binding = bindings.get(str(plot["binding_id"]), {})
+    target = targets.get(str(binding.get("target_id", "")), {})
+    return {row["id"]: row for row in target.get("variables", [])}
+
+
+def _plot_page_kind(reference: dict[str, Any]) -> str:
+    """The kind of the reference's plot page (a dataset page carries the
+    plot beside its dataset binding; a readings page admits observation
+    bindings only)."""
+    page = next(page for page in reference["pages"] if page.get("plot"))
+    return str(page.get("kind", "readings"))
+
+
+def _assert_pair_validates(
+    derived: DerivedAttachment,
+    descriptor_raw: bytes,
+    reference: dict[str, Any],
+    page_id: str,
+) -> None:
+    """Acceptance 3's validation half, scoped by the pair's own plot-page
+    kind (discovered from the reference, never a class list). A
+    DATASET-page pair's derived triple passes the unchanged
+    ``validate_attachment`` (valid=true) — the serving lie's closure
+    proof: these are the pairs whose pre-mirror derivation validated AND
+    served the wrong-kind plot.
+
+    A READINGS-page pair's assertion below records a PRE-EXISTING STATE,
+    not an expectation: before this slice, all four readings pairs
+    (dc_psu, dmm, electronic_load, smu — measured against HEAD) derived
+    valid=False with exactly ONE ``invalid_plot`` finding, because the
+    committed OTDP examples declare zero readable parameters, so the
+    readings page carries no observation bindings while the plot binds
+    the dataset slot (issue #525 tracks the corpus gap; the fix belongs
+    there, never in this slice). The assertion pins that state — it
+    REDS on a second finding and on any change to the finding's shape
+    (code or path) — the old state is pinned, not blessed. The
+    parameters-carrying readings pair validates clean (f6-smu,
+    TestParityB8's validator arm): the readings path itself is sound
+    once the descriptor owes what the reference authors."""
+    from benchweave.interfaces.ui_presentation import _pin_scoped_documents
+    from benchweave.presentation.admission import validate_attachment
+    from benchweave.presentation.panels import SUPPORTED_PANELS
+
+    descriptor = json.loads(descriptor_raw)
+    firmware = (descriptor.get("identity", {}).get("supported_firmware") or ["0"])[0]
+    report = validate_attachment(
+        derived.envelope_raw,
+        descriptor_raw=descriptor_raw,
+        verified_resources=derived.resources,
+        binding_catalogue=derived.catalogue,
+        schema_documents=_pin_scoped_documents(descriptor),
+        supported_features=frozenset(),
+        supported_panels=SUPPORTED_PANELS,
+        firmware=str(firmware),
+    )
+    if _plot_page_kind(reference) == "readings":
+        assert [(row.code, row.path) for row in report.findings] == [
+            ("invalid_plot", f"pages.{page_id}.plots")
+        ], report.findings
+    else:
+        assert report.valid, report.findings
+
+
+class TestPlotKindEmission:
+    """The plot-kind mirror arms (issue #521 — the serving lie; design
+    record ``2026-10-21-classref-plot-kind-mirror-design.md`` §5.3): a
+    numeric class's derived plot carries the reference's own plot kind —
+    ``time_series``/``waveform`` over the SDK's (channel, quantity)
+    variable convention — never the founding class's unconditional
+    ``digital_lanes`` emission. The founding class's byte-identity is
+    TestParityB8's (the four committed fixtures do not move); these arms
+    pin the numeric half of the family, DISCOVERED by walking the ACTIVE
+    family so a ninth class joins the arms by itself."""
+
+    def test_the_family_carries_both_numeric_plot_kinds(self) -> None:
+        """The arms' sample statement, from the corpus walk (never a
+        literal): the family carries the founding lanes class, at least one
+        ``time_series`` author and at least one ``waveform`` author — the
+        two arms below are never vacuous."""
+        family = _active_family()
+        assert "otdp.logic_analyser/1.0.0" in family, sorted(family)
+        assert _plot_classes("time_series"), sorted(family)
+        assert _plot_classes("waveform"), sorted(family)
+
+    @pytest.mark.parametrize("profile_id", sorted(_plot_classes("time_series")))
+    def test_a_time_series_reference_derives_the_time_series_plot(
+        self, profile_id: str
+    ) -> None:
+        """The committed pair derives the reference's own kind: exactly one
+        plot, ``time_series``, over the dataset binding, with NO
+        ``lane_groups`` and NO ``decoder_lanes`` (the manifest schema's
+        analog branch bans both), ``y`` exactly the (channel, quantity)
+        variable ids, and the bound target's x variable the receipt-time
+        scalar in seconds (the canonical validator's own rule)."""
+        slug, reference = _active_family()[profile_id]
+        descriptor_path = _committed_example(slug)
+        descriptor_raw = descriptor_path.read_bytes()
+        derived = derive_attachment(descriptor_raw, corpus=corpus_root())
+        page, plot = _the_plot(derived)
+        assert plot["kind"] == "time_series", plot
+        assert "lane_groups" not in plot, plot
+        assert "decoder_lanes" not in plot, plot
+        assert plot["x"] == "time", plot
+        assert plot["y"] == _variable_ids(reference, json.loads(descriptor_raw))
+        variables = _bound_variables(derived, plot)
+        x_var = variables[plot["x"]]
+        assert x_var["axis_role"] == "receipt_time", x_var
+        assert (x_var["type"], x_var["unit"], x_var["shape"]) == (
+            "number",
+            "s",
+            "scalar",
+        ), x_var
+        for name in plot["y"]:
+            row = variables[name]
+            assert (row["type"], row["shape"]) == ("number", "scalar"), row
+        _assert_pair_validates(derived, descriptor_raw, reference, str(page["id"]))
+
+    def test_a_numeric_series_ceiling_refuses_typed(self) -> None:
+        """The analog y ceiling (the manifest schema's ``y maxItems 16``,
+        the ``$defs.plot`` analog branch): a descriptor whose (channel,
+        quantity) variable count exceeds it refuses typed
+        (``classref_series_ceiling``, the lane-ceiling shape) — the
+        gateway's fail-closed arm the SDK lacks at the pin (design §5.1's
+        conditional: mirror an over-16 arm if the SDK ships one; it does
+        not), so the schema never has to refuse diffusely. The mutated
+        descriptor keeps the committed pair's class shape (nine channels
+        of the slot's own role, two quantities each — 18 variables over
+        the 16 ceiling, computed from the mutation, never a literal)."""
+        profile_id = sorted(_plot_classes("time_series"))[0]
+        slug, reference = _active_family()[profile_id]
+        slot = next(
+            row
+            for row in reference["slots"].values()
+            if row.get("kind") == "channels"
+        )
+        role = str(slot.get("where_role", ""))
+        descriptor = json.loads(_committed_example(slug).read_bytes())
+        descriptor["channels"] = [
+            {
+                "id": f"m{index}",
+                "label": f"Numeric channel {index}",
+                "role": role,
+                "quantities": ["voltage", "current"],
+            }
+            for index in range(9)
+        ]
+        with pytest.raises(ClassRefusal, match="^classref_series_ceiling:"):
+            derive_attachment(
+                (json.dumps(descriptor) + "\n").encode(), corpus=corpus_root()
+            )
+
+    @pytest.mark.parametrize("profile_id", sorted(_plot_classes("waveform")))
+    def test_a_waveform_reference_derives_the_waveform_plot(
+        self, profile_id: str
+    ) -> None:
+        """The waveform twin: exactly one plot, ``waveform``, over the
+        dataset binding, no group or decoder machinery, ``y`` the trace
+        variable ids (array-valued — vector shape), the explicit time-axis
+        x in seconds. The founding class's ``digital_lanes`` machinery
+        never rides a numeric plot."""
+        slug, reference = _active_family()[profile_id]
+        descriptor_path = _committed_example(slug)
+        descriptor_raw = descriptor_path.read_bytes()
+        derived = derive_attachment(descriptor_raw, corpus=corpus_root())
+        page, plot = _the_plot(derived)
+        assert plot["kind"] == "waveform", plot
+        assert "lane_groups" not in plot, plot
+        assert "decoder_lanes" not in plot, plot
+        assert plot["x"] == "t", plot
+        assert plot["y"] == _variable_ids(reference, json.loads(descriptor_raw))
+        variables = _bound_variables(derived, plot)
+        x_var = variables[plot["x"]]
+        assert (x_var["type"], x_var["unit"], x_var["shape"]) == (
+            "number",
+            "s",
+            "vector",
+        ), x_var
+        for name in plot["y"]:
+            row = variables[name]
+            assert (row["type"], row["shape"]) == ("number", "vector"), row
+        _assert_pair_validates(derived, descriptor_raw, reference, str(page["id"]))
 
 
 class TestDecoderDerivation:

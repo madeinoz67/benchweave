@@ -1,0 +1,212 @@
+{
+  "contract_version": "0.4.0",
+  "descriptor_sha256": "115ef4de97155ea0f534b536f6725d43723997a5ed5a895dff07a90cc5930bf3",
+  "targets": [
+    {
+      "id": "measure",
+      "kind": "dataset",
+      "action_id": "otdp.smu.measure/1.0.0",
+      "profile_ids": [
+        "otdp.smu/1.0.0"
+      ],
+      "measurement_schema_id": "urn:otdp:measurement:0.2.3",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch1-current",
+          "type": "number",
+          "unit": "A",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch1-power",
+          "type": "number",
+          "unit": "W",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch2-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch2-current",
+          "type": "number",
+          "unit": "A",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch2-power",
+          "type": "number",
+          "unit": "W",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch1-voltage",
+      "kind": "observation",
+      "parameter_id": "ch1_voltage",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch1-current",
+      "kind": "observation",
+      "parameter_id": "ch1_current",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-current",
+          "type": "number",
+          "unit": "A",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch1-power",
+      "kind": "observation",
+      "parameter_id": "ch1_power",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-power",
+          "type": "number",
+          "unit": "W",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch2-voltage",
+      "kind": "observation",
+      "parameter_id": "ch2_voltage",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch2-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch2-current",
+      "kind": "observation",
+      "parameter_id": "ch2_current",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch2-current",
+          "type": "number",
+          "unit": "A",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch2-power",
+      "kind": "observation",
+      "parameter_id": "ch2_power",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch2-power",
+          "type": "number",
+          "unit": "W",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "action_id": "otdp.smu.configure/1.0.0",
+      "profile_ids": [
+        "otdp.smu/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:smu.configure:1.0.0:input",
+      "schema_asset_id": "settings/configure.schema.json",
+      "preset_asset_ids": []
+    },
+    {
+      "id": "output",
+      "kind": "procedure",
+      "action_id": "otdp.smu.output/1.0.0",
+      "profile_ids": [
+        "otdp.smu/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:smu.output:1.0.0:input"
+    }
+  ]
+}
