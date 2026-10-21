@@ -4,14 +4,18 @@
 **Base:** origin/main `5ff6668b` (line anchors are as of that SHA; when they drift, re-locate by
 the quoted structure, not the number)
 
-**Record split (pre-commitment provability).** This record is committed WITHOUT the audit
-installation's routing specifics — an install's operational specifics are the triage trigger
-for `.claude/deep-review/private/` (`.claude/deep-review/README.md`), and `private/` is
-gitignored (`.gitignore:126`), so a record parked there would not be in git history and the
-pre-commitment in §5 would be unprovable. The install-specific alias-resolution evidence
-(which alias resolved to which model on the audit installation, with settings references)
-lives in the deliberately untracked companion
-`.claude/deep-review/private/2026-10-21-issue519-g6-alias-resolution.md`.
+**Alias-resolution evidence, vendor-neutral by design.** The audit installation's routing
+specifics — router, vendors, model IDs, settings and log references — appear nowhere in
+tracked content: this repository is public and those specifics are the `private/` triage
+trigger of `.claude/deep-review/README.md`. The design rests on the shape alone, which
+needs none of them: on the audit installation both the producing and refuting pins
+resolved to the same model and vendor — no cross-vendor separation was available in the
+`.claude` fleet there, which is exactly the case the rewritten G6 sentence must disclose
+instead of assuming away. (Record-history note: the branch's first commit carried this
+evidence as a deliberately untracked companion under `private/`; the owner direction at
+fold-time moved it into this vendor-neutral statement and the companion was deleted. The
+correction is a visible follow-up commit, not a silent rewrite, so the acceptance rule in
+§5 stays provably pre-committed.)
 
 **Review tier — design-time call (#254): Tier 2.** Rubric Step 1, second rule: the expected
 diff is test code under `tests/` plus internal docs and this record. No Tier-3 trigger
@@ -160,6 +164,7 @@ honesty only — nothing in this increment measures whether a second pass finds 
 
 ## 8. Privacy
 
-This repository is public. This record and the rubric sentence name no router, vendor or
-model ID of the audit installation; only the untracked companion (§ Record split) may, and
-does.
+This repository is public. No file, tracked or untracked, names the audit installation's
+router, vendors or model IDs: the install evidence lives only as the vendor-neutral
+statement in the header paragraph ("both the producing and refuting pins resolved to the
+same model and vendor"), and the rubric sentence names no installation at all.
