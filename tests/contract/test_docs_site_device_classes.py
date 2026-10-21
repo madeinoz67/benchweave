@@ -66,7 +66,11 @@ ROOT = Path(__file__).resolve().parents[2]
 #: (``user-guide/device-classes/class-<slug>.html``), linked from the page
 #: as ``device-classes/class-<slug>.html``.
 PREVIEW_LINK_RE = re.compile(r"^device-classes/class-(?P<slug>[a-z0-9_]+)\.html$")
-PLANNED_STATE_RE = re.compile(r"^Planned \(sweep slot (?P<slot>L\d+)\)$")
+# The planned state names the slot as a FUTURE slot and marks the row
+# post-MVP (the principal's ruling: the implemented set is the approved
+# MVP set; the remaining sweep slots are not scheduled) — never as
+# imminent work, and never with a date.
+PLANNED_STATE_RE = re.compile(r"^Planned \(post-MVP, future slot (?P<slot>L\d+)\)$")
 PROVENANCE = (
     "generated from the class-reference corpus, the sweep plan record and the authoring mockups"
 )
@@ -249,6 +253,16 @@ def test_t2b_state_vocabulary_is_closed() -> None:
         assert cells[1] == "Implemented" or PLANNED_STATE_RE.match(cells[1]) is not None, (
             f"the state column is derived and closed: {cells[1]!r}"
         )
+
+
+def test_t2c_the_planned_set_is_labelled_post_mvp() -> None:
+    # The honesty pair: the planned rows are marked post-MVP and the page
+    # states that no date is set — a planned row that reads as scheduled
+    # work, or an invented schedule, is the lie this arm refuses.
+    page = _asm.render_device_classes_page(_asm.device_class_rows())
+    assert "planned after the minimum viable product (MVP)" in page
+    assert "The planned classes are post-MVP." in page
+    assert "No date is set for this work yet." in page
 
 
 # --- T3: the reverse direction over the real tree ------------------------------
