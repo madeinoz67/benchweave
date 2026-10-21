@@ -1,12 +1,18 @@
-# Issue #506 — protective-transition raise containment (design record)
+# Issue #506 — protective-transition raise containment: engine dispatch containment + coordinator belt
 
-- **Issue:** madeinoz67/benchweave#506
+- **Tracker:** madeinoz67/benchweave#506 (this repo's single issue stream; no SDK-side
+  issue exists by design — gateway-only diff).
 - **Branch:** `fix/506-protective-raise-containment` (worktree `.wt/ap-protect-3k7q`), cut
   from `origin/main` at `b905b19a`; branch HEAD at authoring is `05958386` (two later
   commits touch neither `src/benchweave/control/`, `src/benchweave/interfaces/`, nor
   `tests/faults/` — `git diff --stat b905b19a..HEAD` over those paths is empty).
 - **Date:** 2026-10-21. This record lands as the arc's FIRST commit, before any test or
   measurement in this increment has run.
+- **Record note:** retitled and moved from its authoring path
+  (`2026-10-21-issue506-protective-raise-containment.md`, the arc's first commit
+  `c309a482`) by the designer's amendment after the arc shipped. The pre-commitment
+  proof is the authoring commit's position in history — BEFORE the A1-A3 measurement
+  runs — reachable on this path via `git log --follow`.
 - **Evidence basis:** every file:line cite below was read this session against THIS
   worktree's bytes (native reads; the gortex daemon served the file bodies but returned no
   `freshness`/`actual_view` object, so view identity is established by the empty diff above
@@ -104,9 +110,12 @@ the existing rows). No STO/CON/REG motion, no on-disk schema change.
 
 | # | Deferred | Home | Reopen trigger |
 |---|---|---|---|
-| D1 | The worker poison guard's no-terminal-record shape (a contained escape still produces no durable terminal row, only the projection + gateway log) | Follow-on issue | A second gateway-log `run_worker poison` line over a run with no durable terminal row |
-| D2 | `stream_host.py` `:216`/`:303` unguarded arm/teardown dispatches (contained today via the body belt; arm 2 adds a second net, the sites themselves stay unguarded) | Follow-on issue | An arm/teardown raise reaching the poison guard |
-| D3 | Body-phase tick semantics change — a raising signal read during the BODY now degrades to invalid-signal/trip rather than `execution_error` (arm 1's one-derivation rule reaches the monitor tick too) | This design record | A run recording `safe_state: verified` over a signal whose read raises every poll |
+| D1 | The worker poison guard's no-terminal-record shape (a contained escape still produces no durable terminal row, only the projection + gateway log) | Follow-on issue, filed at PR-open (the PR body maps it; the number is assigned at open, not invented here) | A second gateway-log `run_worker poison` line over a run with no durable terminal row |
+| D2 | `stream_host.py` `:216`/`:303` unguarded arm/teardown dispatches (contained today via the body belt; arm 2 adds a second net, the sites themselves stay unguarded) | Documentation here | An arm/teardown raise reaching the poison guard |
+| D3 | Body-phase tick semantics change — a raising signal read during the BODY now degrades to invalid-signal/trip rather than `execution_error` (arm 1's one-derivation rule reaches the monitor tick too) | Documentation here | A run recording `safe_state: verified` over a signal whose read raises every poll |
+
+Homes follow the repo's cap of one follow-on issue per merged PR: only D1 rides an
+issue; D2 and D3 live in this record.
 
 ## 4. Proof plan (tests/faults/, the `_FaultPsu`/`TestClock` forges)
 
