@@ -54,6 +54,9 @@ All notable changes to this project will be documented in this file.
 - Fold refute rows F1-F4 — shaped answers only, realpath, bounded walk, disableAllHooks named
 - Verdict stability under load — budget re-derived from measured spikes, walk cap added, residual disclosed
 - The dmm mock's outer frame is neutral light chrome, blocks sized to content
+- Contain raises out of the protective transition
+- Fold the result processing into the protected region — the malformed-return twin
+- Second bounded fold — comparison-hostile status and hostile Reading subclasses
 
 ### Documentation
 
@@ -141,6 +144,10 @@ All notable changes to this project will be documented in this file.
 - The composition gate design record - pair gate over the real merge, refusal set, the hazards scoped out and measured (gateway #500)
 - The cross-class composition requirement in the family README's normative section (gateway #500)
 - The contract-census digest paths name the vendored location (gateway #463)
+- Design record — protective-transition raise containment
+- Apply the designer's amendment — record path, title, tracker line, deferral homes
+- Record addendum — base-commit correction (lane B) and the fold-1 mechanism note
+- Addendum line for the second bounded fold — contained classes and the named residual
 
 ### Features
 
@@ -275,6 +282,7 @@ All notable changes to this project will be documented in this file.
 - The composition gate's win-core row - the manifest carries the new file, refreshed (gateway #500)
 - The mockup banner stamps must match the package version (gateway #499)
 - Register the banner-stamp guard in the win-core manifest (gateway #499)
+- Lift lane A's named malformed-result shapes and the disclosed width pin
 
 ### Build
 
