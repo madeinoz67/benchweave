@@ -130,8 +130,11 @@ pin bump in the SDK repository, never a copied template).
    standalone CI runs the pinned wheel's own harness against that vendored
    copy. The guard's file set derives from the SAME single-constant list as the
    contract-change definition above — one list, three paths
-   (`docs/internal/ui-contract.md`, the package's vendored
-   `assets/tokens.css`, `assets/themes.css`) — so the definition and the census cannot
+   (`docs/internal/ui-contract.md`,
+   `packages/ui-html/src/benchweave_ui_html/assets/tokens.css`,
+   `packages/ui-html/src/benchweave_ui_html/assets/themes.css` — repo-root
+   relative, the vendored location the package actually ships) — so the
+   definition and the census cannot
    diverge. Interim, until the guard lands: the pin-bump pull request body
    records the sha256 digest of each file in that list at the release tag (one
    command per path — `git show ui-html-vX.Y.Z:<path> | shasum -a 256` —
