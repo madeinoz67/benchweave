@@ -677,7 +677,9 @@ and remain the reviewer's job.
     zero bump motion); planned = a row in
     `docs/internal/classref-sweep-plan.json` (slug and sweep slot only,
     append-only, the corpus wins for a landed slug — parallel sweep lanes
-    never edit one shared file). The public previews are byte-identical
+    never edit one shared file; the plan names POST-MVP future slots — the
+    implemented set is the approved MVP set and the planned rows carry no
+    schedule, the principal's mid-build ruling on #499). The public previews are byte-identical
     build-time copies of the authoring mockups at
     `user-guide/device-classes/`; they are CURRENT-tree arms in
     `verify_tree` (fold A-F1 — a release tag's bucket legitimately lacks

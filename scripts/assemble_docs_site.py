@@ -556,8 +556,8 @@ def render_device_classes_page(rows: list[dict[str, str]]) -> str:
         "---",
         "",
         "BenchWeave gives every device class one shared page shape. This table "
-        "shows the classes that the corpus implements today and the classes "
-        "that the sweep plans to add.",
+        "shows the classes that the corpus implements today. It also shows "
+        "the classes that are planned after the minimum viable product (MVP).",
         "Select a preview link to see the design of the class page before you "
         "install anything.",
         "",
@@ -572,13 +572,16 @@ def render_device_classes_page(rows: list[dict[str, str]]) -> str:
             )
         else:
             lines.append(
-                f"| `{row['slug']}` | Planned (sweep slot {row['slot']}) "
+                f"| `{row['slug']}` | Planned (post-MVP, future slot {row['slot']}) "
                 "| Not yet available |"
             )
     lines += [
         "",
         "The state column is derived from the corpus, so the table cannot "
         "become stale by hand.",
+        "The planned classes are post-MVP. Each planned row names the future "
+        "sweep slot that will deliver the class. No date is set for this work "
+        "yet.",
         "To add a class to the corpus, read [Add a device class]"
         "(adding-a-device-class.md).",
         "",
