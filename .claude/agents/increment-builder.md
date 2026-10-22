@@ -118,7 +118,9 @@ plugin with a sibling row:
    in your worktree), write `PARK-ACK` in the worktree root (ISO time + lane
    name) before finishing the current command, then stop and wait — the
    ACK-or-stop bound ("Parking a lane" in the increment SKILL.md, issue #517)
-   stops you at the deadline by worktree removal, not by message.
+   detects and folds at the deadline; the stop is best-effort, and a lane
+   writing past its deadline is escalated to the human (the fold has already
+   preserved your branch).
 5. **Check your inbox before reporting "standing by"** — queued instructions crossed
    mid-wave five times in the issue-#6 run. Process everything queued, then report.
 6. **Verify file bytes, not in-memory state** — after any digest/pin edit, re-parse the

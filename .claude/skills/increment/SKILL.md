@@ -178,9 +178,13 @@ base predates a sibling's merged bump and the branch must re-roll onto main.
 Parking behind a sibling, above, stops being advisory at the park decision. The
 recorded wave: 0/3 stop messages were delivered (a mailbox failure, not
 root-caused), a parked lane pushed onto the owning train's PR head, and one
-runaway had to be hard-killed. The bound removes the dependency on message
-delivery — at the deadline an uncooperative lane is dead because its worktree no
-longer exists, not because it obeyed a notice.
+runaway had to be hard-killed. The bound is DETECT-AND-BOUND WITH ESCALATION:
+detection, notification, archive and fold are proven; the stop itself is
+best-effort — the #517 drill measured a detached writer committing ~3 minutes
+past its deadline and surviving the runner's task-kill, ended only by a manual
+kill. A parked lane still writing past its deadline is the orchestrator's
+signal to ESCALATE TO THE HUMAN; the fold has already preserved the branch
+(`archive/parked/<lane>-<ts>`), so nothing measured is lost.
 
 **Arm (orchestrator, at the park decision T0).** Send the best-effort notice,
 run `scripts/lane_park.sh arm .wt/<lane-wt> <lane> [D=15]` (writes `PARK.intent`
@@ -196,10 +200,11 @@ reported blocker; re-check the inbox before any push.
 present AND zero commits with committer time >= the arm epoch exist on the
 worktree's branch; everything else is ACTIVE — no ACK, any post-arm commit
 (including one in the arm second), any doubt. On ACTIVE the orchestrator
-TaskStops the lane (a harness primitive, not a message) and folds. The
-orchestrator owns intent, wake, verdict, TaskStop, fold and archive; the lane
-owns only the ACK and stopping early. Lane non-cooperation is fatal to the
-lane's scratch, never to the train.
+attempts the TaskStop (best-effort: a detached process can outlive the
+runner's task-kill — if writes continue past the deadline, escalate to the
+human) and folds. The orchestrator owns intent, wake, verdict, the TaskStop
+attempt, fold, archive and escalation; the lane owns only the ACK and stopping
+early.
 
 **Fold and resume.** `scripts/lane_park.sh fold .wt/<lane-wt> <lane>` archives
 the branch ref to `archive/parked/<lane>-<ts>`, force-removes the worktree
@@ -208,7 +213,8 @@ the resume command — `git worktree add <path> <archived-ref>`.
 
 Disclosed residuals: the compare is committer-timestamp-based (a lane forging
 GIT_COMMITTER_DATE evades it — the recorded runaways were deaf, not
-adversarial), and nothing structural stops a willful lane writing the shared
-checkout by absolute path — that surface belongs to the write-gate slice
-(issue #508). Design record:
+adversarial); the stop does not bound a detached process (measured, #517
+drill A2 — escalation is the closure); and nothing structural stops a willful
+lane writing the shared checkout by absolute path — that surface belongs to the
+write-gate slice (issue #508). Design record:
 `.claude/deep-review/2026-10-21-issue517-parked-lane-stop-bound.md`.

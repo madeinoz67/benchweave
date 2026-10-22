@@ -241,3 +241,41 @@ marks, so the module rides the weekly windows-full complement), folded into
 the code commit so the slice is atomic; `--check` green after (244 files, 214
 core of 4654 tests). The §6 walk is corrected in effect by this note; the
 original text stands as history.
+
+
+## 13. Drill results and the revised claim (2026-10-22, owner-ruled revision)
+
+The orchestrator ran the live drills. Facts as measured, not softened:
+
+- **Drill B (false-kill control): PASS.** The compliant lane ACKed at
+  arm+12 s, made zero post-arm commits, read QUIESCENT at the wake, was NOT
+  stopped, and folded cleanly to its archive ref.
+- **Drill A, run 1: UNDERPOWERED.** The agent participant went idle after one
+  heartbeat; the verdict fired ACTIVE but nothing was running away. Recorded
+  as underpowered, not as a pass.
+- **Drill A2 (the real subject — a detached shell loop committing every two
+  minutes): FAILED the pre-committed criterion.** Arm `08:02:03Z`, deadline
+  `08:17:03Z`. The wake returned **ACTIVE with 11 post-arm commits and no
+  ACK**, and the fold archived the branch (`archive/parked/deaf2-7h3p-20261021T082102`,
+  tip `e07a6c3e`). But the runaway kept writing past the deadline: heartbeat
+  7 at `08:17:43Z` and heartbeat 8 at `08:20:13Z`, roughly three minutes past
+  the deadline. The runner-level task-kill reported the task "not running"
+  while writes continued; two stray loop processes were found at `08:21Z`;
+  the drill ended with a manual kill. Against §9's rule — zero commits with a
+  committer timestamp after arm+D — this is a FAIL, recorded as a failed
+  acceptance criterion, not a pass with a footnote.
+
+**The revised claim (owner-ruled): the mechanism is DETECT-AND-BOUND WITH
+ESCALATION, not guaranteed removal.** Detection, notification, archive and
+fold are proven (A2's wake verdict and fold; B's clean end). The stop is
+best-effort and did not bound a detached process at the deadline: the harness
+task-kill did not reach processes the runner no longer tracked, and the wake
+itself fired late. A parked lane writing past its deadline is therefore the
+orchestrator's signal to ESCALATE TO THE HUMAN — and the fold preserves the
+branch under `archive/parked/<lane>-<ts>`, so nothing measured is lost on the
+escalation path. Section 2's "dead because it no longer exists" and section
+9's SHIP row stand as the pre-measurement commitment; the measurement did not
+meet them, and this section is the honest result — the evidence record does
+not launder the outcome (A06). The escalation half (post-deadline writes
+notifying the human) is procedure carried by the skill text, not a mechanism
+in this increment; mechanising it is the natural successor slice.

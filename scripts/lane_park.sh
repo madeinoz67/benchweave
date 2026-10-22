@@ -2,10 +2,12 @@
 # lane_park.sh — the parked-lane ACK-or-stop bound (issue #517; design
 # record .claude/deep-review/2026-10-21-issue517-parked-lane-stop-bound.md).
 #
-# A lane parked behind a sibling (increment SKILL.md "Parking a lane") is
-# bounded by REMOVAL, not by obedience to a message: the recorded mailbox
-# failure delivered 0/3 stop messages and a parked lane kept working. This is
-# the orchestrator's side of the bound. It runs from a plain shell with
+# A parked lane is DETECTED and BOUNDED here (increment SKILL.md "Parking a
+# lane"): detection, notification, archive and fold are proven; the STOP is
+# best-effort — the #517 drill measured a detached writer surviving the
+# runner's task-kill past its deadline, so a lane still writing past the
+# deadline is the orchestrator's signal to escalate to the human (the fold
+# has already preserved the branch). It runs from a plain shell with
 # explicit arguments, prints exit codes a script can assert, and never assumes
 # it is running inside an agent.
 #
