@@ -376,8 +376,79 @@ GREEN (against the folded build), from the fold suite's own run counts.
   version rule is exactly leading-zero, out-of-range or first-octet-zero
   quads — and the header claim now names that mechanism. A clean
   routable quad with no leading zeros still blocks (pinned).
+## 14. Regression addendum (2026-10-22): the pretooluse path surface denied every edit
+
+DEFECT (shipped to main with the first landing): the --pretooluse wiring
+screened the payload's file_path as the filename surface — and the tool
+call's file_path is the ABSOLUTE machine path, which sits under the
+operator's home directory in every normal checkout. Tier P's home class
+matched the machine prefix, so EVERY native Edit/Write carrying a file_path
+denied: reproduced on main with a clean in-repo payload (ordinary file,
+ordinary content) exiting 2 with tier=P id=home_path surface=filename
+ordinal=1. One lane routed its edits around the hook, which is how it
+surfaced.
+
+FIX: pretooluse derives the REPO-RELATIVE path when the payload path is
+inside this repository (hook cwd is the project dir; CLAUDE_PROJECT_DIR
+when set) and screens that; a payload path outside the repository skips
+the path surface entirely — content is still screened there, and a
+machine path is not repo content. The content surface is unchanged.
+
+WHY THE ACCEPTANCE ARMS MISSED IT, stated plainly: every pretooluse arm
+in the three suites used repo-relative payload paths, so the tool's own
+invocation shape — an absolute path under the operator's home — was never
+screened by any arm. The regression file
+(name-screen-pretooluse-paths.test.mjs) pins all four directions:
+absolute in-repo + clean -> ALLOW (RED pre-fix: denied), absolute
+in-repo + leaking content -> BLOCK (passed pre-fix — the content surface
+was never broken), repo-relative leak-shaped filename -> BLOCK (passed
+pre-fix — the relative filename surface was never broken), outside-repo
++ clean -> ALLOW / + leaking content -> BLOCK (RED pre-fix on the ALLOW
+half: denied).
+
 - **DISCLOSE-D** landed as the two §6 residual sentences: no integrity
   pin on the screen itself (human review of a hook diff is the only
   catch), and letter-only asset tags pass by design (the serial class
   requires a digit).
 
+
+## 15. Regression addendum II (2026-10-22): tilde approximation prose
+
+DEFECT (second, same screen, found on PR #529): the bare tilde-name class
+blocked ordinary approximation prose. Reproduced on #529's diff: a
+design-record sentence carrying an approximation tilde directly before a
+duration word (a fast unit module described as subprocess-driven with a
+one-word seconds estimate) blocked with tier=P id=tilde_home — the class
+matched the tilde-plus-word token. This repository writes approximation
+tildes before durations, counts and line numbers constantly; the
+pinned-table approach of §13 could not hold, because new prose in every
+future PR would red the CI job — the pin was a ratchet over the tracked
+tree, not an allowlist for what has not been written yet.
+
+Independent evidence the class was a real problem, not one lane's
+prose: while the fix was in flight, another session hit the same class and
+committed f609e724 — it reworded a tilde-prefixed line-number reference
+(a tilde, the word line, a space, a number) to the word around plus the
+same number, in its own design record, purely to stay screenable. Prose
+was being rewritten around a false positive.
+
+THE RULED TRADE, stated as a trade: a bare tilde token is indistinguishable
+by shape from approximation prose, and approximation prose is far more
+common here than a bare home reference. The tilde class now REQUIRES a
+path separator — a tilde immediately followed by a separator, and a
+tilde-name run followed by a separator, stay home shapes; a bare tilde
+token does not match. Consequence disclosed plainly: a bare
+tilde-username reference with no path anywhere after it is now MISSED, and
+joins the §6 residuals. The tracked-tree sweep table moved accordingly:
+the 13 approximation-notation rows are deleted (their cause is gone) and
+8 separator-form rows are added — all the repository's own vocabulary
+(the screen's default list path in G0b, macOS launchd paths in the
+operator guide and CLI help, home-form checkout paths in tracked planning
+docs). The F6 and FOLD-A pins that asserted the bare form flipped with
+the ruling.
+
+DIFF DISCIPLINE (the rule this section records): this addendum, the pin
+suite and the pattern itself describe the shapes in words and assemble
+them at runtime — no added line in this branch carries a tilde token, so
+the base branch's pre-fix screen passes this diff too. A rule
+relaxation must be screenable by the rule it relaxes.

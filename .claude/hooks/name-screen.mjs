@@ -53,7 +53,7 @@
 
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MAX_BYTES = 1048576;
@@ -117,13 +117,16 @@ const ANCHOR = String.raw`(?<![A-Za-z0-9_.\-/])`;
 const PATTERNS = [
   { id: "home_path", re: new RegExp(`${ANCHOR}\\/(?:Users|home)\\/[A-Za-z0-9_.-]+`, "gi") },
   { id: "win_home", re: new RegExp(`${ANCHOR}[A-Za-z]:[\\\\/](?:Users|home)[\\\\/][A-Za-z0-9_.-]+`, "gi") },
-  // tilde homes: a tilde + a name, bare or with a path. The name run is
-  // MAXIMAL (the char after it is not a name char) and may not continue as
-  // dot-plus-letter, which is a typing annotation, not a home; a dotted
-  // personal name is indistinguishable from one and is the class's documented
-  // narrowing (A1a's companion). Approximation prose that begins with a
-  // tilde word is pinned in the tracked-tree sweep, not silently allowed.
-  { id: "tilde_home", re: new RegExp(`${ANCHOR}~[A-Za-z][A-Za-z0-9_-]{2,}(?![A-Za-z0-9_-])(?!\\.[A-Za-z])`, "g") },
+  // tilde homes REQUIRE a path separator (ruled trade, 2026-10-22): a bare
+  // tilde token is indistinguishable from this repo's approximation prose
+  // (a tilde directly before a duration, a count, or a line number), and
+  // approximation prose is far more common than a bare home reference — PR
+  // #529 reddened on the bare form. A tilde directly before a separator and
+  // a tilde-name run before a separator stay home shapes; a bare tilde token
+  // does not match, so the bare tilde-username form is MISSED (disclosed
+  // residual). A dotted personal name is also missed: the run excludes
+  // dots, the typing-annotation ambiguity is unchanged.
+  { id: "tilde_home", re: new RegExp(`${ANCHOR}~(?:\\/|[A-Za-z][A-Za-z0-9_-]{2,}(?![A-Za-z0-9_-])\\/)`, "g") },
   { id: "hex_dump", re: /(?:[0-9a-f]{2} ){8,}/gi },
   { id: "mac", re: /\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi },
   { id: "ipv4", re: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, allow: allowedIpv4 },
@@ -396,11 +399,28 @@ function screenPayload(input, list) {
   for (const e of Array.isArray(ti.edits) ? ti.edits : []) {
     if (typeof e?.new_string === "string") texts.push(e.new_string);
   }
-  const hasPath = typeof ti.file_path === "string";
+  // The payload path is the tool call's ABSOLUTE machine path — under the
+  // operator's home directory in every normal checkout, so screening it as
+  // the filename surface denied EVERY edit (the 2026-10-22 regression:
+  // tier P's home class matched the machine prefix, exit 2 on clean
+  // content). The screened path is the REPO-RELATIVE path when the payload
+  // path is inside this repository (hook cwd is the project dir); a path
+  // outside the repository skips the path surface entirely — content is
+  // still screened there, the machine path is not content.
+  let relPath = null;
+  if (typeof ti.file_path === "string" && ti.file_path !== "") {
+    if (isAbsolute(ti.file_path)) {
+      const rootDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+      const rel = relative(rootDir, ti.file_path);
+      relPath = rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) ? rel : null;
+    } else {
+      relPath = ti.file_path;
+    }
+  }
   // F3: a path that carries the name in ANY inflection is hot — content
   // citations must not quote it either.
-  const fnHits = hasPath ? screenPaths([ti.file_path], list) : [];
-  const src = hasPath && fnHits.length === 0 ? ti.file_path : undefined;
+  const fnHits = relPath !== null ? screenPaths([relPath], list) : [];
+  const src = relPath !== null && fnHits.length === 0 ? relPath : undefined;
   for (const t of texts) {
     const body = t.length > MAX_BYTES ? t.slice(0, MAX_BYTES) : t;
     for (const h of publicScan(body)) hits.push({ ...h, src });
