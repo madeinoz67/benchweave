@@ -93,8 +93,12 @@ def _annotation_offenders(standards_root: Path) -> list[str]:
     the active set).
 
     A human-readable annotation may name its standard's version (the
-    2026-09-16 reset line) or omit it; naming a different one is reset
-    residue — the corpus shipped "…datasets 0.3.0" under otdp@0.1.0 (#45).
+    2026-09-16 reset line), its document's own dialect version (the
+    ``contract_version`` const — the composed-action-class schema's
+    dialect 0.1.0 is decoupled from the family version by design; the
+    2026-10-22 standards record A4), or omit it; naming a different one
+    is reset residue — the corpus shipped "…datasets 0.3.0" under
+    otdp@0.1.0 (#45).
     """
 
     version_like = re.compile(r"\d+\.\d+\.\d+")
@@ -104,11 +108,17 @@ def _annotation_offenders(standards_root: Path) -> list[str]:
             if not relative.startswith("standards/") or not relative.endswith(".schema.json"):
                 continue
             document = json.loads((standards_root / relative).read_bytes())
+            allowed = {entry.version}
+            properties = document.get("properties")
+            if isinstance(properties, dict):
+                contract = properties.get("contract_version")
+                if isinstance(contract, dict) and isinstance(contract.get("const"), str):
+                    allowed.add(contract["const"])
             for key in ANNOTATION_KEYS:
                 value = document.get(key)
                 if not isinstance(value, str):
                     continue
-                stale = [v for v in version_like.findall(value) if v != entry.version]
+                stale = [v for v in version_like.findall(value) if v not in allowed]
                 if stale:
                     offenders.append(
                         f"{relative} ({key}): {stale} under {entry.id}@{entry.version}"

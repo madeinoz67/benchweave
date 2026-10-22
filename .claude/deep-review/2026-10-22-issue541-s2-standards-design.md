@@ -391,6 +391,24 @@ versions down. Slice 2 extends it:
   exactly these surfaces in the same arc. **The correct census for the next
   bump is a bare-version scan over source and fixtures, not a path grep** —
   `count_version_literals`' own register is the mechanism to extend.
+
+  *Second correction, same build leg, after the full battery:* the widened
+  sweep itself was truncated by a `head`, so its "complete" set was also
+  wrong. A **fourteenth** literal surfaced only when the battery ran:
+  `tests/interfaces_ui/test_ui_readings.py:426`, the layout block's
+  `"contract_version": "0.3.0"`, which made the readings page refuse
+  `classref_layout_invalid` across twelve tests. The census has now been
+  wrong about its own completeness **twice**, the second time after being
+  deliberately widened. The rule is therefore not "use a better scan" but:
+  **completeness of a version-literal census is proved by a full battery,
+  never by the scan appearing exhaustive.** Two further consequences came
+  out of the same run and belong to this arc rather than to the SDK-order
+  set: the `test_manifest` annotation guard must admit a schema's own
+  `contract_version.const` (the dialect decoupling this leg introduced), and
+  `test_matrix`'s retained-version seed and `test_train_window`'s bump entry
+  move with the fourth family version. The only genuine
+  SDK-order reds are the four `tests/standards/test_check.py` arms asserting
+  `served_set_drift` and vendored-tree absence.
 - **SDK leg (its own PRs, #408 order):** gateway standards PR (this leg +
   sweep) → SDK PR (composed resolution, schema validation, migrate-ui,
   `sync-standards` picking up the eleven 0.4.0 files into the lock and

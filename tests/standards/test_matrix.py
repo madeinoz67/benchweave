@@ -288,16 +288,17 @@ def _version_table_rows(rendered: str, header: str) -> list[str]:
 
 
 def test_e3_one_row_per_retained_version_at_the_seed() -> None:
-    """E3 half 1: one row per retained version — 28 rows at this train.
+    """E3 half 1: one row per retained version — 29 rows at this train.
 
-    28 = the retained version directories enumerated from the corpus
+    29 = the retained version directories enumerated from the corpus
     manifest across the seven manifest standards at this commit (otdp 8
     after #525's 0.2.4, registry 4, execution 2, interface 2, plugin-ui 6,
-    plugin-ui-preview 3, plugin-ui-class-reference 3; measured
-    2026-10-22 at the #525 bump — was 27 at the interface 0.1.1 bump, 25
-    at the L5 bump, 23 before it). The expected count
+    plugin-ui-preview 3, plugin-ui-class-reference 4 after #541's 0.4.0;
+    measured 2026-10-23 at the #541 re-arc onto the #525 train — both
+    parents counted 28 in their own trees, 27 shared plus each one's own
+    bump). The expected count
     is re-derived from the same mechanism the
-    render uses, and the literal 28 pins the denominator: if either moves,
+    render uses, and the literal 29 pins the denominator: if either moves,
     the test names which.
     """
     from benchweave.standards.manifest import load_manifest, retained_versions
@@ -308,7 +309,7 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
     expected = sum(
         len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
     )
-    assert expected == 28, f"the seed retained-set denominator moved: {expected}"
+    assert expected == 29, f"the seed retained-set denominator moved: {expected}"
     assert len(rows) == expected, (
         f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
         "(one row per retained version)"
