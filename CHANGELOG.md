@@ -167,6 +167,10 @@ All notable changes to this project will be documented in this file.
 - Approximation prose that trips the name screen's tilde class
 - Issue #519 G6 review-lane honesty — pre-committed record
 - #519 record correction — vendor-neutral alias evidence, no private companion
+- Parked-lane ACK-or-stop bound record (issue #517)
+- The ACK-or-stop bound in the loop + builder duties (issue #517)
+- #517 record §12 — the battery-caught win-core manifest ratchet
+- Owner-ruled revision — detect-and-bound with escalation (#517)
 
 ### Features
 
@@ -214,6 +218,7 @@ All notable changes to this project will be documented in this file.
 - Name-screen.mjs — the two-tier name screen
 - Wire the name screen — hooks, make hooks, PreToolUse, CI
 - Emit the reference's plot kind, gateway-side (#521)
+- ACK-or-stop bound script + RED-first tests (issue #517)
 
 ### Miscellaneous
 
