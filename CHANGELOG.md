@@ -62,6 +62,9 @@ All notable changes to this project will be documented in this file.
 - Fold the refute — hunk parsing, vocabulary allowlist, leak-proof citations, CI hardening
 - Re-fold — anchor rule, hosting-scoped git URLs, filename wirings, reachable version shape
 - Close the anchor class as a negative rule; exact version-shape wording
+- Issue #519 G6 lane honesty — install property, not repo promise
+- #519 refute folds — valueless pins, declared residual, untracked-path qualifier
+- #519 fold follow-up — win-core manifest row for the fold's 11 tests
 
 ### Documentation
 
@@ -160,6 +163,8 @@ All notable changes to this project will be documented in this file.
 - G0/G0b rubric amendment, obligations row 31, install step, run record
 - The two #463 gap-2 design records, at the head of the mirror slice
 - Approximation prose that trips the name screen's tilde class
+- Issue #519 G6 review-lane honesty — pre-committed record
+- #519 record correction — vendor-neutral alias evidence, no private companion
 
 ### Features
 
