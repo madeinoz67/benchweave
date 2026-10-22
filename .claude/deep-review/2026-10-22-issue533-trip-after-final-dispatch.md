@@ -183,3 +183,40 @@ RED→GREEN slice per commit, the RED evidence in the commit message.
 
 None. (Real trip-onset timing on hardware is out of scope by the NOT-MEASURABLE rule,
 not deferred work.)
+
+## Addendum (2026-10-22, post-measurement — the §1–§7 text above is frozen as authored)
+
+The §4 prediction was CONFIRMED by measurement, and the contingency ran. Attribution of
+every number to its substrate — the record never implies the plain arm decided anything:
+
+- **Plain `trip_after_measure` arm (predicted underpowered — measured GREEN pre-fix):**
+  `test_trip_after_final_dispatch_still_ends_body_tripped` with the plain arm, pre-fix,
+  PASSED (exit 0, junit tests=1 failures=0). The first remeasure's pre-dispatch tick
+  latched the block and the body ended `tripped` the classic way, fix or no fix — the
+  arm measures the blocked cell, not the completed-body cell.
+- **Contingency arm (the deciding substrate — armed on the 4th/final measure invoke via
+  `on_invoke`):** pre-fix RED — `assert record["outcome"] == "tripped"` /
+  `AssertionError: assert 'passed' == 'tripped'` (exit 1, junit tests=1 failures=1);
+  pre-fix portrait probe: `outcome: passed`, `body_outcome: completed`,
+  `safe_state: verified`, `reasons: ['dut-voltage-bounds: interval_escape: [5.85, 5.95]
+  escapes [-0.1, 5.5]']`, schema-valid. Post-fix GREEN: exit 0, junit tests=1
+  failures=0. RED control (revert ONLY the `_body_truth` condition, `cp` backup,
+  docstrings kept): the same `assert 'passed' == 'tripped'` failure (exit 1, junit
+  tests=1 failures=1) — the test discriminates the mechanism, not the fixture.
+- **Neighbour pins (all green on the post-fix tree, focused `tests/control/` +
+  `tests/faults/` 347/0/0):** `:452` trip-mid-body, `:884` uncertain never-reclassified,
+  `:905` assertion-failed never-reclassified, `:860` no-false-passed (its violation is
+  observed in protection phase, so no cause is ever set — untouched by the widened
+  condition).
+- **Gates:** ruff exit 0 and fresh-cache bare mypy exit 0 (447 files) on both commits;
+  full battery third run exit 0, junit 4501/0/0/11 skipped (run 1 red on the
+  win-core-manifest ratchet — `tests/faults/test_protection.py` 38→39 moved by the
+  ratchet's own `--refresh`, one visible row, recorded as the brief's fourth file;
+  run 2 red only on the disclosed #532 demo-lattice under-load flake — serially green
+  1/0/0 on this tree, failure mode `outcome_unknown`, not this change); sdk-drift exit
+  0, `make check-sdk-standards` exit 0.
+- **Keyword scan on the actual diff (re-run as the brief requires):** `protection` 2
+  added lines (the CTL-8 amendment's pin line and the test file's diff header; 7 over
+  the whole diff text), all of `threading`/`asyncio`/`subprocess`/`sha256`/`hashlib`/
+  `migrate`/`recovery` 0 on added lines. Tier 3 by the `protection` keyword, as
+  designed.
