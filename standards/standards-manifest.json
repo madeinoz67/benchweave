@@ -73,7 +73,7 @@
         }
       },
       "plugin-ui-class-reference": {
-        "range": ">=0.1.0,<0.4.0",
+        "range": ">=0.1.0,<0.5.0",
         "yanked": {},
         "retired": [],
         "versions": {
@@ -82,6 +82,9 @@
           },
           "0.3.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.3.0/README.md"
+          },
+          "0.4.0": {
+            "migration_note": "standards/plugin-ui-class-reference/0.4.0/README.md"
           }
         }
       }
@@ -211,21 +214,22 @@
     },
     {
       "id": "plugin-ui-class-reference",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "status": "stable",
-      "released": "2026-10-18",
-      "supersedes": "0.2.0",
+      "released": "2026-10-22",
+      "supersedes": "0.3.0",
       "normative": [
-        "standards/plugin-ui-class-reference/0.3.0/class-reference.schema.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-dmm.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
-        "standards/plugin-ui-class-reference/0.3.0/layout.schema.json",
-      "standards/plugin-ui-class-reference/0.3.0/class-oscilloscope.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-function_generator.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-electronic_load.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-smu.json",
-        "standards/plugin-ui-class-reference/0.3.0/class-daq.json"
+        "standards/plugin-ui-class-reference/0.4.0/class-reference.schema.json",
+        "standards/plugin-ui-class-reference/0.4.0/layout.schema.json",
+        "standards/plugin-ui-class-reference/0.4.0/composed-action-class.schema.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-logic_analyser.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-dc_psu.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-dmm.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-oscilloscope.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-function_generator.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-electronic_load.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-smu.json",
+        "standards/plugin-ui-class-reference/0.4.0/class-daq.json"
       ]
     }
   ]
