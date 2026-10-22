@@ -65,6 +65,8 @@ All notable changes to this project will be documented in this file.
 - Issue #519 G6 lane honesty — install property, not repo promise
 - #519 refute folds — valueless pins, declared residual, untracked-path qualifier
 - #519 fold follow-up — win-core manifest row for the fold's 11 tests
+- Pretooluse screens the repo-relative path, not the machine path
+- Tilde class requires a path separator — approximation prose allows
 
 ### Documentation
 
@@ -305,6 +307,7 @@ All notable changes to this project will be documented in this file.
 - Register the banner-stamp guard in the win-core manifest (gateway #499)
 - Lift lane A's named malformed-result shapes and the disclosed width pin
 - Pin the readings pairs' pre-existing finding as recorded state (#525)
+- Pin the line-number approximation form; record the f609e724 evidence
 
 ### Build
 
