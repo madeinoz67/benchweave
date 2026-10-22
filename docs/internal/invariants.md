@@ -423,6 +423,23 @@ rather than rewriting the history — that is how this file earns trust.
   `_refuse_execution_pin` fires it at the POST — and the floor shape-gates
   every raw pin before the interval comparator (typed-or-pass, never
   ValueError).
+  Fold clarification (2026-10-22, issue #534, pre-PR fold F1): the third
+  leg splits by WHAT THE FAILURE IS EVIDENCE OF. version_unknown (no
+  retained bytes) stays the composition record. Retained-but-untrustworthy
+  bytes (corpus_file_unpinned / corpus_pin_mismatch — durable facts about
+  the bytes — and any refusal prefix the split does not name, fail-closed)
+  is decision-level containment under recovery_execution_version_unresolved:
+  — no record, the #507 projection close. An ACCESS failure (permission,
+  IO, an unparseable corpus manifest — the verification machinery could
+  not serve the corpus, which is no evidence about the schema bytes) is
+  NEITHER: the run is left untouched and unreported under
+  recovery_corpus_access_failed: — no record, no containment, no
+  projection close — and the next sweep recovers it once the environment
+  is repaired; while the condition holds the bench stays unavailable with
+  the run unrecorded, deliberately (the #507 close is irreversible over a
+  live row; CTL-11's refuse-rather-than-lie governs, not #507).
+  Corrupt content is never silently absent; a broken environment never
+  becomes a bench fact.
   Issue #507 (2026-10-21): a contained run's queue projection closes
   ``terminal`` at the recovery sweep that contains it, with NO durable
   record (the interface's recovery loop owns the projection; the wire

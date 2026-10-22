@@ -66,6 +66,7 @@ from benchweave.content.store import ContentStore
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock
 from benchweave.control.documents import (
+    AdmissionRejected,
     AdmittedDocuments,
     _classify_execution_pin,
     _corpus_root_of,
@@ -178,12 +179,18 @@ class _RecoveryDecision:
     ``_binding_pin`` posture, so the record self-consistently names one
     artifact), echo-path runs keep the stored row. ``reasons`` are
     disclosures that ride the record; ``containment`` non-None means NO
-    record (the run stays non-terminal; the caller logs it)."""
+    record (the run stays non-terminal; the caller logs it).
+    ``access_failure`` non-None (#534 fold F1) means the corpus could not
+    be READ (permission, IO, an unparseable manifest) — an environment
+    condition, never a bench fact: the callers leave the run untouched
+    and unreported (no record, no containment, no projection close), and
+    the next sweep recovers it once the operator repairs the corpus."""
 
     record_version: str | None
     binding_pin: dict[str, Any]
     reasons: tuple[str, ...]
     containment: str | None
+    access_failure: str | None = None
 
 
 class RecoverySweep(NamedTuple):
@@ -248,7 +255,16 @@ def _recovery_record_version(
          the directory) → the era record STAMPED FROM THE RETAINED BYTES
          (digest-verified resolution): a future retirement never flips an
          era run to a composition stamp AND never wedges it — this is
-         what makes doc-first era-stability true;
+         what makes doc-first era-stability true. The resolution itself
+         SPLITS (issue #534, fold F1): retained-but-UNTRUSTWORTHY bytes
+         (an unpinned file, a digest mismatch, or any refusal prefix the
+         split does not name — fail-closed) are decision-level
+         CONTAINMENT quoting the refusal verbatim — corrupt retained
+         bytes are never silently absent, because the composition record
+         would launder them; an unreadable corpus (permission, IO, an
+         unparseable manifest — the machinery failing to serve, which is
+         no evidence about the bytes) is an ACCESS failure: the run is
+         deferred untouched to the next sweep and recovers after repair;
        - anything with NO retained bytes (never carried, a retired
          identifier whose directory is gone, unclassifiable) → CALLER
          DATA: the composition record exactly as before the fold (the
@@ -336,19 +352,84 @@ def _recovery_record_version(
     # NOT carried: retained bytes? (retirement ≠ removal — copy-never-move
     # keeps the directory; a later retirement must neither flip the run to
     # the composition stamp nor wedge it). Digest-verified resolution of
-    # the echo's own run-record schema: success → era-stamp from the
-    # retained bytes; refusal → no retained bytes → caller data, the
-    # composition record exactly as before the fold (the honest-ref class;
-    # the integration harnesses post these and keep recovering).
+    # the echo's own run-record schema decides: success → era-stamp from
+    # the retained bytes. The failure legs split by WHAT THE FAILURE IS
+    # EVIDENCE OF (issue #534, fold F1): a typed refusal is a fact about
+    # the artifact — `version_unknown:` is honest ABSENCE (caller data,
+    # the composition record exactly as before the fold; the honest-ref
+    # class keeps recovering), while `corpus_file_unpinned:` /
+    # `corpus_pin_mismatch:` — and any prefix this split does not name,
+    # fail-closed, so wording drift degrades to visible containment,
+    # never a wrong record — are decision-level CONTAINMENT quoting the
+    # refusal verbatim: corrupt retained bytes are never silently
+    # absent, because the composition record would launder them. An
+    # UNTYPED exception is the verification machinery failing to SERVE
+    # the corpus (permission, IO, an unparseable manifest) — no evidence
+    # about the bytes at all — and is an ACCESS failure: the run is
+    # deferred to the next sweep, untouched, because the #507 projection
+    # close is irreversible and a repairable environment condition must
+    # never become an unrecorded ending.
     if echo:
         try:
             _versioned_schema_path(
                 _corpus_root_of(contracts), "execution", echo, "run-record.schema.json"
             )
-        except Exception:
-            return _RecoveryDecision(None, stored_pin, (), None)
+        except AdmissionRejected as refusal:
+            message = _safe_exc_text(refusal)
+            if message.startswith("version_unknown:"):
+                return _RecoveryDecision(None, stored_pin, (), None)
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                f"retained run-record bytes for execution@{echo} refused "
+                f"digest-verified resolution — {message}",
+            )
+        except Exception as exc:
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                None,
+                access_failure=(
+                    f"the corpus could not be read while digest-verifying "
+                    f"standards/execution/{echo}/run-record.schema.json "
+                    f"against corpus-manifest.json under "
+                    f"{_corpus_root_of(contracts)}: "
+                    f"{type(exc).__name__}: {_safe_exc_text(exc)}"
+                ),
+            )
         return _RecoveryDecision(echo, stored_pin, (), None)
     return _RecoveryDecision(None, stored_pin, (), None)
+
+
+def _safe_exc_text(exc: BaseException) -> str:
+    """``str(exc)`` guarded (#534 fold F2): an exception whose ``__str__``
+    raises must not turn a recovery disposition into a startup crash —
+    fall back to the type name, so the fail-closed containment still
+    fires with identifiable text."""
+    try:
+        return str(exc)
+    except Exception:
+        return f"<unprintable {type(exc).__name__}>"
+
+
+def _log_recovery_access_failed(run_id: str, reason: str, echo: str) -> None:
+    """The ACCESS-failure disposition (#534 fold F1): the corpus could not
+    be READ (permission, IO, an unparseable manifest) — an environment
+    condition, not a bench fact, so the run is left untouched and
+    UNREPORTED: no record, no containment, no projection close. The run
+    recovers on the next sweep once the operator repairs the corpus
+    access condition; until then the bench stays unavailable with the run
+    unrecorded — deliberate (CTL-11's refuse-rather-than-lie, not #507's
+    closure, which is irreversible over a live row)."""
+    _LOG.error(
+        "recovery_corpus_access_failed: run %s left for the next boot — "
+        "%s (echo %r); repair the corpus access condition and restart",
+        run_id,
+        reason,
+        echo,
+    )
 
 
 def _log_recovery_unresolved(run_id: str, reason: str, echo: str) -> None:
@@ -898,6 +979,18 @@ class RunCoordinator:
                 decision = _recovery_record_version(
                     run, self._contracts, ContentStore(self._store)
                 )
+                if decision.access_failure is not None:
+                    # #534 fold F1: an access failure defers THIS run to
+                    # the next sweep, untouched — no record, no
+                    # containment, no projection close, and the lease is
+                    # left as found (nothing about the crashed run moves
+                    # while the environment is broken).
+                    _log_recovery_access_failed(
+                        run_id,
+                        decision.access_failure,
+                        str(run["binding"].get("version", "")),
+                    )
+                    continue
                 if decision.containment is not None:
                     # Issue #260: the narrowed containment class — doc/echo
                     # disagreement, an unjudgeable doc const, or an echo the
@@ -991,6 +1084,16 @@ class RunCoordinator:
                 decision = _recovery_record_version(
                     run, self._contracts, ContentStore(self._store)
                 )
+                if decision.access_failure is not None:
+                    # #534 fold F1, ghost leg: the same access-failure
+                    # deferral — untouched, unreported (the live row keeps
+                    # holding the bench until the corpus is repaired).
+                    _log_recovery_access_failed(
+                        run_id,
+                        decision.access_failure,
+                        str(run["binding"].get("version", "")),
+                    )
+                    continue
                 if decision.containment is not None:
                     # Issue #260, second leg: the same containment class
                     # through the ghost leg — no record, the run stays
@@ -1124,6 +1227,15 @@ class RunCoordinator:
             decision = _recovery_record_version(
                 run, self._contracts, ContentStore(self._store)
             )
+            if decision.access_failure is not None:
+                # #534 fold F1, stop-time leg: the access-failure deferral
+                # — the run stays accepted for the next boot's sweep.
+                _log_recovery_access_failed(
+                    run_id,
+                    decision.access_failure,
+                    str(run["binding"].get("version", "")),
+                )
+                continue
             if decision.containment is not None:
                 _log_recovery_unresolved(
                     run_id,

@@ -310,7 +310,7 @@
     },
     "tests/faults/test_recovery_sweep_faults.py": {
       "core": 0,
-      "total": 10
+      "total": 17
     },
     "tests/faults/test_state_recovery.py": {
       "core": 1,
