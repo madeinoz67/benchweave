@@ -131,7 +131,7 @@ PANELS: Mapping[str, Panel] = {
     "benchweave.classref-logic-analyser/0.1.0": Panel(
         panel_id="benchweave.classref-logic-analyser/0.1.0",
         title="Logic analyser class panel",
-        corpus_pin="0.3.0",
+        corpus_pin="0.4.0",
         render=_render_classref_logic_analyser,
     ),
 }

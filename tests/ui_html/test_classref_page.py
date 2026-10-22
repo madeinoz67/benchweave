@@ -15,7 +15,7 @@ import pytest
 from benchweave_ui_html import classref, patterns
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REFERENCE = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json"
+REFERENCE = REPO_ROOT / "standards/plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-logic_analyser.json"
 VECTORS = REPO_ROOT / "standards/otdp/0.2.4/examples/class-action-vectors.json"
 CATALOG = REPO_ROOT / "standards/otdp/0.2.4/device-profile-catalog.json"
