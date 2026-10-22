@@ -176,8 +176,20 @@ the update is the finding even when the diff touches no `docs/`.
 **G6 Adversarial refute (TIER 3 ONLY — mandatory).** A second, independent reviewer runs the
 gates again AND actively tries to break the change: what input, ordering, crash point, or
 concurrent caller makes it wrong? For a contract change: what previously-valid plugin or
-fixture does it now reject? The repo's standing independent lane is the cross-vendor audit —
-never the model that produced the change. The two reviews are compared:
+fixture does it now reject? The repo's standing independent lane is a second pass under a
+different mandate — its own agent definition, prompt, and tool grants; its model is whatever
+the installation resolves that agent's declared pin to. Model diversity is an installation
+property, not a repository property: the repository declares pins, never vendors. The repo
+therefore cannot promise the refute runs a different model than the producing lane; where an
+installation resolves both pins to one model, the second pass's independence rests on its
+mandate and evidence standard, not its model. Where the installation has a genuinely
+different-vendor set of agents (the sibling agent set where an installation has one — for
+example a Codex fleet under `.codex/agents/` on installs that carry it; that path is
+installation wiring, not tracked in this repository), dispatching the refute there is the
+strongest available cross-vendor option — recommended where present, never a requirement
+every contributor can meet. Each refute report quotes the model string
+its own installation reports: self-reported, an audit trail, not a gate. The two reviews
+are compared:
 - Both reach APPROVE with consistent evidence → APPROVE stands.
 - The refuter finds a real, evidenced failure → needs-work.
 - They disagree on a correctness or contract point and evidence can't settle it → **DEFER**.

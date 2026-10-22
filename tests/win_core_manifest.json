@@ -64,6 +64,10 @@
       "core": 0,
       "total": 11
     },
+    "tests/contract/test_agent_model_pins.py": {
+      "core": 0,
+      "total": 12
+    },
     "tests/contract/test_baseline.py": {
       "core": 0,
       "total": 19
