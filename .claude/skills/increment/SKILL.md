@@ -117,7 +117,9 @@ or a public surface, run the loop.
    off. If a gate is red or a finding is unfixed, HOLD and report — do not merge.
 8. **Run close.** After the final merge of a work: fold the worktrees, delete the
    merged LOCAL branches (remote deletions take the owner's word), stop any
-   still-running dispatched agent lanes, and sweep untracked artifacts from the
+   still-running dispatched agent lanes (a lane parked behind a sibling is
+   stopped under the ACK-or-stop bound — "Parking a lane" below), and sweep
+   untracked artifacts from the
    shared checkouts — a completed work leaves no live worktrees, branches or
    agents behind. Sync-tool duplicates (iCloud's
    `name 2.ext` suffix) are deleted only when the non-suffixed sibling exists;
@@ -170,3 +172,49 @@ standards bytes, which is itself a copy-never-move violation regardless of base 
 **(b) stale base** — inside the merge-result tree, `git diff origin/main -- standards/`
 (two-dot) showing deletions means the merge result drops main's standards state — your
 base predates a sibling's merged bump and the branch must re-roll onto main.
+
+## Parking a lane — the ACK-or-stop bound (issue #517)
+
+Parking behind a sibling, above, stops being advisory at the park decision. The
+recorded wave: 0/3 stop messages were delivered (a mailbox failure, not
+root-caused), a parked lane pushed onto the owning train's PR head, and one
+runaway had to be hard-killed. The bound is DETECT-AND-BOUND WITH ESCALATION:
+detection, notification, archive and fold are proven; the stop itself is
+best-effort — the #517 drill measured a detached writer committing ~3 minutes
+past its deadline and surviving the runner's task-kill, ended only by a manual
+kill. A parked lane still writing past its deadline is the orchestrator's
+signal to ESCALATE TO THE HUMAN; the fold has already preserved the branch
+(`archive/parked/<lane>-<ts>`), so nothing measured is lost.
+
+**Arm (orchestrator, at the park decision T0).** Send the best-effort notice,
+run `scripts/lane_park.sh arm .wt/<lane-wt> <lane> [D=15]` (writes `PARK.intent`
+recording the arm epoch; a second arm while it exists is refused — the bound
+never extends), and start the wake as a background shell:
+`(sleep $((D*60)); scripts/lane_park.sh enforce .wt/<lane-wt> <lane>) &`.
+
+**Lane duty (cooperation only shortens the wait).** Before finishing the current
+command, write `.wt/<lane-wt>/PARK-ACK` (ISO time + lane). Never proceed past a
+reported blocker; re-check the inbox before any push.
+
+**Enforce (T0+D, fail-closed).** `check` returns QUIESCENT iff PARK-ACK is
+present AND zero commits with committer time >= the arm epoch exist on the
+worktree's branch; everything else is ACTIVE — no ACK, any post-arm commit
+(including one in the arm second), any doubt. On ACTIVE the orchestrator
+attempts the TaskStop (best-effort: a detached process can outlive the
+runner's task-kill — if writes continue past the deadline, escalate to the
+human) and folds. The orchestrator owns intent, wake, verdict, the TaskStop
+attempt, fold, archive and escalation; the lane owns only the ACK and stopping
+early.
+
+**Fold and resume.** `scripts/lane_park.sh fold .wt/<lane-wt> <lane>` archives
+the branch ref to `archive/parked/<lane>-<ts>`, force-removes the worktree
+(mid-write debris dies with it, never reaching the shared checkout), and prints
+the resume command — `git worktree add <path> <archived-ref>`.
+
+Disclosed residuals: the compare is committer-timestamp-based (a lane forging
+GIT_COMMITTER_DATE evades it — the recorded runaways were deaf, not
+adversarial); the stop does not bound a detached process (measured, #517
+drill A2 — escalation is the closure); and nothing structural stops a willful
+lane writing the shared checkout by absolute path — that surface belongs to the
+write-gate slice (issue #508). Design record:
+`.claude/deep-review/2026-10-21-issue517-parked-lane-stop-bound.md`.

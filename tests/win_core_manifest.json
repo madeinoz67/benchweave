@@ -868,6 +868,10 @@
       "core": 0,
       "total": 14
     },
+    "tests/unit/test_lane_park.py": {
+      "core": 0,
+      "total": 7
+    },
     "tests/unit/test_lease_default_limits.py": {
       "core": 0,
       "total": 3
