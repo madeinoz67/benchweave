@@ -1511,6 +1511,61 @@
       "path": "plugin-ui-class-reference/0.3.0/class-daq.json",
       "source": "docs/plugin-ui-class-reference-v2/class-daq.json",
       "sha256": "8cf11dc0e0d933b3cb1edd274e9d40fcb62fd619234d926c1174816113de2fd8"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-reference.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-reference.schema.json",
+      "sha256": "b63e171485aa15ad0829493f8b30bbf15c40ad72110d640162a6d2471e8d2a1b"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/layout.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/layout.schema.json",
+      "sha256": "5723dba80a0677b13dfd4ec1b14ea609984682d8df907873fd3b8421ab1b4369"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-logic_analyser.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json",
+      "sha256": "2477a883f0ccd10ff5a86bde840b677875224ca6fe65960d899a9e4fe61adb26"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-dc_psu.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json",
+      "sha256": "21fc5717c2443606c6c70a482ad01f7dcae3be0cd396ec1a4b7c65c24b24075b"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-dmm.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-dmm.json",
+      "sha256": "fc69e82b4ac4c780599619ecdd63212f0b7fc933af070b2f10d70fcc9e7b87ea"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-oscilloscope.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-oscilloscope.json",
+      "sha256": "deb18db39e85771250c8d5c0ec8f6c499670eddbdfeb02e1c60ebd25afa5fb6a"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-function_generator.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-function_generator.json",
+      "sha256": "6f4ac80d93231bb02dce0232615623f1bb109ce2c22189caa18bc1bd53b441f9"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-electronic_load.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-electronic_load.json",
+      "sha256": "13271cafa6d9bc81e4ed5d7d4db0d00e6e7fa79b41ea8a4f228bd298827d20ba"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-smu.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-smu.json",
+      "sha256": "3c36779525001467d8fd5e0a9bf2e562c41f24aa060ace0bfa70072cacaf5fda"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/class-daq.json",
+      "source": "standards/plugin-ui-class-reference/0.3.0/class-daq.json",
+      "sha256": "6399f91c01ae067d1ee6fa03306b8e99d080a4b9d7895042528f6ffbca5eca48"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.4.0/composed-action-class.schema.json",
+      "source": "docs/plugin-ui-class-reference-v3/composed-action-class.schema.json",
+      "sha256": "45d3f6c9db8238e7e5e9dd880d1dcd84375fd480e34d49c366682dd509642ad0"
     }
   ]
 }
