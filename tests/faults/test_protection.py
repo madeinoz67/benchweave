@@ -134,6 +134,11 @@ class _FaultPsu:
         self._now = now_fn
         self.force_voltage_v: float | None = None
         self.stale_ms: int = 0
+        #: Staleness applies only from this zero-based read index onward
+        #: (default 0: every read) — arms a SECOND, later-observed violation
+        #: after an earlier one latched the cause (the #533 fold's arm-1 pin:
+        #: the latch-tick read of an ``enable_sets_force`` run is index 4).
+        self.stale_from_read_index: int = 0
         self.future_ms: int = 0
         self.buffer_age_ms: int = 0
         self.enable_sets_force: float | None = None
@@ -268,7 +273,7 @@ class _FaultPsu:
             self.dispatches.append(request)
             if forced is not None:
                 observed = self._now()
-                if self.stale_ms:
+                if self.stale_ms and index >= self.stale_from_read_index:
                     observed = _iso_minus_ms(observed, self.stale_ms)
                 if self.future_ms:
                     observed = _iso_plus_ms(observed, self.future_ms)
@@ -994,6 +999,69 @@ def test_cancel_window_trip_still_carries_the_violation(tmp_path: Path) -> None:
     assert record["outcome"] == "passed"  # the cancel window's own mapping, by design
     assert any("cancelled by principal" in reason for reason in record["reasons"])
     assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_blocked_cancel_still_carries_the_violation(tmp_path: Path) -> None:
+    """The BLOCKED-cancel arm keeps an observed violation in the reasons.
+
+    The principal cancel and the voltage fault arm together on the third of
+    the body's four measures: the post-dispatch tick honours the cancel
+    before the signals (first-wins), so ``cancelled`` owns the cause while
+    the violation lands in the monitor's violations; the FOURTH measure's
+    pre-dispatch tick then blocks as a cancellation. The reclassification to
+    ``cancelled`` is right (a cancel is principal intent), but the arm may
+    not drop the observed violation on its way out.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_cancel_and_trip(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 3:  # one dispatch remains for the cancel to block
+            coordinator.cancel("run-cancel-block", "principal-a")
+            fault.force_voltage_v = 5.9
+
+    fault.on_invoke = arm_cancel_and_trip
+
+    record = coordinator.start_run("run-cancel-block", "principal-a")
+
+    assert record["body_outcome"] == "cancelled"
+    assert record["outcome"] == "cancelled"  # the cancel's own mapping, by design
+    assert record["safe_state"] == "verified"
+    assert any("cancelled by principal" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_second_violation_after_latch_still_carries(tmp_path: Path) -> None:
+    """A violation observed AFTER the cause latched is never dropped either.
+
+    ``cause_reasons`` is the at-latch snapshot of the monitor's violations
+    (``_set_cause`` copies the list and is first-wins), so a SECOND
+    violation — here a stale signal first served on the read right after
+    the voltage escape latched the trip — lives only in
+    ``monitor.violations``. The blocked-trip arm may not return the
+    snapshot alone.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    fault.enable_sets_force = 5.9  # the voltage escape latches at read index 4
+    fault.stale_ms = 600  # max_age_ms is 500
+    fault.stale_from_read_index = 5  # the very next read: a second, later violation
+
+    record = coordinator.start_run("run-late-violation", "principal-a")
+
+    assert record["body_outcome"] == "tripped"
+    assert record["outcome"] == "tripped"
+    assert record["safe_state"] == "verified"
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert any("signal_invalid" in reason for reason in record["reasons"])
     assert fault.disable_dispatches(), "the safe action must have been dispatched"
     _validate_record(record)
 

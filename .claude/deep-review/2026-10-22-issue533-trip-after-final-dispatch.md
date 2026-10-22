@@ -267,3 +267,52 @@ Manifest: `tests/win_core_manifest.json` 39→41 (the ratchet's own `--refresh`,
 new tests). Gates: ruff 0, fresh-cache bare mypy 0 (447 files), focused
 `tests/control/` + `tests/faults/` 349/0/0 exit 0; full battery recorded in the
 fold commit's message.
+
+## Second fold addendum (2026-10-22, lane A's re-verification — the arm sweep)
+
+Lane A re-verified the fold and found the same erasure class one arm over; the sweep
+below is COMPLETE over `_body_truth`'s three return arms (the function has exactly
+three `return` statements; each is named):
+
+1. **Arm `cause=="tripped" and (blocked or completed)`** — could drop a violation:
+   `cause_reasons` is the AT-LATCH snapshot of `monitor.violations` (`_set_cause`
+   copies the list once, first-wins), so a SECOND violation observed after the latch
+   — in a wait-slice tick or the blocking pre-tick — lived only in the live list and
+   never reached the record (nor `engine.enter`'s reasons; the `fresh` filter means
+   it can never re-fire as an escalation either). Verified empirically, not just by
+   reading: `enable_sets_force=5.9` (escape latches at read index 4) plus staleness
+   armed from read index 5 (the new `stale_from_read_index` fault arm) produced a
+   `tripped`/`tripped` record whose reasons carried ONLY the at-latch snapshot —
+   RED `assert False` on the `signal_invalid` `any`
+   (`test_second_violation_after_latch_still_carries`), pre-fix against `7e100155`.
+2. **Arm `blocked and cause=="cancelled"`** — lane A's find: the arm returned
+   `list(monitor.cause_reasons)` alone; their repro (cancel and violating voltage
+   armed at the third of four measures, so the fourth's pre-tick blocks as a
+   cancellation) captured `cancelled`/`cancelled`/verified with reasons carrying the
+   cancel only — violation ERASED. Reproduced independently pre-fix (same capture);
+   RED `assert False` on the violation `any`
+   (`test_blocked_cancel_still_carries_the_violation`).
+3. **Fall-through** — the first fold appended `monitor.violations` only when
+   `cause != "tripped"`; a TRIPPED cause falling through (uncertain, assertion-failed,
+   timed-out bodies) had the same at-latch-snapshot gap as arm 1: cause_reasons
+   merged, later-observed violations not. No separate pin (the arm-1 pin carries the
+   mechanism; the fall-through's tripped cells are `:884`/`:905`, whose
+   single-violation shape is unchanged by the merge).
+
+**Fix (one shape, all arms):** every return arm merges `monitor.violations`,
+deduped — for the single-violation cells the snapshot equals the live list and the
+merge is a no-op, so the blocked cell keeps its pre-#533 byte-identical record (the
+F2 exactly-once pin stayed green throughout). GREEN: `tests/faults/test_protection.py`
+exit 0, 43/0/0; post-fix portraits — arm 2: `cancelled`/`cancelled` with reasons
+`['cancelled by principal for run run-x', 'dut-voltage-bounds: interval_escape:
+[5.85, 5.95] escapes [-0.1, 5.5]']`; arm 1: `tripped`/`tripped` with the escape AND
+the stale-signal violations (`dut-voltage-bounds: signal_invalid: dut-voltage`,
+`dut-power: signal_invalid: dut-voltage` — one stale read invalidates both
+conditions the policy watches). RED run: junit tests=2 failures=2 errors=0, exit 1.
+
+Manifest: `tests/win_core_manifest.json` 41→43 (the ratchet's `--refresh`). Gates:
+ruff 0, fresh-cache bare mypy 0 (447 files), focused `tests/control/` +
+`tests/faults/` 351/0/0 exit 0; full battery in the commit message. The published
+headline — a violation is outranked, never erased — is now true of every arm, and
+the narrowed universals in the module docstring, `_body_truth`'s docstring and the
+CTL-8 amendment needed no further motion.

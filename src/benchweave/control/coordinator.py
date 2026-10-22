@@ -1432,6 +1432,14 @@ class RunCoordinator:
         (uncertainty is never erased by a trip).
         """
         monitor = prepared.monitor
+        # No arm of this function may drop an observed violation:
+        # ``cause_reasons`` is the AT-LATCH snapshot of ``monitor.violations``
+        # (``_set_cause`` copies the list once, first-wins), so violations
+        # observed AFTER the latch — or outranked by a principal cancel that
+        # latched first — live only in ``monitor.violations``. Every arm
+        # merges the live list, deduped: for the single-violation cells the
+        # snapshot equals the live list and the merge is a no-op, so those
+        # records keep their pre-#533 shape.
         if monitor.cause == "tripped" and (
             monitor.blocked or body.body_outcome == "completed"
         ):
@@ -1444,21 +1452,23 @@ class RunCoordinator:
                 for reason in body.reasons:
                     if reason not in reasons:
                         reasons.append(reason)
+            for violation in monitor.violations:
+                if violation not in reasons:
+                    reasons.append(violation)
             return "tripped", reasons
         if monitor.blocked and monitor.cause == "cancelled":
-            return "cancelled", list(monitor.cause_reasons)
+            reasons = list(monitor.cause_reasons)
+            for violation in monitor.violations:
+                if violation not in reasons:
+                    reasons.append(violation)
+            return "cancelled", reasons
         reasons = list(body.reasons)
         for reason in monitor.cause_reasons:
             if reason not in reasons:
                 reasons.append(reason)
-        if monitor.cause != "tripped":
-            # The fold's bound: a violation observed during the body is
-            # never erased by a cause that latched first (a principal
-            # cancel in the final-dispatch window outranks the trip, and
-            # outranked is not absent) — it rides in the reasons.
-            for violation in monitor.violations:
-                if violation not in reasons:
-                    reasons.append(violation)
+        for violation in monitor.violations:
+            if violation not in reasons:
+                reasons.append(violation)
         return body.body_outcome, reasons
 
     def _evidence_refs(self, run_id: str) -> list[dict[str, str]]:
