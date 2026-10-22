@@ -984,7 +984,7 @@ def test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot(
             UNSOLVED_LOG in record.message for record in caplog.records
         ), "an access failure is not containment"
         # Repair: the operator restores readability; nothing else changed.
-        os.chmod(schema, 0o644)
+        os.chmod(schema, 0o600)
         # Boot two: the same run recovers with the durable honest record.
         recovered = sweep(store)
         assert recovered == ["run-acc-1"], f"recovered={recovered}"
@@ -1005,5 +1005,5 @@ def test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot(
         assert _busy(store) is False, "the repaired boot releases the bench"
         assert sweep(store) == [], "a third sweep finds nothing left"
     finally:
-        os.chmod(schema, 0o644)  # never leak the 000 mode out of the arm
+        os.chmod(schema, 0o600)  # never leak the 000 mode out of the arm
         store.close()
