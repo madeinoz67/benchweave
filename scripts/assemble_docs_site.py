@@ -86,6 +86,7 @@ import re
 import shutil
 import subprocess
 import sys
+from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -447,6 +448,53 @@ DEVICE_CLASSES_SOURCE = (
     "the authoring mockups at build time"
 )
 
+#: The State and Preview cells are ICONS, not prose (the principal's
+#: reading of the published page: the prose cells forced the table wider
+#: than its column at common window sizes, so the preview column needed
+#: horizontal scrolling). The icons are Lucide outlines INLINED as SVG —
+#: the page never depends on a CDN — stroked with currentColor so the
+#: theme's tokens carry them into both colour schemes. Every icon wrapper
+#: carries a machine-readable token the gate reads (data-state /
+#: data-slot / data-preview) and an accessible label a screen reader says;
+#: the visible cell is the icon alone.
+_SVG_ATTRS = (
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"'
+)
+_TICK_ICON = f'<svg {_SVG_ATTRS}><path d="M20 6 9 17l-5-5"/></svg>'
+_CLOCK_ICON = (
+    f'<svg {_SVG_ATTRS}><circle cx="12" cy="12" r="10"/>'
+    '<path d="M12 6v6l4 2"/></svg>'
+)
+_LINK_ICON = (
+    f'<svg {_SVG_ATTRS}>'
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
+    '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+)
+_DASH_ICON = f'<svg {_SVG_ATTRS}><path d="M5 12h14"/></svg>'
+
+#: The page's own scoped style block for the icon table — generated WITH
+#: the table, never hand-kept beside it. The renderer passes a body style
+#: block through verbatim (probed on the real great-docs 0.17.0 build, not
+#: assumed), and every rule scopes through :has(.dc-state) so no other
+#: table on the site is touched.
+_TABLE_STYLE_BLOCK = """<style class="dc-table-style">
+/* Generated device-class table icons (issue #499): tokens and labels
+   live in the markup, shape lives here. */
+table:has(.dc-state) .dc-state,
+table:has(.dc-state) .dc-preview {
+  display: inline-flex; align-items: center;
+  font-size: 1rem; /* one em context for both icon columns — the theme's
+                      anchor styles must not resize one column's icons */
+}
+table:has(.dc-state) .dc-state svg,
+table:has(.dc-state) .dc-preview svg { width: 1.1em; height: 1.1em; }
+table:has(.dc-state) a.dc-preview { text-decoration: none; }
+table:has(.dc-state) .dc-preview-none { opacity: 0.45; }
+table:has(.dc-state) .dc-title { display: block; font-size: 0.9em; opacity: 0.8; }
+table:has(.dc-state) td { vertical-align: top; }
+</style>"""
+
 
 def classref_classes() -> list[dict[str, str]]:
     """The ACTIVE family's implemented classes as ``{slug, title}`` rows.
@@ -543,11 +591,15 @@ def device_class_rows() -> list[dict[str, str]]:
 def render_device_classes_page(rows: list[dict[str, str]]) -> str:
     """Render the Device classes page (pure) from derived rows.
 
-    The table's Class cell carries the machine slug with the corpus title;
-    the State cell's vocabulary is closed (Implemented, or Planned with the
-    sweep slot that will deliver it); implemented rows link the published
-    preview copy beside the rendered page. No body H1 (the frontmatter
-    title renders as the header — the standards-CLI page's shape).
+    The table's Class cell carries the machine slug with the corpus title
+    in a wrappable span (the parenthetical title in the cell is the width
+    the layout defect removed). The State and Preview cells are ICONS: a
+    tick for an implemented class, a clock for a planned one — whose
+    accessible label keeps the slot sentence (post-MVP, future slot) on
+    the row without rendering it in the cell — a link icon where a preview
+    exists, and a plainly inert dash where it does not. No body H1 (the
+    frontmatter title renders as the header — the standards-CLI page's
+    shape).
     """
     lines = [
         "---",
@@ -558,24 +610,45 @@ def render_device_classes_page(rows: list[dict[str, str]]) -> str:
         "BenchWeave gives every device class one shared page shape. This table "
         "shows the classes that the corpus implements today. It also shows "
         "the classes that are planned after the minimum viable product (MVP).",
-        "Select a preview link to see the design of the class page before you "
-        "install anything.",
+        "The State column shows a tick for an implemented class and a clock "
+        "for a planned class. The label on each icon names the state; for a "
+        "planned class it names the future sweep slot that will deliver it. "
+        "Select a preview icon to see the design of the class page before "
+        "you install anything.",
         "",
         "| Class | State | Preview |",
         "|---|---|---|",
     ]
     for row in rows:
         if row["state"] == "implemented":
+            title = escape(row["title"])
+            preview_label = escape(f"Preview the {row['title']} class page")
+            preview_href = f"{PREVIEW_DIR_NAME}/class-{row['slug']}.html"
             lines.append(
-                f"| `{row['slug']}` ({row['title']}) | Implemented "
-                f"| [Preview]({PREVIEW_DIR_NAME}/class-{row['slug']}.html) |"
+                f"| `{row['slug']}` <span class=\"dc-title\">{title}</span> "
+                f"| <span class=\"dc-state\" data-state=\"implemented\" "
+                f"role=\"img\" aria-label=\"Implemented\" "
+                f"title=\"Implemented\">{_TICK_ICON}</span> "
+                f"| <a class=\"dc-preview\" data-preview=\"{preview_href}\" "
+                f"href=\"{preview_href}\" aria-label=\"{preview_label}\" "
+                f"title=\"{preview_label}\">{_LINK_ICON}</a> |"
             )
         else:
+            label = escape(f"Planned (post-MVP, future slot {row['slot']})")
             lines.append(
-                f"| `{row['slug']}` | Planned (post-MVP, future slot {row['slot']}) "
-                "| Not yet available |"
+                f"| `{row['slug']}` "
+                f"| <span class=\"dc-state dc-state-planned\" "
+                f"data-state=\"planned\" data-slot=\"{row['slot']}\" "
+                f"role=\"img\" aria-label=\"{label}\" "
+                f"title=\"{label}\">{_CLOCK_ICON}</span> "
+                f"| <span class=\"dc-preview dc-preview-none\" "
+                f"data-preview=\"none\" role=\"img\" "
+                f"aria-label=\"No preview yet\" "
+                f"title=\"No preview yet\">{_DASH_ICON}</span> |"
             )
     lines += [
+        "",
+        _TABLE_STYLE_BLOCK,
         "",
         "The state column is derived from the corpus, so the table cannot "
         "become stale by hand.",
