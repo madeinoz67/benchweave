@@ -924,6 +924,40 @@ def test_assertion_failed_body_is_never_reclassified_to_tripped(tmp_path: Path) 
     _validate_record(record)
 
 
+def test_trip_after_final_dispatch_still_ends_body_tripped(tmp_path: Path) -> None:
+    """A violation first observed after the FINAL dispatch ends the body tripped.
+
+    The voltage fault arms on the body's last measure invoke (the repeat
+    loop's third remeasure), so the violation is first observed by that
+    dispatch's post-dispatch tick — no next dispatch exists to refuse and
+    no block latches. The coordinator's body truth still takes ``tripped``
+    over the executor's ``completed``: an observed continuous-condition
+    violation can never produce a ``passed`` record.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_on_final_measure(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 4:  # the loop's third remeasure: the body's final dispatch
+            fault.force_voltage_v = 5.9  # the condition violates right after
+
+    fault.on_invoke = arm_on_final_measure
+
+    record = coordinator.start_run("run-trip-final", "principal-a")
+
+    assert record["outcome"] == "tripped"
+    assert record["body_outcome"] == "tripped"
+    assert record["safe_state"] == "verified"
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
 # --- lease lifecycle ----------------------------------------------------------------
 
 

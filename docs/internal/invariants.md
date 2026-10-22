@@ -86,6 +86,15 @@ rather than rewriting the history — that is how this file earns trust.
   accepted-but-dispatchable window blocks it the same way (`cancelled`) —
   `src/benchweave/control/coordinator.py`. *A violation must never be observed and then
   worked around; it ends the body.*
+  Amendment (2026-10-22, issue #533): the block is the mechanism, not the definition —
+  a violation observed during the body ends the body `tripped` whatever the dispatch
+  ordering. When no next dispatch exists to refuse (the violation is first observed by
+  the final action's post-dispatch tick, coordinator.py:722, or the post-body tick,
+  coordinator.py:1304), the coordinator's body truth takes `tripped` over the
+  executor's `completed`: an observed continuous-condition violation can never produce
+  a `passed` record. Uncertain, failed, timed-out and cancelled bodies are untouched —
+  the cause stays an appended reason, never a reclassification. Pinned by
+  `tests/faults/test_protection.py`.
 - **[CTL-9]** One coordinator owns one run end to end — idempotent request acceptance,
   semantic admission, the run lease, run creation, monitored body, protective transition on
   ANY body end, terminal record, durable events, lease release. A run found at recovery
