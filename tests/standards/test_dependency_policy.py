@@ -101,8 +101,9 @@ def test_low7_reversed_policy_range_refuses_at_load(tmp_path: Path) -> None:
 
 
 def test_policy_block_loads_and_derives_the_served_set() -> None:
-    """Design §3.2's seed served set, per-id: otdp {0.2.0, 0.2.2} (0.2.1
-    yanked-in-interval), registry {0.1.0, 0.1.1, 0.1.2} (0.1.2 = the
+    """Design §3.2's seed served set, per-id: otdp {0.2.0, 0.2.2, 0.2.3,
+    0.2.4} (0.2.1 yanked-in-interval; 0.2.4 joins at the #525
+    readings-parameters bump), registry {0.1.0, 0.1.1, 0.1.2} (0.1.2 = the
     publishing lane's review-block bump, issue #223 slice 1), execution
     {0.1.0, 0.2.0}, interface {0.1.0, 0.1.1} (the #450 revision rides the
     fold's reverted >=0.1.0 range — multi-serving like the design's own
@@ -120,7 +121,7 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         entry.id: served_versions(policy, ROOT, entry.id) for entry in manifest.standards
     }
     assert served == {
-        "otdp": ("0.2.0", "0.2.2", "0.2.3"),
+        "otdp": ("0.2.0", "0.2.2", "0.2.3", "0.2.4"),
         "registry": ("0.1.0", "0.1.1", "0.1.2", "0.1.3"),
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0", "0.1.1"),
@@ -128,7 +129,7 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         "plugin-ui-class-reference": ("0.1.0", "0.2.0", "0.3.0"),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 17
+    assert sum(len(versions) for versions in served.values()) == 18
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:

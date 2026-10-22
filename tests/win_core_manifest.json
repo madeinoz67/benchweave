@@ -530,7 +530,7 @@
     },
     "tests/presentation/test_classref_derive.py": {
       "core": 0,
-      "total": 32
+      "total": 33
     },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,
@@ -546,7 +546,7 @@
     },
     "tests/sdk/test_descriptor_equivalence.py": {
       "core": 0,
-      "total": 144
+      "total": 165
     },
     "tests/sdk/test_plugin_developer_skill_content.py": {
       "core": 0,

@@ -83,9 +83,9 @@ from benchweave.vendoring import corpus_root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = FAMILY_DIR / "class-smu.json"
-DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.3/examples/class-smu.json"
+DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-smu.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-smu.html"
-CATALOG = REPO_ROOT / "standards/otdp/0.2.3/device-profile-catalog.json"
+CATALOG = REPO_ROOT / "standards/otdp/0.2.4/device-profile-catalog.json"
 OUTPUT_ACTION = "otdp.smu.output/1.0.0"
 CONFIGURE_ACTION = "otdp.smu.configure/1.0.0"
 MEASURE_ACTION = "otdp.smu.measure/1.0.0"
@@ -347,7 +347,7 @@ def test_a_dc_psu_reference_refuses_the_smu_descriptor() -> None:
     )
     descriptor = json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
     dc_psu_example = json.loads(
-        (REPO_ROOT / "standards/otdp/0.2.3/examples/class-dc_psu.json")
+        (REPO_ROOT / "standards/otdp/0.2.4/examples/class-dc_psu.json")
         .read_text(encoding="utf-8")
     )
     descriptor["profiles"] = ["otdp.dc_psu/1.0.0"]
@@ -565,7 +565,11 @@ def _sweep_absence_violations(derived: Any) -> list[str]:
     component the birth surface refuses (or a coverage failure)."""
     violations: list[str] = []
     for target in derived.catalogue["targets"]:
-        if str(target["action_id"]) in SWEEP_URNS:
+        # Post-#525 the catalogue also carries the example's OBSERVATION
+        # targets (kind: observation, keyed by parameter_id) — an
+        # observation names no action, so only action-carrying targets
+        # can name a sweep URN.
+        if str(target.get("action_id", "")) in SWEEP_URNS:
             violations.append(f"catalogue-target:{target['action_id']}")
     for page in derived.manifest["pages"]:
         for binding in page["bindings"]:
@@ -620,13 +624,16 @@ def test_the_sweep_absence_holds_over_the_committed_pair() -> None:
        derives NO control because its pattern-narrowed channel field
        pins it at L0 — the closed vocabulary's honest answer, asserted
        by name so its later landing is a visible change.
-    4. THE SIGNATURE PAGE IS UNTOUCHED: the output page row binds
-       nothing (the family's standing readings-page shape — the
-       observation is page-covered via the plot figure, the L4 arm,
-       exactly as dc_psu and electronic_load derive), the layout's
-       authored children bind the measure slot only, and the layout
-       block carries exactly one plot (the time_series over the measure
-       slot) — no run panel, no second plot."""
+    4. THE SIGNATURE PAGE IS UNTOUCHED BY THE SWEEP: post-#525 the
+       output page row binds its OBSERVATION bindings (the example
+       declares its readable parameters — the zero-parameter shape that
+       bound nothing is the state this arm asserted before the corpus
+       fix); the sweep-absence claim is that NOTHING ELSE joins them,
+       asserted as the exact expected observation set derived from the
+       descriptor's own channels x quantities under the plot's over
+       slot. The layout's authored children bind the measure slot only,
+       and the layout block carries exactly one plot (the time_series
+       over the measure slot) — no run panel, no second plot."""
     derived = _derive_over_committed_pair()
     assert _sweep_absence_violations(derived) == []
     feature_ids = _device_features_binding_ids(derived)
@@ -635,7 +642,15 @@ def test_the_sweep_absence_holds_over_the_committed_pair() -> None:
     output_page = next(
         p for p in derived.manifest["pages"] if p["id"] == "output"
     )
-    assert output_page["bindings"] == []
+    reference = load_document(REFERENCE)
+    over = str(reference["pages"][0]["plot"]["over_slot"])
+    fixture = load_document(DESCRIPTOR)
+    expected_observations = {
+        f"{over}-{channel['id']}-{quantity}"
+        for channel in _source_measure_channels(reference, fixture)
+        for quantity in channel["quantities"]
+    }
+    assert set(output_page["bindings"]) == expected_observations, output_page
     output_layout = next(
         p
         for p in derived.manifest["extensions"][LAYOUT_EXTENSION_KEY]["pages"]

@@ -525,12 +525,17 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # the G-5 sync-completion pacing holds. The L11 bump
     # (2026-10-18, slot L11) adds the family's 0.2.0->0.3.0 entry the
     # same way (the 0.3.0 README's from-predecessor note).
+    # The otdp 0.2.4 bump (2026-10-22, gateway issue #525 — the
+    # readings-class examples' readable parameters) joins compliant the
+    # same way: the SDK lock at its gitlink (3fa10c75, v0.18.0) carries
+    # otdp 0.2.3, the predecessor's completed SDK leg.
     # The scratch family above carries the non-vacuity burden; this row
     # pins the deployment state — the judged set's shape, and a
     # non-compliant future bump still refuses by name below.
     entries = collect_bump_entries(ROOT)
     assert [(entry.standard, entry.version, entry.predecessor) for entry in entries] == [
         ("interface", "0.1.1", "0.1.0"),
+        ("otdp", "0.2.4", "0.2.3"),
         ("plugin-ui", "0.4.0", "0.3.1"),
         ("registry", "0.1.3", "0.1.2"),
         ("plugin-ui-class-reference", "0.2.0", "0.1.0"),

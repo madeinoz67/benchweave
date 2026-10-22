@@ -68,9 +68,9 @@ from benchweave.vendoring import corpus_root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = FAMILY_DIR / "class-electronic_load.json"
-DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.3/examples/class-electronic_load.json"
+DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-electronic_load.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-electronic_load.html"
-CATALOG = REPO_ROOT / "standards/otdp/0.2.3/device-profile-catalog.json"
+CATALOG = REPO_ROOT / "standards/otdp/0.2.4/device-profile-catalog.json"
 OUTPUT_ACTION = "otdp.electronic_load.output/1.0.0"
 CONFIGURE_ACTION = "otdp.electronic_load.configure/1.0.0"
 

@@ -413,3 +413,38 @@ join the RED set uninvited.
 The commit carrying this record onto the fix branch is the build lane's
 first commit, before any measurement in §9 runs — the pre-committed rule
 must be in git history before the arms do.
+
+## 13. Build-lane addendum (2026-10-22, folded after the Tier-3 review)
+
+§7's "unchanged arms" list understated the motion's blast radius; the
+build measured and the governor review confirmed (L1). What actually
+moved beyond §7's named scope:
+
+- The CEILING arm's mutation gained a parameters strip: post-fix a
+  parameters-carrying readings pair refuses `classref_parameter_map`
+  before the y ceiling is reachable (and the readings plot's
+  single-observation y cannot exceed it at all); the pinned refusal
+  (`classref_series_ceiling`) is unchanged, reached through the
+  zero-parameter dataset fallback — the only post-fix route.
+- The smu `ui_html` sweep-absence arms moved, not just their path
+  literals: `_sweep_absence_violations` walks action-carrying targets
+  only (the observation targets the fix emits carry `parameter_id`,
+  never `action_id` — the old walk KeyErrored), and the recorded-state
+  `bindings == []` assertion became the exact expected-observation-set
+  assertion over the descriptor's channels × quantities under the
+  plot's over slot.
+- Pinned denominators moved with the bump: the served-set arm 17 → 18
+  (`+otdp 0.2.4`), the export carried set `+otdp@0.2.4`, the retained-set
+  denominator 27 → 28, the win-core count ratchet (refreshed through
+  its `--refresh`), and the train-window judged list
+  (`+ ("otdp", "0.2.4", "0.2.3")`, compliant — the pin's lock carries
+  0.2.3).
+- The docs served-set sentences were re-pointed from naming `0.2.0`
+  to naming the two most recent served predecessors; the exhaustive
+  naming is restored as an appended clause (governor L3) rather than
+  left implicit.
+
+The exposed window reds are 20 new `0.2.4` equivalence arms (not 21 —
+governor L2's count, confirmed from the junit), 4 `test_check` arms,
+and 1 sync-report arm; every one reads the submodule at the v0.18.0
+pin and cures at the SDK sync, release and pointer legs (#408 order).

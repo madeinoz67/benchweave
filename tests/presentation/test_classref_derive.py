@@ -461,7 +461,14 @@ class TestPlotKindEmission:
         not), so the schema never has to refuse diffusely. The mutated
         descriptor keeps the committed pair's class shape (nine channels
         of the slot's own role, two quantities each — 18 variables over
-        the 16 ceiling, computed from the mutation, never a literal)."""
+        the 16 ceiling, computed from the mutation, never a literal) and
+        strips ``parameters``/``parameter_names`` (the tolerance shape
+        the zero-parameter arm pins): post-#525 the readings pair's plot
+        binds its first observation's single value id, so the DATASET
+        fallback with every variable id is the only route by which an
+        over-ceiling readings descriptor reaches the y check at all —
+        with parameters declared, the same mutation refuses
+        ``classref_parameter_map`` first (measured on the bumped tree)."""
         profile_id = sorted(_plot_classes("time_series"))[0]
         slug, reference = _active_family()[profile_id]
         slot = next(
@@ -471,6 +478,7 @@ class TestPlotKindEmission:
         )
         role = str(slot.get("where_role", ""))
         descriptor = json.loads(_committed_example(slug).read_bytes())
+        descriptor.pop("parameters", None)
         descriptor["channels"] = [
             {
                 "id": f"m{index}",

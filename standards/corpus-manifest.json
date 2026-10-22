@@ -1,7 +1,7 @@
 {
   "identity": {
     "architecture": "STG 1.5",
-    "otdp": "0.2.3",
+    "otdp": "0.2.4",
     "registry": "0.1.3",
     "execution": "0.2.0",
     "interface": "0.1.1",
@@ -1159,6 +1159,186 @@
     },
     {
       "path": "otdp/0.2.3/examples/decoder-onewire-link.json",
+      "source": "standards/otdp/0.2.3/examples/decoder-onewire-link.json",
+      "sha256": "d5f64b43b6b367df142a674c88fad7ad48f58f76061aa666db0b39a5d2604aef"
+    },
+    {
+      "path": "otdp/0.2.4/device-profile-catalog.json",
+      "source": "standards/otdp/0.2.3/device-profile-catalog.json",
+      "sha256": "89214042bee95b752ac252f088a703e43e86c202fc7146c222cf5091244d0d4c"
+    },
+    {
+      "path": "otdp/0.2.4/device-profile-catalog.schema.json",
+      "source": "standards/otdp/0.2.3/device-profile-catalog.schema.json",
+      "sha256": "35bf81c9ec8dd3290b5063fc183630493ed7afff017bc5ae7faf2d0ff299f401"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-action-vectors.json",
+      "source": "standards/otdp/0.2.3/examples/class-action-vectors.json",
+      "sha256": "a14c0f20fb965a0593fe12baa4f03c5aa744fc34d0f22d5b455efca157ab3038"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-daq.json",
+      "source": "standards/otdp/0.2.3/examples/class-daq.json",
+      "sha256": "79f4060d7ce9f17de99ab66503511bc65fdcfc1384c901126e5461ecde6469f2"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-dc_psu.json",
+      "source": "standards/otdp/0.2.3/examples/class-dc_psu.json",
+      "sha256": "34058506d3da3c2cb46945416fdd10a4e1c57e4090ff8f13e862afa4f087f411"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-dmm.json",
+      "source": "standards/otdp/0.2.3/examples/class-dmm.json",
+      "sha256": "a2afa52baad6e64d79b71c5de53f5613a265711a5ecea495ee33a28dcab7a73a"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-electronic_load.json",
+      "source": "standards/otdp/0.2.3/examples/class-electronic_load.json",
+      "sha256": "28033c0d084cff59c72659c1344de9baa4acbfced17b82dc88b413722ffb0a5b"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-embedded_controller.json",
+      "source": "standards/otdp/0.2.3/examples/class-embedded_controller.json",
+      "sha256": "abe355077b4dd9d1a011987626e9f4fd44b581216a310a0c9054ea6100db028e"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-function_generator.json",
+      "source": "standards/otdp/0.2.3/examples/class-function_generator.json",
+      "sha256": "aa42cc99b8f842041a86eb971a79dab6de607dfa39ff50c5522eb7b1e7b22647"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-logic_analyser.json",
+      "source": "standards/otdp/0.2.3/examples/class-logic_analyser.json",
+      "sha256": "0fb20fdfbe0a94f9b47631bd3c236d6b92c1548d66231477753d77a5374e3e0f"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-oscilloscope.json",
+      "source": "standards/otdp/0.2.3/examples/class-oscilloscope.json",
+      "sha256": "946c9198a7d727bdfbd5218e46900e0c06bd60ea42423395545922f1c277910c"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-smu.json",
+      "source": "standards/otdp/0.2.3/examples/class-smu.json",
+      "sha256": "041a0d772230976d327288cbc45668b77de6b23281a382ccdebaaa114c09775e"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-spectrum_analyser.json",
+      "source": "standards/otdp/0.2.3/examples/class-spectrum_analyser.json",
+      "sha256": "3a443853de153f3b9a71ef66ffbd4cc2c257cd737b46c3ec4cb32b1a478435b1"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-switch_matrix.json",
+      "source": "standards/otdp/0.2.3/examples/class-switch_matrix.json",
+      "sha256": "8ec95691e539d5e30508fac6ccb6587dd94755ff35e2912a7065221a9346ca80"
+    },
+    {
+      "path": "otdp/0.2.4/examples/class-vna.json",
+      "source": "standards/otdp/0.2.3/examples/class-vna.json",
+      "sha256": "55aea351dd83cc33b425f14ee58cdbb13187b4159209ea3675dff6bbc3dc4cd0"
+    },
+    {
+      "path": "otdp/0.2.4/examples/derivation-vectors.json",
+      "source": "standards/otdp/0.2.3/examples/derivation-vectors.json",
+      "sha256": "bce5a151e3d4da4854d098aad5abe5f435b318043786cad6c93da66a5f04e780"
+    },
+    {
+      "path": "otdp/0.2.4/examples/measurement-vectors.json",
+      "source": "standards/otdp/0.2.3/examples/measurement-vectors.json",
+      "sha256": "aff78ac0fb0057daac2cba98d314f633e5c36b5e33e2eb14e792bb63fa76ca06"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-analyzer-config.json",
+      "source": "standards/otdp/0.2.3/examples/reference-analyzer-config.json",
+      "sha256": "ed98dcdd5b15ad70596ff4de24398bc5c357dc7a22152635b4dcfc7757e32d7b"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-can.json",
+      "source": "standards/otdp/0.2.3/examples/reference-can.json",
+      "sha256": "6ceb1bef3988ad18088c84bef1a112b8a8f3d115ff7ac3f7a7256b6e9b7d0bd9"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-capture.json",
+      "source": "standards/otdp/0.2.3/examples/reference-capture.json",
+      "sha256": "cd5ea378de99e51ce87e926a14154bf03135e08bd27ecdb6987702a435364818"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-controller.json",
+      "source": "standards/otdp/0.2.3/examples/reference-controller.json",
+      "sha256": "a76d3ead05b80cc2db11d323d98be85ee3926471ad7b0bf58f85624b02897eea"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-hid-meter.json",
+      "source": "standards/otdp/0.2.3/examples/reference-hid-meter.json",
+      "sha256": "829d1118589c1cb34a83876b462ba499c30a4cf7900af657e5d6ac622fc6e759"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-mux-counter.json",
+      "source": "standards/otdp/0.2.3/examples/reference-mux-counter.json",
+      "sha256": "fb90b4b88a9fe42f67962300bdd31726ed5ecac4c0afd6d7016a9966e36c2b67"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-provider.json",
+      "source": "standards/otdp/0.2.3/examples/reference-provider.json",
+      "sha256": "cf50392a5d9f996ebe40796800b3ee84ce72b420594acc902fed893efbf3cc47"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-psu.json",
+      "source": "standards/otdp/0.2.3/examples/reference-psu.json",
+      "sha256": "b92ff7d4c3143f0916ed52bcdb4074e78f0c147158659997a078f599264fef1f"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-rawlink.json",
+      "source": "standards/otdp/0.2.3/examples/reference-rawlink.json",
+      "sha256": "b0f87154695e5e68533949a4b60a89e6a7dfef700cb1161ee2189274602a5ad8"
+    },
+    {
+      "path": "otdp/0.2.4/examples/reference-vectors.json",
+      "source": "standards/otdp/0.2.3/examples/reference-vectors.json",
+      "sha256": "8ac7bcde165793bf274ee5ccaeccbf06bcf7f7f2bfe13ddf0f8a87f2216fcff7"
+    },
+    {
+      "path": "otdp/0.2.4/otdp-device-descriptor.schema.json",
+      "source": "standards/otdp/0.2.3/otdp-device-descriptor.schema.json",
+      "sha256": "38c07d2cc9c71bd0e6291fed34a3da7765c64b90d5f1ededf6eb20108ca88ff5"
+    },
+    {
+      "path": "otdp/0.2.4/otdp-measurement.schema.json",
+      "source": "standards/otdp/0.2.3/otdp-measurement.schema.json",
+      "sha256": "2f7da116b07db4ba06eb72c6d16a5a8d5b13c6a34fe1f6ab01c99fce6a146063"
+    },
+    {
+      "path": "otdp/0.2.4/otdp-runtime.schema.json",
+      "source": "standards/otdp/0.2.3/otdp-runtime.schema.json",
+      "sha256": "3f7a8d4efcf8cdec3dd6c12218c13edb41c248942a6286a298b4c126a91c82d5"
+    },
+    {
+      "path": "otdp/0.2.4/otdp-transport-provider.schema.json",
+      "source": "standards/otdp/0.2.3/otdp-transport-provider.schema.json",
+      "sha256": "283cd25a1489edd1063e37d5a19c8c7b29872bbd28134efed1f4b3835261aa54"
+    },
+    {
+      "path": "otdp/0.2.4/otdp-decoder.schema.json",
+      "source": "standards/otdp/0.2.3/otdp-decoder.schema.json",
+      "sha256": "f4f143b32c49371df43f088b0fdddfc6349cbd65d75c4bb8dc7a29f08b4970dd"
+    },
+    {
+      "path": "otdp/0.2.4/examples/decoder-i2c.json",
+      "source": "standards/otdp/0.2.3/examples/decoder-i2c.json",
+      "sha256": "e033023bd3a6d37486ae1093449200d7c41e3c8926e83690d6468c135d77d7a7"
+    },
+    {
+      "path": "otdp/0.2.4/examples/decoder-spi.json",
+      "source": "standards/otdp/0.2.3/examples/decoder-spi.json",
+      "sha256": "d36599b5cb4c14d317143294c42ea6e1fecea4a30f643f8ad39cf2113e62c79a"
+    },
+    {
+      "path": "otdp/0.2.4/examples/decoder-uart.json",
+      "source": "standards/otdp/0.2.3/examples/decoder-uart.json",
+      "sha256": "8cbcc9fd20b86dae3760b1f3d3e7703cd2f58693b87553684b199f812edffa49"
+    },
+    {
+      "path": "otdp/0.2.4/examples/decoder-onewire-link.json",
       "source": "standards/otdp/0.2.3/examples/decoder-onewire-link.json",
       "sha256": "d5f64b43b6b367df142a674c88fad7ad48f58f76061aa666db0b39a5d2604aef"
     },
