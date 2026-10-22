@@ -4,7 +4,7 @@ Landing 1 of the class-reference program (design record
 ``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``); the
 L5 widening rides design record
 ``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
-The family's ACTIVE version ``plugin-ui-class-reference/0.3.0`` ships two
+The family's ACTIVE version ``plugin-ui-class-reference/0.4.0`` ships two
 machine schemas and THREE class references — the founding
 ``class-logic_analyser.json`` (re-stamped, zero content change), the L11
 ``class-dc_psu.json`` (the first scalar/readings-shaped class; design record
@@ -31,17 +31,17 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.3.0"
+DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.4.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
 REFERENCE_PSU = DIRECTORY / "class-dc_psu.json"
 REFERENCE_DMM = DIRECTORY / "class-dmm.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.3.0/class-reference.schema.json"
+    "/0.4.0/class-reference.schema.json"
 )
 LAYOUT_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.3.0/layout.schema.json"
+    "/0.4.0/layout.schema.json"
 )
 LAYOUT_REF = f"{LAYOUT_ID}#/$defs/layout_page"
 # The plugin-ui manifest schema whose extensions seam carries the layout
@@ -92,7 +92,7 @@ def minimal_layout_page() -> dict[str, Any]:
 
 def minimal_reference(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "profile_id": "otdp.logic_analyser/1.0.0",
         "title": "Class reference",
         "targets": {"plugin_ui": ">=0.3.1"},
@@ -126,7 +126,7 @@ def test_all_family_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = (
             "https://benchweave.dev/contracts/plugin-ui-class-reference"
-            f"/0.3.0/{name}.schema.json"
+            f"/0.4.0/{name}.schema.json"
         )
         assert schema["$id"] == expected
 
@@ -582,7 +582,7 @@ def test_controls_levels_match_the_class_ladder() -> None:
 
 def test_minimal_layout_document_validates() -> None:
     layout = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [minimal_layout_page()],
     }
     assert layout_validator().is_valid(layout)
@@ -600,7 +600,7 @@ def test_minimal_layout_document_validates() -> None:
 )
 def test_layout_document_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout)
@@ -618,7 +618,7 @@ def test_layout_document_rules_refuse(mutate: Any) -> None:
 )
 def test_section_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout["pages"][0]["sections"][0])
@@ -627,7 +627,7 @@ def test_section_rules_refuse(mutate: Any) -> None:
 
 def test_control_kinds_are_closed() -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -649,7 +649,7 @@ def test_control_kinds_are_closed() -> None:
 def test_text_body_is_bounded() -> None:
     body = "x" * 512
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -676,7 +676,7 @@ def test_text_body_is_bounded() -> None:
 )
 def test_layout_nodes_are_closed_world(node: dict[str, Any]) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -695,7 +695,7 @@ def test_depth_is_bounded_at_three() -> None:
 
     leaf = node("inner", [{"binding_id": "arm", "kind": "button"}])
     three_deep: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [leaf])])]}
         ],
@@ -703,7 +703,7 @@ def test_depth_is_bounded_at_three() -> None:
     assert layout_validator().is_valid(three_deep)
     beyond = node("inner", [node("beyond", [{"body": "x"}])])
     four_deep: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [beyond])])]}
         ],
@@ -782,7 +782,7 @@ def test_seventeen_layout_pages_refuse_both_ways() -> None:
     as a standalone block AND as reference layouts."""
     pages = [minimal_layout_page() for _ in range(17)]
     assert not layout_validator().is_valid(
-        {"contract_version": "0.3.0", "pages": pages}
+        {"contract_version": "0.4.0", "pages": pages}
     )
     assert not reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -792,7 +792,7 @@ def test_sixteen_layout_pages_admit_both_ways() -> None:
     sixteen pages admit on both writers."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
-        {"contract_version": "0.3.0", "pages": pages}
+        {"contract_version": "0.4.0", "pages": pages}
     )
     assert reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -817,7 +817,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
     kinds; the trio admit as control nodes (RED against the 0.1.0 schema,
     which refuses them — the widening is what admits)."""
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -837,7 +837,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
 def test_control_kinds_still_admit_the_founding_kinds() -> None:
     """The widening is additive: the founding kinds keep admitting."""
     layout: dict[str, Any] = {
-        "contract_version": "0.3.0",
+        "contract_version": "0.4.0",
         "pages": [
             {
                 "page_id": "capture",

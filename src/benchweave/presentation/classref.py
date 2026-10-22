@@ -24,6 +24,12 @@ triples were regenerated from THIS derivation over the new corpus, an
 envelope's derived manifest pin), verified against the SDK derivation at
 the pin reproducing the pre-bump bytes exactly — the SDK's own vendored
 corpus carries 0.2.0 until the batched promotion leg re-stamps its side.
+At the 0.4.0 family bump (0.3.0 -> 0.4.0) the five triples were re-stamped
+the same way over the new corpus, a 10-line stamp-only delta (each layout
+block's ``contract_version`` and each envelope's derived manifest pin:
+five pairs); every pre-edit manifest digest equaled its envelope's recorded
+pin, so the delta is the version line and its digest only. The SDK's own
+vendored corpus carries 0.3.0 until the SDK leg re-stamps its side.
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -132,7 +138,7 @@ _FAMILY = "plugin-ui-class-reference"
 #: the registry's corpus pin (design record §3; R4's mitigation) cites the
 #: served family version, derived from the corpus manifest, never a
 #: literal in the render path (the constant documents the founding pin).
-FOUNDING_FAMILY_VERSION = "0.3.0"
+FOUNDING_FAMILY_VERSION = "0.4.0"
 
 
 class ClassRefusal(ValueError):

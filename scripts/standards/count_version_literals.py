@@ -514,9 +514,11 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "with the L5 family bump's corpus-pin re-pin (gateway issue "
             "#463; the ZERO gate is the motion's RED), then 0.2.0->0.3.0 "
             "with the L11 dc_psu MINOR's corpus-pin re-pin (gateway issue "
-            "#463 slot L11; design record 2026-10-18) in the same arc",
+            "#463 slot L11; design record 2026-10-18), then 0.3.0->0.4.0 with "
+            "the composed-action-class MINOR's corpus-pin re-pin (gateway "
+            "issue #541; design record 2026-10-22) in the same arc",
             1,
-            ("0.3.0",),
+            ("0.4.0",),
         ),
         "src/benchweave/presentation/panels.py": (
             "the classref-logic-analyser panel's authored corpus_pin — the "
@@ -529,10 +531,12 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "bump's corpus-pin re-pin (gateway issue #463; the ZERO gate "
             "is the motion's RED), then 0.2.0->0.3.0 with the L11 dc_psu "
             "MINOR's corpus-pin re-pin (gateway issue #463 slot L11; "
-            "design record 2026-10-18) in the same arc as the classref.py "
-            "row",
+            "design record 2026-10-18), then 0.3.0->0.4.0 with the "
+            "composed-action-class MINOR's corpus-pin re-pin (gateway issue "
+            "#541; design record 2026-10-22) in the same arc as the "
+            "classref.py row",
             1,
-            ("0.3.0",),
+            ("0.4.0",),
         ),
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "

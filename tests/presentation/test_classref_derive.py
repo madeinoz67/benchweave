@@ -736,7 +736,7 @@ class TestRefusals:
         §3.3's ``classref_unknown_slot``): a page binding a slot key absent
         from the reference's slots refuses."""
         reference = json.loads(
-            (corpus_root() / "plugin-ui-class-reference/0.3.0/class-logic_analyser.json")
+            (corpus_root() / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json")
             .read_bytes()
         )
         reference["pages"][0]["binding_slots"].append("ghost-slot")
@@ -774,7 +774,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.3.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
         tampered = (corpus / relpath).read_bytes() + b"\n"
         (corpus / relpath).write_bytes(tampered)
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -785,7 +785,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.3.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
         (corpus / relpath).write_bytes(b"{not json")
         self._re_pin(corpus, relpath, b"{not json")
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())

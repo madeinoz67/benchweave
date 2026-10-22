@@ -370,6 +370,27 @@ versions down. Slice 2 extends it:
   the 0.4.0 copies are byte-identical today, so the sweep moves the paths
   to the active family with zero behavioral delta). All literals naming the
   old family version move in the bump's own PR — GOVERNANCE's in-arc rule.
+
+  *Correction, build leg 2026-10-22:* the census above is **incomplete and the
+  method that produced it is wrong**. It was taken with
+  `git grep plugin-ui-class-reference/0.3.0` — a path-shaped search, which by
+  construction cannot see a bare `"0.3.0"` value. The sweep therefore missed
+  **thirteen in-arc files**, and two of the misses are behavioural rather than
+  cosmetic: `src/benchweave/presentation/classref.py::FOUNDING_FAMILY_VERSION`
+  and `src/benchweave/presentation/panels.py::corpus_pin`, whose staleness made
+  the registered class panel render its "unavailable until the panel and the
+  corpus move together" banner instead of its composition. Also missed: the two
+  `REGISTER` rows in `scripts/standards/count_version_literals.py` (moving the
+  constant without them leaves the zero-literal gate passing on stale values),
+  five `tests/presentation/classref_fixtures/fixture-*.json` layout
+  `contract_version` stamps with their five paired envelopes' derived manifest
+  digests, and one assertion in `tests/interfaces_ui/test_ui_presentation.py`
+  that moves only with the pin. Measured before the widened sweep: 345
+  collected, 21 failed; with the original thirteen-file set, 345 / 2. The
+  precedent for the true set is `fa9cfc63`, the 0.2.0→0.3.0 bump, which moved
+  exactly these surfaces in the same arc. **The correct census for the next
+  bump is a bare-version scan over source and fixtures, not a path grep** —
+  `count_version_literals`' own register is the mechanism to extend.
 - **SDK leg (its own PRs, #408 order):** gateway standards PR (this leg +
   sweep) → SDK PR (composed resolution, schema validation, migrate-ui,
   `sync-standards` picking up the eleven 0.4.0 files into the lock and
