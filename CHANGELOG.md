@@ -67,6 +67,9 @@ All notable changes to this project will be documented in this file.
 - #519 fold follow-up — win-core manifest row for the fold's 11 tests
 - Pretooluse screens the repo-relative path, not the machine path
 - Tilde class requires a path separator — approximation prose allows
+- A trip observed after the final dispatch ends the body tripped (issue #533)
+- Fold the #533 refute rows — a violation is outranked, never erased
+- Merge observed violations on EVERY _body_truth arm (#533 arm sweep)
 
 ### Documentation
 
@@ -171,6 +174,8 @@ All notable changes to this project will be documented in this file.
 - The ACK-or-stop bound in the loop + builder duties (issue #517)
 - #517 record §12 — the battery-caught win-core manifest ratchet
 - Owner-ruled revision — detect-and-bound with escalation (#517)
+- Issue #533 trip-after-final-dispatch record, pre-measurement
+- Issue #533 addendum — measured substrate outcomes, post-ship
 
 ### Features
 
