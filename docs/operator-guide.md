@@ -562,9 +562,13 @@ three ways: carried → the era record; retired-but-RETAINED → the era
 record stamped from the retained bytes (a later retirement never flips an
 era run to a composition stamp and never wedges it); everything with no
 retained bytes (never carried, a retired identifier, unclassifiable) is
-caller data and terminalizes exactly as before. The containment
-class is an unresolvable record — a doc/echo
-disagreement or an unjudgeable or const-less doc const — left
+caller data and terminalizes exactly as before. The retained bytes must
+agree with their corpus pin before recovery uses them: an unpinned file,
+a pin mismatch, or an unreadable corpus is contained, never recorded, and
+the log line says which file to repair. The containment
+class is an unresolvable record — a doc/echo disagreement, an
+unjudgeable or const-less doc const, or retained bytes that cannot be
+verified — left
 non-terminal (no terminal record is written) and logged
 `recovery_execution_version_unresolved:`. Since issue #507 the same
 restart closes the run's queue state `terminal` with

@@ -407,6 +407,12 @@ rather than rewriting the history — that is how this file earns trust.
   `_refuse_execution_pin` fires it at the POST — and the floor shape-gates
   every raw pin before the interval comparator (typed-or-pass, never
   ValueError).
+  Fold clarification (2026-10-22, issue #534): the third leg splits —
+  version_unknown (no retained bytes) stays the composition record;
+  retained-but-untrustworthy bytes (corpus_file_unpinned /
+  corpus_pin_mismatch / unreadable corpus) is decision-level containment
+  under recovery_execution_version_unresolved: — no record, the #507
+  projection close; corrupt is never silently absent.
   Issue #507 (2026-10-21): a contained run's queue projection closes
   ``terminal`` at the recovery sweep that contains it, with NO durable
   record (the interface's recovery loop owns the projection; the wire

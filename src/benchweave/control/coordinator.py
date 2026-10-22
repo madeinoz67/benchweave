@@ -57,6 +57,7 @@ from benchweave.content.store import ContentStore
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock
 from benchweave.control.documents import (
+    AdmissionRejected,
     AdmittedDocuments,
     _classify_execution_pin,
     _corpus_root_of,
@@ -239,7 +240,12 @@ def _recovery_record_version(
          the directory) → the era record STAMPED FROM THE RETAINED BYTES
          (digest-verified resolution): a future retirement never flips an
          era run to a composition stamp AND never wedges it — this is
-         what makes doc-first era-stability true;
+         what makes doc-first era-stability true. The resolution itself
+         SPLITS (issue #534): retained-but-UNTRUSTWORTHY bytes (an
+         unpinned file, a digest mismatch, a corpus that cannot be read)
+         are decision-level CONTAINMENT quoting the refusal verbatim —
+         corrupt retained bytes are never silently absent, because the
+         composition record would launder them;
        - anything with NO retained bytes (never carried, a retired
          identifier whose directory is gone, unclassifiable) → CALLER
          DATA: the composition record exactly as before the fold (the
@@ -327,17 +333,45 @@ def _recovery_record_version(
     # NOT carried: retained bytes? (retirement ≠ removal — copy-never-move
     # keeps the directory; a later retirement must neither flip the run to
     # the composition stamp nor wedge it). Digest-verified resolution of
-    # the echo's own run-record schema: success → era-stamp from the
-    # retained bytes; refusal → no retained bytes → caller data, the
-    # composition record exactly as before the fold (the honest-ref class;
-    # the integration harnesses post these and keep recovering).
+    # the echo's own run-record schema decides: success → era-stamp from
+    # the retained bytes. A refusal SPLITS on the machine-matchable
+    # prefix (issue #534): `version_unknown:` is honest ABSENCE — no
+    # retained bytes, caller data, the composition record exactly as
+    # before the fold (the honest-ref class; the integration harnesses
+    # post these and keep recovering). Every other outcome is
+    # decision-level containment quoting the refusal verbatim:
+    # `corpus_file_unpinned:` and `corpus_pin_mismatch:` name
+    # retained-but-untrustworthy bytes; a refusal prefix this split does
+    # not name fails closed (wording drift must degrade to visible
+    # containment, never a wrong record); a non-refusal exception means
+    # the corpus itself could not be read to verify the bytes. Corrupt
+    # retained bytes are never silently absent — the composition record
+    # would launder them.
     if echo:
         try:
             _versioned_schema_path(
                 _corpus_root_of(contracts), "execution", echo, "run-record.schema.json"
             )
-        except Exception:
-            return _RecoveryDecision(None, stored_pin, (), None)
+        except AdmissionRejected as refusal:
+            message = str(refusal)
+            if message.startswith("version_unknown:"):
+                return _RecoveryDecision(None, stored_pin, (), None)
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                f"retained run-record bytes for execution@{echo} refused "
+                f"digest-verified resolution — {message}",
+            )
+        except Exception as exc:
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                f"retained run-record bytes for execution@{echo} could not "
+                f"be verified — the corpus could not be read: "
+                f"{type(exc).__name__}: {exc}",
+            )
         return _RecoveryDecision(echo, stored_pin, (), None)
     return _RecoveryDecision(None, stored_pin, (), None)
 
