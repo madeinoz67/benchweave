@@ -22,7 +22,7 @@ committed file is stale. Commit SHAs are not pinned here — run
 | interface | 0.1.1 | stable | 0.19.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui | 0.4.0 | stable | 0.19.0 | >=0.1.0 | Supersedes 0.3.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-preview | 0.2.0 | stable | 0.19.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui-class-reference | 0.3.0 | stable | 0.19.0 | >=0.1.0 | Supersedes 0.2.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui-class-reference | 0.4.0 | stable | 0.19.0 | >=0.1.0 | Supersedes 0.3.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 
 ## Retained versions
 
@@ -63,3 +63,4 @@ adoption, design record D6).
 | plugin-ui-class-reference | 0.1.0 | released | in range | — | — |
 | plugin-ui-class-reference | 0.2.0 | released | in range | — | standards/plugin-ui-class-reference/0.2.0/README.md |
 | plugin-ui-class-reference | 0.3.0 | released | in range | — | standards/plugin-ui-class-reference/0.3.0/README.md |
+| plugin-ui-class-reference | 0.4.0 | released | in range | — | standards/plugin-ui-class-reference/0.4.0/README.md |
