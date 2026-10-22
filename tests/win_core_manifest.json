@@ -78,7 +78,7 @@
     },
     "tests/contract/test_docs_site_device_classes.py": {
       "core": 0,
-      "total": 25
+      "total": 26
     },
     "tests/contract/test_docs_site_standards_cli.py": {
       "core": 0,
