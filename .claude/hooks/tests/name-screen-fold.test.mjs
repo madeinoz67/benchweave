@@ -311,7 +311,7 @@ test("F6: windows drive homes, lowercase users-dirs, and bare tilde-name homes a
   assert.ok(hits(["/", "Users", "/", "poisonbox", "/notes"].join("").toLowerCase()), "case-insensitive posix home missed");
   assert.ok(hits(["~", "poisonbox", "/bench"].join("")), "bare tilde home missed");
   // flipped by the 2026-10-22 ruled trade: tilde-slash IS a home shape now
-  assert.ok(m.publicScan(["~/", ".config/x"].join("")).some((h) => h.id === "tilde_home"), "tilde-slash home path missed");
+  assert.ok(m.publicScan(["~", "/", ".config/x"].join("")).some((h) => h.id === "tilde_home"), "tilde-slash home path missed");
 });
 
 // ---- F4: the CI job's hardening (text-level pins on the workflow) -------------------

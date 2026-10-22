@@ -69,20 +69,28 @@ test("(d) OUTSIDE-repo path + clean content -> ALLOW (path surface skipped, cont
 });
 
 // ---- second defect (2026-10-22): tilde approximation prose ---------------------
-// PR #529 reddened the name-screen CI job on the sentence "subprocess-driven,
-// ~seconds" — the bare tilde-name class matched ordinary approximation prose,
-// which this repository writes constantly. Ruled trade: a bare tilde token is
+// PR #529 reddened the name-screen CI job on a design-record sentence
+// carrying an approximation tilde directly before a duration word — the
+// bare tilde-name class matched ordinary approximation prose, which this
+// repository writes constantly. Ruled trade: a bare tilde token is
 // indistinguishable from approximation prose and approximation prose is far
-// more common here, so the class REQUIRES a path separator — tilde-slash and
-// tilde-name-slash stay home shapes; a bare tilde token does not match. The
-// consequence is disclosed in the record addendum: a bare ~username reference
-// with no path is now missed.
+// more common here, so the class REQUIRES a path separator — a tilde
+// directly before a separator and a tilde-name run before a separator stay
+// home shapes; a bare tilde token does not match. The consequence is
+// disclosed in the record addendum: a bare tilde-username reference with
+// no path is now missed.
 test("tilde trade: approximation prose allows; separator forms block", async () => {
   const m = await import("../name-screen.mjs");
   const tildes = (s) => m.publicScan(s).filter((h) => h.id === "tilde_home").length;
   for (const prose of [["~", "seconds"].join(""), ["~", "approx"].join("")]) {
     assert.equal(tildes(`fast, ${prose} per module`), 0, `approximation prose blocked: ${prose}`);
   }
+  // commit f609e724 (another session) reworded a tilde-prefixed
+  // line-number reference to a plain word in its own design record purely
+  // to stay screenable — prose was being rewritten around the false
+  // positive. RED under the pre-fix module: exit 3. Assembled, so no added
+  // line carries the shape.
+  assert.equal(tildes(["see ~", "line 497 for the shape"].join("")), 0, "approximation-with-line-number prose blocked");
   for (const prose of ["~5 min", "~10ms", "~2 min"]) {
     assert.equal(tildes(prose), 0, `approximation prose blocked: ${prose}`);
   }

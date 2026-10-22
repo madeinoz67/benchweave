@@ -415,20 +415,30 @@ half: denied).
 ## 15. Regression addendum II (2026-10-22): tilde approximation prose
 
 DEFECT (second, same screen, found on PR #529): the bare tilde-name class
-blocked ordinary approximation prose. Reproduced on #529's diff: the
-sentence "one fast unit module in `gates` (subprocess-driven, ~seconds)"
-blocked with tier=P id=tilde_home surface=content — it matched "~seconds".
-This repository writes "~seconds", "~2 min", "~10ms" constantly; the
+blocked ordinary approximation prose. Reproduced on #529's diff: a
+design-record sentence carrying an approximation tilde directly before a
+duration word (a fast unit module described as subprocess-driven with a
+one-word seconds estimate) blocked with tier=P id=tilde_home — the class
+matched the tilde-plus-word token. This repository writes approximation
+tildes before durations, counts and line numbers constantly; the
 pinned-table approach of §13 could not hold, because new prose in every
 future PR would red the CI job — the pin was a ratchet over the tracked
 tree, not an allowlist for what has not been written yet.
 
+Independent evidence the class was a real problem, not one lane's
+prose: while the fix was in flight, another session hit the same class and
+committed f609e724 — it reworded a tilde-prefixed line-number reference
+(a tilde, the word line, a space, a number) to the word around plus the
+same number, in its own design record, purely to stay screenable. Prose
+was being rewritten around a false positive.
+
 THE RULED TRADE, stated as a trade: a bare tilde token is indistinguishable
 by shape from approximation prose, and approximation prose is far more
 common here than a bare home reference. The tilde class now REQUIRES a
-path separator — tilde-slash and tilde-name-slash stay home shapes; a
-bare tilde token does not match. Consequence disclosed plainly: a bare
-~username reference with no path anywhere after it is now MISSED, and
+path separator — a tilde immediately followed by a separator, and a
+tilde-name run followed by a separator, stay home shapes; a bare tilde
+token does not match. Consequence disclosed plainly: a bare
+tilde-username reference with no path anywhere after it is now MISSED, and
 joins the §6 residuals. The tracked-tree sweep table moved accordingly:
 the 13 approximation-notation rows are deleted (their cause is gone) and
 8 separator-form rows are added — all the repository's own vocabulary
@@ -436,3 +446,9 @@ the 13 approximation-notation rows are deleted (their cause is gone) and
 operator guide and CLI help, home-form checkout paths in tracked planning
 docs). The F6 and FOLD-A pins that asserted the bare form flipped with
 the ruling.
+
+DIFF DISCIPLINE (the rule this section records): this addendum, the pin
+suite and the pattern itself describe the shapes in words and assemble
+them at runtime — no added line in this branch carries a tilde token, so
+the base branch's pre-fix screen passes this diff too. A rule
+relaxation must be screenable by the rule it relaxes.

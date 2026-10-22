@@ -119,12 +119,13 @@ const PATTERNS = [
   { id: "win_home", re: new RegExp(`${ANCHOR}[A-Za-z]:[\\\\/](?:Users|home)[\\\\/][A-Za-z0-9_.-]+`, "gi") },
   // tilde homes REQUIRE a path separator (ruled trade, 2026-10-22): a bare
   // tilde token is indistinguishable from this repo's approximation prose
-  // ("~seconds", "~2 min"), and approximation prose is far more common than a
-  // bare home reference — PR #529 reddened on the bare form. Tilde-slash and
-  // tilde-name-slash stay home shapes; a bare tilde token does not match, so
-  // a bare ~username reference with no path is MISSED (disclosed residual).
-  // A dotted name (~john.doe/x) is also missed: the run excludes dots, the
-  // typing-annotation ambiguity is unchanged.
+  // (a tilde directly before a duration, a count, or a line number), and
+  // approximation prose is far more common than a bare home reference — PR
+  // #529 reddened on the bare form. A tilde directly before a separator and
+  // a tilde-name run before a separator stay home shapes; a bare tilde token
+  // does not match, so the bare tilde-username form is MISSED (disclosed
+  // residual). A dotted personal name is also missed: the run excludes
+  // dots, the typing-annotation ambiguity is unchanged.
   { id: "tilde_home", re: new RegExp(`${ANCHOR}~(?:\\/|[A-Za-z][A-Za-z0-9_-]{2,}(?![A-Za-z0-9_-])\\/)`, "g") },
   { id: "hex_dump", re: /(?:[0-9a-f]{2} ){8,}/gi },
   { id: "mac", re: /\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi },
