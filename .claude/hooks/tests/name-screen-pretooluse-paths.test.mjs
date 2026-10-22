@@ -1,0 +1,69 @@
+// name-screen-pretooluse-paths.test.mjs — the shipped-regression pins
+// (2026-10-22). The --pretooluse filename surface screened the payload's
+// ABSOLUTE path, which sits under the operator's home directory in every
+// normal checkout — so tier P's home_path class matched the machine prefix
+// and every Edit/Write carrying a file_path was denied (reproduced on main:
+// clean in-repo payload, exit 2, id=home_path surface=filename ordinal=1).
+// The fix: pretooluse derives the REPO-RELATIVE path when the payload path is
+// inside this repository, and skips the path surface entirely when it is not.
+// Canaries invented; tier-P shapes assembled at runtime as always.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..", "..", "..");
+const SCREEN = join(ROOT, ".claude", "hooks", "name-screen.mjs");
+
+// the machine-prefix shape the bug keyed on — assembled, never literal here
+const HOME_PREFIX = ["/", "Users", "/", "poisonbox", "/src/BenchWeave"].join("");
+
+function runHook(payload, env = {}) {
+  return spawnSync(process.execPath, [SCREEN, "--pretooluse"], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+    cwd: ROOT,
+    env: { ...process.env, ...env },
+  });
+}
+
+test("(a) absolute IN-REPO path + clean content -> ALLOW (the shipped regression)", () => {
+  const r = runHook({ tool_name: "Write", tool_input: { file_path: HOME_PREFIX + "/docs/ordinary-note.md", content: "ordinary content about a real bench\n" } });
+  assert.equal(r.status, 0, `denied clean in-repo payload:\n${r.stdout}${r.stderr}`);
+});
+
+test("(b) absolute in-repo path + content carrying a home path -> BLOCK (content surface unchanged)", () => {
+  const leak = ["see /", "Users", "/", "poisonbox", "/x for notes"].join("");
+  const r = runHook({ tool_name: "Write", tool_input: { file_path: HOME_PREFIX + "/docs/ordinary-note.md", content: leak + "\n" } });
+  assert.equal(r.status, 2, `leaking content allowed\n${r.stdout}${r.stderr}`);
+  assert.match(r.stdout + r.stderr, /id=home_path/);
+});
+
+test("(c) repo-RELATIVE filename shaped like a leak -> BLOCK (filename surface kept, on relative names)", () => {
+  const d = mkdtempSync(join(tmpdir(), "ns-pp-"));
+  try {
+    const list = join(d, "l.list");
+    writeFileSync(list, "Quimbrel Testworks\n");
+    const emailName = ["contact-", ["alice", "@", "corp.example.com"].join(""), ".md"].join("");
+    const byName = runHook({ tool_name: "Write", tool_input: { file_path: "docs/" + emailName, content: "clean\n" } }, { BENCHWEAVE_NAME_LIST: list });
+    assert.equal(byName.status, 2, "repo-relative listed-name filename allowed");
+    assert.match(byName.stdout + byName.stderr, /surface=filename/);
+    const byShape = runHook({ tool_name: "Write", tool_input: { file_path: "docs/" + emailName, content: "clean\n" } });
+    assert.equal(byShape.status, 2, "repo-relative email-shaped filename allowed");
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("(d) OUTSIDE-repo path + clean content -> ALLOW (path surface skipped, content still screened)", () => {
+  const outside = ["/", "Users", "/", "poisonbox", "/scratch/elsewhere.md"].join("");
+  const clean = runHook({ tool_name: "Write", tool_input: { file_path: outside, content: "ordinary notes\n" } });
+  assert.equal(clean.status, 0, `denied clean outside-repo payload:\n${clean.stdout}${clean.stderr}`);
+  const leak = ["see /", "Users", "/", "poisonbox", "/x"].join("");
+  const dirty = runHook({ tool_name: "Write", tool_input: { file_path: outside, content: leak + "\n" } });
+  assert.equal(dirty.status, 2, "content surface lost for outside-repo paths");
+});

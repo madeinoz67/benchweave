@@ -53,7 +53,7 @@
 
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MAX_BYTES = 1048576;
@@ -396,11 +396,28 @@ function screenPayload(input, list) {
   for (const e of Array.isArray(ti.edits) ? ti.edits : []) {
     if (typeof e?.new_string === "string") texts.push(e.new_string);
   }
-  const hasPath = typeof ti.file_path === "string";
+  // The payload path is the tool call's ABSOLUTE machine path — under the
+  // operator's home directory in every normal checkout, so screening it as
+  // the filename surface denied EVERY edit (the 2026-10-22 regression:
+  // tier P's home class matched the machine prefix, exit 2 on clean
+  // content). The screened path is the REPO-RELATIVE path when the payload
+  // path is inside this repository (hook cwd is the project dir); a path
+  // outside the repository skips the path surface entirely — content is
+  // still screened there, the machine path is not content.
+  let relPath = null;
+  if (typeof ti.file_path === "string" && ti.file_path !== "") {
+    if (isAbsolute(ti.file_path)) {
+      const rootDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+      const rel = relative(rootDir, ti.file_path);
+      relPath = rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) ? rel : null;
+    } else {
+      relPath = ti.file_path;
+    }
+  }
   // F3: a path that carries the name in ANY inflection is hot — content
   // citations must not quote it either.
-  const fnHits = hasPath ? screenPaths([ti.file_path], list) : [];
-  const src = hasPath && fnHits.length === 0 ? ti.file_path : undefined;
+  const fnHits = relPath !== null ? screenPaths([relPath], list) : [];
+  const src = relPath !== null && fnHits.length === 0 ? relPath : undefined;
   for (const t of texts) {
     const body = t.length > MAX_BYTES ? t.slice(0, MAX_BYTES) : t;
     for (const h of publicScan(body)) hits.push({ ...h, src });

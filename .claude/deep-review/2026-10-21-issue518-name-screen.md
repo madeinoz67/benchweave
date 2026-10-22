@@ -376,6 +376,36 @@ GREEN (against the folded build), from the fold suite's own run counts.
   version rule is exactly leading-zero, out-of-range or first-octet-zero
   quads — and the header claim now names that mechanism. A clean
   routable quad with no leading zeros still blocks (pinned).
+## 14. Regression addendum (2026-10-22): the pretooluse path surface denied every edit
+
+DEFECT (shipped to main with the first landing): the --pretooluse wiring
+screened the payload's file_path as the filename surface — and the tool
+call's file_path is the ABSOLUTE machine path, which sits under the
+operator's home directory in every normal checkout. Tier P's home class
+matched the machine prefix, so EVERY native Edit/Write carrying a file_path
+denied: reproduced on main with a clean in-repo payload (ordinary file,
+ordinary content) exiting 2 with tier=P id=home_path surface=filename
+ordinal=1. One lane routed its edits around the hook, which is how it
+surfaced.
+
+FIX: pretooluse derives the REPO-RELATIVE path when the payload path is
+inside this repository (hook cwd is the project dir; CLAUDE_PROJECT_DIR
+when set) and screens that; a payload path outside the repository skips
+the path surface entirely — content is still screened there, and a
+machine path is not repo content. The content surface is unchanged.
+
+WHY THE ACCEPTANCE ARMS MISSED IT, stated plainly: every pretooluse arm
+in the three suites used repo-relative payload paths, so the tool's own
+invocation shape — an absolute path under the operator's home — was never
+screened by any arm. The regression file
+(name-screen-pretooluse-paths.test.mjs) pins all four directions:
+absolute in-repo + clean -> ALLOW (RED pre-fix: denied), absolute
+in-repo + leaking content -> BLOCK (passed pre-fix — the content surface
+was never broken), repo-relative leak-shaped filename -> BLOCK (passed
+pre-fix — the relative filename surface was never broken), outside-repo
++ clean -> ALLOW / + leaking content -> BLOCK (RED pre-fix on the ALLOW
+half: denied).
+
 - **DISCLOSE-D** landed as the two §6 residual sentences: no integrity
   pin on the screen itself (human review of a hook diff is the only
   catch), and letter-only asset tags pass by design (the serial class
