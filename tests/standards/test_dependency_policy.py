@@ -107,12 +107,13 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
     {0.1.0, 0.2.0}, interface {0.1.0, 0.1.1} (the #450 revision rides the
     fold's reverted >=0.1.0 range — multi-serving like the design's own
     carried-set rule), plugin-ui {0.4.0} (F1 narrow range),
-    plugin-ui-class-reference {0.1.0, 0.2.0} (multi-serving from the L5
-    widening), plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
+    plugin-ui-class-reference {0.1.0, 0.2.0, 0.3.0, 0.4.0} (multi-serving:
+    the L5 widening, L11's 0.3.0 and the 0.4.0 composed-action class),
+    plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
     versions" but its own enumeration sums to 10 — the per-id sets are the
     load-bearing rules (each traced to retained directories and declared
-    ranges); the total is their consequence. Recorded as a design arithmetic
-    slip in the slice measurement record."""
+    ranges); the total is their consequence (18 at the 0.4.0 family bump).
+    Recorded as a design arithmetic slip in the slice measurement record."""
     policy = load_dependency_policy(ROOT)
     manifest = load_manifest(ROOT)
     validate_dependency_policy(policy, manifest, ROOT)
@@ -125,10 +126,10 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0", "0.1.1"),
         "plugin-ui": ("0.4.0",),
-        "plugin-ui-class-reference": ("0.1.0", "0.2.0", "0.3.0"),
+        "plugin-ui-class-reference": ("0.1.0", "0.2.0", "0.3.0", "0.4.0"),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 17
+    assert sum(len(versions) for versions in served.values()) == 18
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:
