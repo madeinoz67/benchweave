@@ -1,0 +1,39 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="a" value="Descriptor declares an action" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f8f9;strokeColor=#c3cfd5;fontColor=#17242c;fontFamily=Helvetica;fontSize=13;fontStyle=1;arcSize=14;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="20" width="300" height="56" as="geometry"/>
+    </mxCell>
+    <mxCell id="d1" value="A served catalog describes it?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8fa3ad;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="280" y="116" width="240" height="120" as="geometry"/>
+    </mxCell>
+    <mxCell id="l1" value="&lt;b&gt;Layer 1 — class action&lt;/b&gt;&lt;br&gt;&lt;br&gt;Designed component from the class corpus&lt;br&gt;&lt;font color=&quot;#0b7181&quot;&gt;resolution: catalog&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dceef1;strokeColor=#0b7181;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="700" y="126" width="320" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="d2" value="A composed action class claims it?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8fa3ad;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="280" y="296" width="240" height="120" as="geometry"/>
+    </mxCell>
+    <mxCell id="l2" value="&lt;b&gt;Layer 2 — composed action class&lt;/b&gt;&lt;br&gt;&lt;br&gt;Schema and side effect from a declaration&lt;br&gt;&lt;font color=&quot;#0b7181&quot;&gt;resolution: composed&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f8f9;strokeColor=#0b7181;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="700" y="306" width="320" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="l3" value="&lt;b&gt;Layer 3 — residual custom member&lt;/b&gt;&lt;br&gt;&lt;br&gt;Derived from the descriptor&#39;s constraints&lt;br&gt;&lt;font color=&quot;#5b6f79&quot;&gt;resolution: custom&lt;/font&gt;" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#f5f8f9;strokeColor=#5b6f79;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="476" width="300" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="a" target="d1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0b7181;strokeWidth=1.5;endArrow=block;endSize=7;fontColor=#0b7181;fontFamily=Helvetica;fontSize=11;fontStyle=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="d1" target="l1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e3" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;fontColor=#5b6f79;fontFamily=Helvetica;fontSize=11;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="d1" target="d2">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e4" value="yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0b7181;strokeWidth=1.5;endArrow=block;endSize=7;fontColor=#0b7181;fontFamily=Helvetica;fontSize=11;fontStyle=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="d2" target="l2">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e5" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;fontColor=#5b6f79;fontFamily=Helvetica;fontSize=11;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="d2" target="l3">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
