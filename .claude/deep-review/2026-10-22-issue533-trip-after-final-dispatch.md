@@ -220,3 +220,50 @@ every number to its substrate — the record never implies the plain arm decided
   the whole diff text), all of `threading`/`asyncio`/`subprocess`/`sha256`/`hashlib`/
   `migrate`/`recovery` 0 on added lines. Tier 3 by the `protection` keyword, as
   designed.
+
+## Fold addendum (2026-10-22, the refute lanes' rows — one wave, per-row RED)
+
+**F1 (lane A, MEDIUM — accepted, fixed):** the shipped universal ("an observed
+continuous-condition violation can never produce a ``passed`` record") was FALSE.
+Composite, previously undisclosed: a principal cancel and the violation arm together
+on the body's final dispatch — the post-dispatch tick honours the cancel BEFORE the
+signals (`_check_body_phase` runs first) and `_set_cause` is first-wins
+(`coordinator.py`, `if self.cause is None:`), so `cancelled` owns the cause, the trip
+never latches, no next dispatch exists to refuse, and the record read `outcome:
+passed` with the violation ABSENT FROM REASONS ENTIRELY (probe, pre-fold: reasons =
+`['cancelled by principal for run run-x']` only) — worse than the defect this issue
+convicted. Fold: `_body_truth`'s fall-through now appends `monitor.violations` when
+the cause is not `tripped` (outranked is not absent); the outcome is untouched —
+a cancel is principal intent, and the composite's mapping stays the cancel window's
+own (`passed`). RED (pre-fold): `assert False` on the violation-missing `any`
+(`tests/faults/test_protection.py:996`, junit 3/2/0); GREEN post-fold: exit 0, the
+record carries `['cancelled by principal for run run-x',
+'dut-voltage-bounds: interval_escape: [5.85, 5.95] escapes [-0.1, 5.5]']`. The
+universal is narrowed in the module docstring, `_body_truth`'s docstring, and the
+CTL-8 amendment.
+
+**F2 (lane B, LOW — accepted, deduped):** commit `6181e820`'s reasons merge regressed
+the classic blocked-trip cell — the executor's blocking-proxy reason repeats the
+violation verbatim, so the record carried it twice (probe: 2 reasons). Fold: the
+merge runs only on the completed arm (`if not monitor.blocked:`), so the blocked
+cell's record is byte-identical to its pre-#533 shape (probe: 1 reason). RED
+(pre-fold): `assert 2 == 1` on the tightened exactly-once pin in
+`test_condition_violation_trips_and_safe_transition_verifies` (`:465`); GREEN
+post-fold: exit 0.
+
+**F3 (lane B, MINOR — accepted):** the amendment's `coordinator.py:722`/`:1304` cites
+were six lines stale (the own docstring growth moved them). Re-pointed BY NAME
+(`_MonitoringPlugin.dispatch`'s post-dispatch arm; the post-body tick in
+`_run_and_record`) so they cannot drift again.
+
+**F4 (lane B, MINOR — accepted):** the amendment now carries the narrowed bound with
+its mechanism inline (cancel-before-signals + first-wins) plus the `completed`-is-the-
+only-passed-producer clause, pinned by
+`test_passed_is_reachable_from_exactly_one_body_outcome` — the body-outcome set is
+derived from the vendored run-record schema's enum, not hand-copied, so a second
+passed-producing row reddens instead of silently falsifying the sentence.
+
+Manifest: `tests/win_core_manifest.json` 39→41 (the ratchet's own `--refresh`, two
+new tests). Gates: ruff 0, fresh-cache bare mypy 0 (447 files), focused
+`tests/control/` + `tests/faults/` 349/0/0 exit 0; full battery recorded in the
+fold commit's message.

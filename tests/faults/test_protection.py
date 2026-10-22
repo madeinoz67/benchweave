@@ -26,7 +26,7 @@ from jsonschema import Draft202012Validator
 
 from benchweave.control.binding import resolve_binding
 from benchweave.control.clocking import TestClock
-from benchweave.control.coordinator import RunCoordinator
+from benchweave.control.coordinator import RunCoordinator, terminal_outcome
 from benchweave.control.documents import AdmittedDocuments, admit_documents
 from benchweave.control.executor import Executor
 from benchweave.control.protection import ProtectionEngine, read_signal_values
@@ -459,7 +459,10 @@ def test_condition_violation_trips_and_safe_transition_verifies(tmp_path: Path) 
     assert record["body_outcome"] == "tripped"
     assert record["safe_state"] == "verified"
     assert record["outcome"] == "tripped"
-    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    # F2 (fold, refute lane B): the violation rides EXACTLY once — the
+    # blocked body's executor proxy reason repeats it verbatim and is
+    # deduped away, so this cell's record keeps its pre-#533 shape.
+    assert sum("dut-voltage-bounds" in reason for reason in record["reasons"]) == 1
     assert fault.disable_dispatches(), "the safe action must have been dispatched"
     _validate_record(record)
     run = store.get_run("run-trip")
@@ -956,6 +959,62 @@ def test_trip_after_final_dispatch_still_ends_body_tripped(tmp_path: Path) -> No
     assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
     assert fault.disable_dispatches(), "the safe action must have been dispatched"
     _validate_record(record)
+
+
+def test_cancel_window_trip_still_carries_the_violation(tmp_path: Path) -> None:
+    """A cancel latched first in the final-dispatch window never erases the trip.
+
+    The principal cancel and the voltage fault arm together on the body's
+    last measure invoke. The post-dispatch tick honours the cancel BEFORE
+    the signals (``_check_body_phase`` runs first) and the cause latch is
+    first-wins, so ``cancelled`` owns the cause and the trip never latches —
+    no next dispatch exists to refuse either. The body completes and the
+    outcome follows the cancel window's own mapping (``passed``; a cancel is
+    principal intent, not a violation), but the observed violation must ride
+    in the reasons: outranked, never erased.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_cancel_and_trip(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 4:  # the body's final dispatch
+            coordinator.cancel("run-cancel-trip", "principal-a")
+            fault.force_voltage_v = 5.9  # violates the condition in the same window
+
+    fault.on_invoke = arm_cancel_and_trip
+
+    record = coordinator.start_run("run-cancel-trip", "principal-a")
+
+    assert record["body_outcome"] == "completed"
+    assert record["outcome"] == "passed"  # the cancel window's own mapping, by design
+    assert any("cancelled by principal" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_passed_is_reachable_from_exactly_one_body_outcome() -> None:
+    """``completed`` is the sole body outcome that maps to ``passed``.
+
+    The CTL-8 amendment's narrowed bound (a violation ends the body
+    ``tripped`` unless a principal cancel latched first) leans on this: a
+    second passed-producing row would silently falsify the sentence. This
+    pin reddens instead — over every body outcome the run-record schema
+    admits, not a hand-copied list.
+    """
+    schema = json.loads(RUN_RECORD_SCHEMA.read_text(encoding="utf-8"))
+    body_outcomes = schema["properties"]["body_outcome"]["enum"]
+    passed_producers = [
+        outcome
+        for outcome in body_outcomes
+        if terminal_outcome(outcome, "verified") == "passed"
+    ]
+    assert passed_producers == ["completed"]
 
 
 # --- lease lifecycle ----------------------------------------------------------------

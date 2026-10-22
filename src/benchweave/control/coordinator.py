@@ -27,10 +27,13 @@ safety, and no report may say ``passed`` while final safety is unknown. The
 body outcome is recorded independently alongside it. A monitor cause
 (trip/cancel) replaces the body outcome when its block terminated the body,
 and a trip replaces it equally over a body the executor completed with the
-violation observed — an observed continuous-condition violation can never
-produce a ``passed`` record; any other cause observed alongside a body that
-ended on its own outcome is appended to the reasons and never downgrades an
-uncertain or failed body.
+violation observed — an observed violation always appears in the record and
+ends the body ``tripped``, unless a principal cancel latched first in the
+final-dispatch window (the tick honours the cancel before the signals and
+the cause latch is first-wins): then the outcome follows the cancel
+window's own mapping and the violation rides as a reason; any other cause
+observed alongside a body that ended on its own outcome is appended to the
+reasons and never downgrades an uncertain or failed body.
 
 Event aliasing: the executor returns step events whose dicts it also retains
 inside the shared occurrence ledger. This coordinator treats retained
@@ -1418,8 +1421,11 @@ class RunCoordinator:
         a body the executor COMPLETED (the violation was first observed by
         the final dispatch's post-dispatch tick or after the body, so no
         block latched): the block is the mechanism, not the definition, and
-        an observed continuous-condition violation can never produce a
-        ``passed`` record. When the body ended on any other outcome of its
+        an observed violation always appears in the record and ends the
+        body ``tripped`` — unless a principal cancel latched first in the
+        final-dispatch window, where the outcome follows the cancel
+        window's own mapping and the violation rides as an appended reason.
+        When the body ended on any other outcome of its
         own — uncertain dispatch, failed assertion, deadline — a cause
         observed alongside or after it may never downgrade the body: the
         executor's reasons are preserved and the cause reasons are APPENDED
@@ -1430,9 +1436,14 @@ class RunCoordinator:
             monitor.blocked or body.body_outcome == "completed"
         ):
             reasons = list(monitor.cause_reasons)
-            for reason in body.reasons:
-                if reason not in reasons:
-                    reasons.append(reason)
+            if not monitor.blocked:
+                # The completed arm keeps any executor reasons; the blocked
+                # arm does not — its executor reason is the blocking proxy,
+                # repeating the violation verbatim, and the blocked cell's
+                # record stays byte-identical to its pre-#533 shape.
+                for reason in body.reasons:
+                    if reason not in reasons:
+                        reasons.append(reason)
             return "tripped", reasons
         if monitor.blocked and monitor.cause == "cancelled":
             return "cancelled", list(monitor.cause_reasons)
@@ -1440,6 +1451,14 @@ class RunCoordinator:
         for reason in monitor.cause_reasons:
             if reason not in reasons:
                 reasons.append(reason)
+        if monitor.cause != "tripped":
+            # The fold's bound: a violation observed during the body is
+            # never erased by a cause that latched first (a principal
+            # cancel in the final-dispatch window outranks the trip, and
+            # outranked is not absent) — it rides in the reasons.
+            for violation in monitor.violations:
+                if violation not in reasons:
+                    reasons.append(violation)
         return body.body_outcome, reasons
 
     def _evidence_refs(self, run_id: str) -> list[dict[str, str]]:
