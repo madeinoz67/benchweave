@@ -563,12 +563,17 @@ record stamped from the retained bytes (a later retirement never flips an
 era run to a composition stamp and never wedges it); everything with no
 retained bytes (never carried, a retired identifier, unclassifiable) is
 caller data and terminalizes exactly as before. The retained bytes must
-agree with their corpus pin before recovery uses them: an unpinned file,
-a pin mismatch, or an unreadable corpus is contained, never recorded, and
-the log line says which file to repair. The containment
+agree with their corpus pin before recovery uses them: an unpinned file
+or a pin mismatch is contained, never recorded, and the log line says
+which file to repair. A corpus that cannot be read (a permission, an
+input/output error, a manifest that does not parse) is not a bench fact:
+recovery leaves the run untouched, writes no record, and does not close
+the run — the log line says what to repair, and after you repair the
+corpus the next restart writes the honest record for the run. Until that
+time the bench stays not available. The containment
 class is an unresolvable record — a doc/echo disagreement, an
-unjudgeable or const-less doc const, or retained bytes that cannot be
-verified — left
+unjudgeable or const-less doc const, or retained bytes that failed their
+pin — left
 non-terminal (no terminal record is written) and logged
 `recovery_execution_version_unresolved:`. Since issue #507 the same
 restart closes the run's queue state `terminal` with

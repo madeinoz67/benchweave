@@ -62,6 +62,10 @@ not widened here.
 - `src/benchweave/control/coordinator.py` — the split (branch, import,
   docstring);
 - `tests/faults/test_recovery_sweep_faults.py` — the corruption cohort;
+- `tests/win_core_manifest.json` — the fault file's collected count
+  (10 → 15 at the first slice, 15 → 17 at the fold), core 0: the
+  partition ratchet's own pin, refreshed through
+  `scripts/ci/win_core_manifest.py --refresh` (one row per refresh);
 - `docs/internal/invariants.md` — CON-1 fold-clarification amendment;
 - `docs/operator-guide.md` — the three-way sentence gains the split (drift
   obligation 4; README carries no recovery sentence, verified).
@@ -133,9 +137,14 @@ scope).
 ## Review tier
 
 TIER 3 by the keyword rule: the diff text contains `recovery`, `sha256`,
-`hashlib` (the designer's scan over the expected diff: recovery 24, sha256 2,
-hashlib 2, all other tier-3 keywords 0). The actual diff's counts are
-recorded in the implementation commit's message. Expect the deep refute
+`hashlib`. Count labels, each with its scan basis: the DESIGNER's scan over
+the expected diff — recovery 24, sha256 2, hashlib 2; the LANE's scan over
+the committed first-slice branch diff, added lines, all files including
+this record — recovery 11, sha256 3, hashlib 2; LANE B's measured scan
+(their fold-review basis) — recovery 15, sha256 1, hashlib 0. All other
+tier-3 keywords 0 in every scan. The final counts for the branch as pushed
+are recorded in the fold commit's message (the first slice's commit
+04685a97 omitted them — fold F4's correction). Expect the deep refute
 slate.
 
 ## Ordering disclosure
@@ -149,3 +158,72 @@ correction, every number shipped in the implementation commit's message and
 the lane report comes from the post-commit re-run taken on the tree exactly
 as it stands after this commit — the first pass's numbers are not evidence
 for this increment.
+
+## Pre-PR review fold (F1-F5, 2026-10-22)
+
+The two refute lanes' findings, folded before the PR. Dispositions:
+
+- **F1 (MEDIUM, lane A) — access failure ≠ corruption, folded as designed,
+  not patched.** The first slice's non-refusal leg (unreadable corpus)
+  CONTAINED: the #507 projection close then made a repairable environment
+  condition (chmod, IO, a manifest that fails to parse) an irreversible
+  no-record ending — the pre-fix blanket except would have recovered the
+  same transient on the next boot. The line now drawn in the mechanism,
+  the CON-1 amendment and the operator guide: CONTENT corruption (an
+  unpinned file, a digest mismatch — durable facts about the bytes; plus
+  any refusal prefix the split does not name, fail-closed) contains, as
+  shipped. ACCESS failure does NOT contain and does NOT compose: the run
+  is left untouched and unreported under `recovery_corpus_access_failed:`
+  — no record, no containment, no projection close, the lease as found —
+  and the next sweep recovers it with the honest record once the operator
+  repairs the environment. Consequence, stated deliberately: while the
+  condition holds, the bench stays unavailable and the run has no record
+  (CTL-11's refuse-rather-than-lie governs; the #507 close is
+  irreversible over a live row, so it cannot be the answer to a
+  transient). Arms: D4 reclassified (below), plus the transient sweep arm
+  `test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot`
+  (unreadable at boot one — untouched, unreported, bench busy, lease
+  unreleased; repaired at boot two — recovered with the durable
+  interrupted/unknown era record, projection terminal, bench bookable).
+- **D4 classification decision (fold F1's delegation), with the
+  evidence:** an unparseable corpus manifest is ACCESS-class, not content
+  corruption. A digest mismatch is positive evidence the retained bytes
+  are wrong; a manifest that cannot parse is no evidence about the schema
+  bytes at all — it proves only that the verification machinery could not
+  run — and it is repaired by restoring the environment, not by
+  re-judging bench fact. Treating machinery failure as evidence would be
+  the mirror of the laundering this increment closes: ignorance converted
+  into a terminal no-record outcome. Pinned by
+  `test_unparseable_corpus_manifest_is_an_access_failure_not_containment`
+  (reason names `corpus-manifest.json`).
+- **F2 (LOW, lane A) — folded.** `str()` on a caught exception is guarded
+  (`_safe_exc_text`): an exception whose `__str__` raises falls back to
+  the type name, so a poisoned `__str__` cannot turn a recovery
+  disposition into a startup crash; the fail-closed containment still
+  fires with identifiable text.
+- **F3 (LOW, lane B) — folded.** Containment reasons name the file
+  through the verbatim refusal (prefix and relative path — asserted in
+  D1/D2); the access-failure reason names both files the digest check
+  reads (`standards/execution/<echo>/run-record.schema.json` and
+  `corpus-manifest.json` under the corpus root).
+- **F4 (LOW, lane B) — folded.** This record's Files section now carries
+  `tests/win_core_manifest.json`; §Review tier carries all three labelled
+  scans (designer estimate, lane measurement, lane B measurement) and
+  names where the final counts live; the fold commit's message carries
+  them (04685a97's omission corrected).
+- **F5 (NIT) — folded.** The unrecognised-prefix fail-closed default is
+  pinned in-tree by
+  `test_unrecognised_refusal_prefix_fails_closed_to_containment` —
+  today's raise site has no fourth prefix (it raises exactly
+  version_unknown / corpus_file_unpinned / corpus_pin_mismatch), so the
+  arm synthesizes the drifted refusal at the module-bound seam the split
+  consumes, pinning the DEFAULT, not a raise site.
+
+Fold RED (against the pushed first-slice tip 04685a97, before the fold
+implementation): junitxml tests=17 failures=3 — D4-new
+`AttributeError: '_RecoveryDecision' object has no attribute
+'access_failure'` (the disposition did not exist); the F5 arm the same
+AttributeError on its access-class assert; the transient arm the kill
+shape verbatim: `AssertionError: no projection close while access fails;
+run_states=[('run-acc-1', 'terminal')]`. Fold GREEN: tests=17 failures=0.
+D1/D2/D3/S1 and all existing arms green in both runs.

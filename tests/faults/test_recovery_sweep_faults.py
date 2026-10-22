@@ -757,22 +757,31 @@ def test_retained_bytes_without_corpus_row_is_contained(tmp_path: Path) -> None:
     assert decision.record_version is None, decision
 
 
-def test_unreadable_corpus_manifest_is_contained(tmp_path: Path) -> None:
-    """D4 (issue #534): the corpus manifest itself unreadable (invalid
-    JSON) — the digest check cannot even run. Not honest absence: the
-    schema bytes exist but cannot be trusted, so the split's
-    non-refusal leg contains, naming the unreadable corpus state. The
-    pre-fix blanket except composed here too."""
+def test_unparseable_corpus_manifest_is_an_access_failure_not_containment(
+    tmp_path: Path,
+) -> None:
+    """D4 (#534 fold F1): the corpus manifest unparseable — classified
+    ACCESS failure, not content corruption, on the evidence: a manifest
+    that cannot parse is no evidence about the retained schema bytes (a
+    digest mismatch is positive evidence the bytes are wrong; a broken
+    manifest only proves the verification machinery could not run), and
+    it is repaired by restoring the environment, not by re-judging
+    bench fact. The disposition is the refuse-rather-than-lie skip: no
+    record, no containment, no projection close — the run recovers on
+    the next sweep after repair, and the reason names the file to
+    repair. RED at the pre-fold tip, which CONTAINED this class (an
+    irreversible no-record ending for a repairable condition)."""
     corpus = _retired_era_corpus(tmp_path)
     (corpus / "corpus-manifest.json").write_text("{ not json", encoding="utf-8")
 
     decision = _retained_echo_decision(corpus)
 
-    assert decision.containment is not None, (
-        f"an unreadable corpus must contain, not compose: {decision}"
+    assert decision.access_failure is not None, (
+        f"an unparseable manifest is an access failure, not a bench fact: {decision}"
     )
-    assert "corpus" in decision.containment, decision.containment
+    assert decision.containment is None, decision
     assert decision.record_version is None, decision
+    assert "corpus-manifest.json" in decision.access_failure, decision.access_failure
 
 
 def test_absent_retained_bytes_stays_the_composition_decision(tmp_path: Path) -> None:
@@ -869,4 +878,132 @@ def test_sweep_over_tampered_retained_corpus_contains_and_releases(
         assert run_after is not None
         assert run_after["terminal"] is None, "no sweep may invent a record"
     finally:
+        store.close()
+
+
+def test_unrecognised_refusal_prefix_fails_closed_to_containment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F5 (#534 fold): a refusal prefix the split does not name (wording
+    drift a future documents.py may ship) fails CLOSED — containment,
+    never a composition record, and never the access class (a typed
+    refusal is a fact about the artifact; an untyped exception is the
+    machinery failing). Today's raise site has no fourth prefix (it
+    raises exactly version_unknown / corpus_file_unpinned /
+    corpus_pin_mismatch), so the arm synthesizes the drifted refusal at
+    the seam the split consumes — the module-bound resolution function —
+    pinning the DEFAULT, not a raise site."""
+    import benchweave.control.coordinator as coordinator_module
+    from benchweave.control.documents import AdmissionRejected
+
+    def _drifted(
+        corpus: Path, standard: str, version: str, document_name: str
+    ) -> Path:
+        raise AdmissionRejected(
+            f"future_refusal_class: {standard}/{version}/{document_name} "
+            "refused for a reason this split has never seen"
+        )
+
+    monkeypatch.setattr(coordinator_module, "_versioned_schema_path", _drifted)
+    corpus = _retired_era_corpus(tmp_path)
+
+    decision = _retained_echo_decision(corpus)
+
+    assert decision.containment is not None, (
+        f"an unrecognised refusal prefix fails closed: {decision}"
+    )
+    assert "future_refusal_class" in decision.containment, decision.containment
+    assert decision.access_failure is None, decision
+    assert decision.record_version is None, decision
+
+
+def test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """F1 (#534 fold, the kill shape): an ACCESS failure at boot one is
+    transient — the run is left untouched (no record, no containment, no
+    projection close, the lease unreleased: the bench stays unavailable
+    and that is deliberate), and once the operator repairs the access
+    condition the NEXT sweep recovers the run with the honest durable
+    era record. RED at the pre-fold tip: containment closed the
+    projection terminal over the missing record, the second sweep found
+    nothing left to sweep, and the transient had become an irreversible
+    no-record ending."""
+    import logging
+    import os
+
+    corpus = _retired_era_corpus(tmp_path)
+    schema = corpus / "execution" / "0.1.0" / "run-record.schema.json"
+
+    def sweep(store: Store) -> list[str]:
+        return _recover_interrupted_runs(
+            store,
+            FIXTURES,
+            emit_keep=100,
+            now_iso=lambda: NOW,
+            contracts=corpus / "execution" / "0.2.0",
+        )
+
+    store = Store.open(tmp_path / "unreadable-then-repaired.db")
+    os.chmod(schema, 0o000)
+    try:
+        store.create_run("run-acc-1", dict(ERA_BINDING, id="req-acc-1"), "p1", NOW)
+        store.put_run_state("run-acc-1", BENCH_ID, "running", NOW)
+        store.next_lease(
+            BENCH_ID, "lease-acc-1", holder="run:run-acc-1", expires_at=NOW
+        )
+        assert _busy(store) is True, "pre-condition: the live row owns the bench"
+        # Boot one: the corpus is unreadable — the run is left as found.
+        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
+            recovered = sweep(store)
+        assert recovered == [], (
+            f"an access-failed run is deferred, not recovered: {recovered}"
+        )
+        run = store.get_run("run-acc-1")
+        assert run is not None
+        assert run["terminal"] is None, "no record while access fails"
+        row = store.get_run_state("run-acc-1")
+        assert row is not None and row["state"] == "running", (
+            f"no projection close while access fails; run_states={_states(store)}"
+        )
+        assert _busy(store) is True, (
+            "the bench stays unavailable while the corpus is unreadable — deliberate"
+        )
+        assert store.get_active_lease(BENCH_ID) is not None, (
+            "the crashed run's lease is left as found"
+        )
+        assert any(
+            "recovery_corpus_access_failed" in record.message
+            and "run-acc-1" in record.message
+            for record in caplog.records
+        ), (
+            "the access failure is logged loudly, naming the run: "
+            f"{[r.message for r in caplog.records]}"
+        )
+        assert not any(
+            UNSOLVED_LOG in record.message for record in caplog.records
+        ), "an access failure is not containment"
+        # Repair: the operator restores readability; nothing else changed.
+        os.chmod(schema, 0o644)
+        # Boot two: the same run recovers with the durable honest record.
+        recovered = sweep(store)
+        assert recovered == ["run-acc-1"], f"recovered={recovered}"
+        run = store.get_run("run-acc-1")
+        assert run is not None
+        assert run["terminal"] is not None, (
+            "the repaired boot writes the honest record"
+        )
+        assert run["terminal"]["outcome"] == "interrupted"
+        assert run["terminal"]["safe_state"] == "unknown"
+        assert run["terminal"]["contract_version"] == "0.1.0", (
+            "the retained bytes era-stamp once they can be read again"
+        )
+        row = store.get_run_state("run-acc-1")
+        assert row is not None and row["state"] == "terminal", (
+            f"the repaired boot closes the projection; run_states={_states(store)}"
+        )
+        assert _busy(store) is False, "the repaired boot releases the bench"
+        assert sweep(store) == [], "a third sweep finds nothing left"
+    finally:
+        os.chmod(schema, 0o644)  # never leak the 000 mode out of the arm
         store.close()
