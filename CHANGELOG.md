@@ -70,6 +70,8 @@ All notable changes to this project will be documented in this file.
 - A trip observed after the final dispatch ends the body tripped (issue #533)
 - Fold the #533 refute rows — a violation is outranked, never erased
 - Merge observed violations on EVERY _body_truth arm (#533 arm sweep)
+- Split corrupt retained bytes from honest absence in recovery
+- Fold F1-F5 — access failure defers, corruption contains
 
 ### Documentation
 
@@ -176,6 +178,7 @@ All notable changes to this project will be documented in this file.
 - Owner-ruled revision — detect-and-bound with escalation (#517)
 - Issue #533 trip-after-final-dispatch record, pre-measurement
 - Issue #533 addendum — measured substrate outcomes, post-ship
+- Issue #534 recovery-evidence record — corrupt retained bytes
 
 ### Features
 
@@ -318,6 +321,7 @@ All notable changes to this project will be documented in this file.
 - Lift lane A's named malformed-result shapes and the disclosed width pin
 - Pin the readings pairs' pre-existing finding as recorded state (#525)
 - Pin the line-number approximation form; record the f609e724 evidence
+- Restore the fixture to owner-only modes
 
 ### Build
 
