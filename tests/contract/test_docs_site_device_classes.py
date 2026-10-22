@@ -33,8 +33,16 @@ These tests pin the generation (the standards-CLI pin's shape):
   class or plan row added anywhere reddens here. That red is the tripwire
   doing its job, not noise.
 - T2 — the rendered page: every implemented row links its preview at the
-  published URL shape, every planned row carries its sweep slot, the state
-  vocabulary is closed, and the provenance marker is present.
+  published URL shape through the preview icon, every planned row carries
+  its sweep slot in the state icon's machine token and accessible label,
+  the state vocabulary is closed, and the provenance marker is present.
+  The State and Preview cells are ICONS, not prose (the layout defect the
+  principal reported on the published page: the prose cells forced the
+  table wider than its column at common window sizes, so the preview
+  column needed horizontal scrolling). Every icon carries a
+  machine-readable token the gate reads (data-state / data-slot /
+  data-preview) and an accessible label a screen reader says; the visible
+  cell is the icon alone.
 - T3 — the reverse direction over the REAL tree: every mockup has exactly
   one row and that row is state=implemented (an orphan preview, or a
   mockup the table calls planned, fails).
@@ -66,11 +74,42 @@ ROOT = Path(__file__).resolve().parents[2]
 #: (``user-guide/device-classes/class-<slug>.html``), linked from the page
 #: as ``device-classes/class-<slug>.html``.
 PREVIEW_LINK_RE = re.compile(r"^device-classes/class-(?P<slug>[a-z0-9_]+)\.html$")
-# The planned state names the slot as a FUTURE slot and marks the row
-# post-MVP (the principal's ruling: the implemented set is the approved
-# MVP set; the remaining sweep slots are not scheduled) — never as
-# imminent work, and never with a date.
-PLANNED_STATE_RE = re.compile(r"^Planned \(post-MVP, future slot (?P<slot>L\d+)\)$")
+# The icon-cell grammars. A state cell is EXACTLY one span wrapping one
+# inline SVG: the machine-readable state token (data-state), the sweep
+# slot for planned rows (data-slot), and an accessible label that names
+# both (the planned label names the slot as a FUTURE slot and marks the
+# row post-MVP — the principal's ruling on #499: the implemented set is
+# the approved MVP set, the remaining sweep slots are not scheduled;
+# never as imminent work, and never with a date). A preview cell is the
+# link icon for implemented rows (the published URL shape, twice: the
+# machine token and the href) or a plainly inert span for planned rows.
+STATE_CELL_RE = re.compile(
+    r'^<span class="dc-state(?: dc-state-planned)?" '
+    r'data-state="(?P<state>implemented|planned)"'
+    r'(?: data-slot="(?P<slot>L\d+)")? '
+    r'role="img" aria-label="(?P<label>[^"]+)" title="[^"]+">'
+    r'<svg [^>]*>.*</svg></span>$'
+)
+PREVIEW_LINK_CELL_RE = re.compile(
+    r'^<a class="dc-preview" '
+    r'data-preview="(?P<href>device-classes/class-(?P<slug>[a-z0-9_]+)\.html)" '
+    r'href="(?P=href)" aria-label="[^"]+" title="[^"]+">'
+    r'<svg [^>]*>.*</svg></a>$'
+)
+PREVIEW_NONE_CELL_RE = re.compile(
+    r'^<span class="dc-preview dc-preview-none" data-preview="none" '
+    r'role="img" aria-label="[^"]+" title="[^"]+">'
+    r'<svg [^>]*>.*</svg></span>$'
+)
+#: The Class cell keeps the machine slug in a code span and moves the
+#: corpus title into a wrappable title span — the parenthetical title in
+#: the cell is the width the defect removed. Planned rows carry no title
+#: span (the plan record holds slug and slot only).
+TITLE_SPAN_RE = re.compile(r'<span class="dc-title">(?P<title>[^<]+)</span>')
+#: The page carries its own scoped style block for the icon cells (the
+#: renderer passes a body style block through verbatim — probed on the
+#: real great-docs 0.17.0 build, not assumed).
+TABLE_STYLE_MARK = '<style class="dc-table-style">'
 PROVENANCE = (
     "generated from the class-reference corpus, the sweep plan record and the authoring mockups"
 )
@@ -230,17 +269,36 @@ def test_t2_page_renders_every_row_with_resolvable_preview_links() -> None:
         assert len(cells) == 3, f"every row has Class, State, Preview: {cells}"
         slug = cells[0].split("`")[1]
         seen.add(slug)
+        state = STATE_CELL_RE.match(cells[1])
+        assert state is not None, (
+            f"state cell is one icon span with its token and label: {cells[1]!r}"
+        )
         if rows[slug]["state"] == "implemented":
-            assert cells[1] == "Implemented", cells
-            match = re.match(r"\[Preview\]\(([^)]+)\)", cells[2])
-            assert match is not None, f"implemented row links its preview: {cells}"
-            assert PREVIEW_LINK_RE.match(match.group(1)) is not None, cells
-            assert match.group(1) == f"device-classes/class-{slug}.html", cells
+            assert state.group("state") == "implemented", cells
+            assert state.group("slot") is None, f"an implemented row carries no slot: {cells}"
+            assert state.group("label") == "Implemented", cells
+            title = TITLE_SPAN_RE.search(cells[0])
+            assert title is not None, f"implemented Class cell carries the corpus title: {cells}"
+            assert title.group("title") == rows[slug]["title"], cells
+            preview = PREVIEW_LINK_CELL_RE.match(cells[2])
+            assert preview is not None, f"implemented row links its preview icon: {cells}"
+            assert PREVIEW_LINK_RE.match(preview.group("href")) is not None, cells
+            assert preview.group("slug") == slug, cells
         else:
-            state = PLANNED_STATE_RE.match(cells[1])
-            assert state is not None, f"planned state carries its sweep slot: {cells}"
-            assert state.group("slot") == rows[slug]["slot"], cells
-            assert cells[2] == "Not yet available", cells
+            assert state.group("state") == "planned", cells
+            assert state.group("slot") == rows[slug]["slot"], (
+                f"planned state token carries its sweep slot: {cells}"
+            )
+            assert state.group("label") == (
+                f"Planned (post-MVP, future slot {rows[slug]['slot']})"
+            ), cells
+            assert TITLE_SPAN_RE.search(cells[0]) is None, (
+                f"a planned row has no title span (the plan record holds slug and slot): {cells}"
+            )
+            assert PREVIEW_NONE_CELL_RE.match(cells[2]) is not None, (
+                f"planned preview cell is the plainly inert icon: {cells}"
+            )
+            assert "href" not in cells[2], f"an inert preview carries no link: {cells}"
     assert seen == set(rows), (
         f"every derived row renders exactly once: missing={sorted(set(rows) - seen)} "
         f"extra={sorted(seen - set(rows))}"
@@ -250,9 +308,23 @@ def test_t2_page_renders_every_row_with_resolvable_preview_links() -> None:
 def test_t2b_state_vocabulary_is_closed() -> None:
     page = _asm.render_device_classes_page(_asm.device_class_rows())
     for cells in _row_lines(page):
-        assert cells[1] == "Implemented" or PLANNED_STATE_RE.match(cells[1]) is not None, (
-            f"the state column is derived and closed: {cells[1]!r}"
+        state = STATE_CELL_RE.match(cells[1])
+        assert state is not None and state.group("state") in {"implemented", "planned"}, (
+            f"the state column is derived, closed and icon-shaped: {cells[1]!r}"
         )
+
+
+def test_t2d_the_page_carries_its_table_style() -> None:
+    # The icon cells are styled by the page's own scoped block — the glyphs
+    # size and dim through it, so the block (generated with the table, not
+    # hand-kept beside it) must be present and scope itself to the table.
+    page = _asm.render_device_classes_page(_asm.device_class_rows())
+    assert TABLE_STYLE_MARK in page, "the generated page carries its table style block"
+    block = page[page.index(TABLE_STYLE_MARK) :]
+    assert "table:has(.dc-state)" in block, "the block scopes its rules to the icon table"
+    assert ".dc-state" in block and ".dc-preview" in block, (
+        "the block styles both icon kinds"
+    )
 
 
 def test_t2c_the_planned_set_is_labelled_post_mvp() -> None:
