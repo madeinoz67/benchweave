@@ -11,7 +11,10 @@ Monitoring runs from acceptance until the final safe condition is verified
 it, and every monotonic wait is sliced at the bench poll cadence with a tick
 per slice — single-threaded and deterministic on the injected clocks. A
 condition violation detected during the body blocks the next dispatch with a
-protective failure (the body ends ``tripped``); a requested cancellation in
+protective failure (the body ends ``tripped``) — and when no next dispatch
+exists to refuse, the violation first observed by the final action's
+post-dispatch tick or after the body, the body truth still records
+``tripped`` over the executor's ``completed``; a requested cancellation in
 the accepted-but-dispatchable window blocks it the same way (``cancelled``);
 both still run the safe transition, because neither cancellation nor any
 body deadline can suppress it (§5). During protection the monitor keeps
@@ -22,9 +25,15 @@ state decide the terminal outcome; an uncertain body or an unverifiable safe
 state forces ``outcome_unknown`` — uncertainty is never erased by later
 safety, and no report may say ``passed`` while final safety is unknown. The
 body outcome is recorded independently alongside it. A monitor cause
-(trip/cancel) replaces the body outcome only when its block terminated the
-body; a cause observed alongside a body that ended on its own outcome is
-appended to the reasons and never downgrades an uncertain or failed body.
+(trip/cancel) replaces the body outcome when its block terminated the body,
+and a trip replaces it equally over a body the executor completed with the
+violation observed — an observed violation always appears in the record and
+ends the body ``tripped``, unless a principal cancel latched first in the
+final-dispatch window (the tick honours the cancel before the signals and
+the cause latch is first-wins): then the outcome follows the cancel
+window's own mapping and the violation rides as a reason; any other cause
+observed alongside a body that ended on its own outcome is appended to the
+reasons and never downgrades an uncertain or failed body.
 
 Event aliasing: the executor returns step events whose dicts it also retains
 inside the shared occurrence ledger. This coordinator treats retained
@@ -1405,24 +1414,61 @@ class RunCoordinator:
     def _body_truth(self, prepared: _PreparedRun, body: Any) -> tuple[str, list[str]]:
         """The body outcome this run will record, per the monitor's cause.
 
-        Reclassification to ``tripped``/``cancelled`` exists for exactly one
-        case: the monitor's block TERMINATED the body, so the executor's
+        Reclassification to ``tripped``/``cancelled`` exists for exactly two
+        cases: the monitor's block TERMINATED the body, so the executor's
         terminal ``execution_error`` is the blocking proxy and the
-        coordinator replaces it with the real cause. When the body ended on
-        its own outcome — uncertain dispatch, failed assertion, deadline,
-        completion — a cause observed alongside or after it may never
-        downgrade the body: the executor's reasons are preserved and the
-        cause reasons are APPENDED (uncertainty is never erased by a trip).
+        coordinator replaces it with the real cause — and a trip cause over
+        a body the executor COMPLETED (the violation was first observed by
+        the final dispatch's post-dispatch tick or after the body, so no
+        block latched): the block is the mechanism, not the definition, and
+        an observed violation always appears in the record and ends the
+        body ``tripped`` — unless a principal cancel latched first in the
+        final-dispatch window, where the outcome follows the cancel
+        window's own mapping and the violation rides as an appended reason.
+        When the body ended on any other outcome of its
+        own — uncertain dispatch, failed assertion, deadline — a cause
+        observed alongside or after it may never downgrade the body: the
+        executor's reasons are preserved and the cause reasons are APPENDED
+        (uncertainty is never erased by a trip).
         """
         monitor = prepared.monitor
-        if monitor.blocked and monitor.cause == "tripped":
-            return "tripped", list(monitor.cause_reasons)
+        # No arm of this function may drop an observed violation:
+        # ``cause_reasons`` is the AT-LATCH snapshot of ``monitor.violations``
+        # (``_set_cause`` copies the list once, first-wins), so violations
+        # observed AFTER the latch — or outranked by a principal cancel that
+        # latched first — live only in ``monitor.violations``. Every arm
+        # merges the live list, deduped: for the single-violation cells the
+        # snapshot equals the live list and the merge is a no-op, so those
+        # records keep their pre-#533 shape.
+        if monitor.cause == "tripped" and (
+            monitor.blocked or body.body_outcome == "completed"
+        ):
+            reasons = list(monitor.cause_reasons)
+            if not monitor.blocked:
+                # The completed arm keeps any executor reasons; the blocked
+                # arm does not — its executor reason is the blocking proxy,
+                # repeating the violation verbatim, and the blocked cell's
+                # record stays byte-identical to its pre-#533 shape.
+                for reason in body.reasons:
+                    if reason not in reasons:
+                        reasons.append(reason)
+            for violation in monitor.violations:
+                if violation not in reasons:
+                    reasons.append(violation)
+            return "tripped", reasons
         if monitor.blocked and monitor.cause == "cancelled":
-            return "cancelled", list(monitor.cause_reasons)
+            reasons = list(monitor.cause_reasons)
+            for violation in monitor.violations:
+                if violation not in reasons:
+                    reasons.append(violation)
+            return "cancelled", reasons
         reasons = list(body.reasons)
         for reason in monitor.cause_reasons:
             if reason not in reasons:
                 reasons.append(reason)
+        for violation in monitor.violations:
+            if violation not in reasons:
+                reasons.append(violation)
         return body.body_outcome, reasons
 
     def _evidence_refs(self, run_id: str) -> list[dict[str, str]]:

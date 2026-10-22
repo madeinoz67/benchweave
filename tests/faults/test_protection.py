@@ -26,7 +26,7 @@ from jsonschema import Draft202012Validator
 
 from benchweave.control.binding import resolve_binding
 from benchweave.control.clocking import TestClock
-from benchweave.control.coordinator import RunCoordinator
+from benchweave.control.coordinator import RunCoordinator, terminal_outcome
 from benchweave.control.documents import AdmittedDocuments, admit_documents
 from benchweave.control.executor import Executor
 from benchweave.control.protection import ProtectionEngine, read_signal_values
@@ -134,6 +134,11 @@ class _FaultPsu:
         self._now = now_fn
         self.force_voltage_v: float | None = None
         self.stale_ms: int = 0
+        #: Staleness applies only from this zero-based read index onward
+        #: (default 0: every read) — arms a SECOND, later-observed violation
+        #: after an earlier one latched the cause (the #533 fold's arm-1 pin:
+        #: the latch-tick read of an ``enable_sets_force`` run is index 4).
+        self.stale_from_read_index: int = 0
         self.future_ms: int = 0
         self.buffer_age_ms: int = 0
         self.enable_sets_force: float | None = None
@@ -268,7 +273,7 @@ class _FaultPsu:
             self.dispatches.append(request)
             if forced is not None:
                 observed = self._now()
-                if self.stale_ms:
+                if self.stale_ms and index >= self.stale_from_read_index:
                     observed = _iso_minus_ms(observed, self.stale_ms)
                 if self.future_ms:
                     observed = _iso_plus_ms(observed, self.future_ms)
@@ -459,7 +464,10 @@ def test_condition_violation_trips_and_safe_transition_verifies(tmp_path: Path) 
     assert record["body_outcome"] == "tripped"
     assert record["safe_state"] == "verified"
     assert record["outcome"] == "tripped"
-    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    # F2 (fold, refute lane B): the violation rides EXACTLY once — the
+    # blocked body's executor proxy reason repeats it verbatim and is
+    # deduped away, so this cell's record keeps its pre-#533 shape.
+    assert sum("dut-voltage-bounds" in reason for reason in record["reasons"]) == 1
     assert fault.disable_dispatches(), "the safe action must have been dispatched"
     _validate_record(record)
     run = store.get_run("run-trip")
@@ -922,6 +930,159 @@ def test_assertion_failed_body_is_never_reclassified_to_tripped(tmp_path: Path) 
     assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
     assert fault.disable_dispatches()
     _validate_record(record)
+
+
+def test_trip_after_final_dispatch_still_ends_body_tripped(tmp_path: Path) -> None:
+    """A violation first observed after the FINAL dispatch ends the body tripped.
+
+    The voltage fault arms on the body's last measure invoke (the repeat
+    loop's third remeasure), so the violation is first observed by that
+    dispatch's post-dispatch tick — no next dispatch exists to refuse and
+    no block latches. The coordinator's body truth still takes ``tripped``
+    over the executor's ``completed``: an observed continuous-condition
+    violation can never produce a ``passed`` record.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_on_final_measure(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 4:  # the loop's third remeasure: the body's final dispatch
+            fault.force_voltage_v = 5.9  # the condition violates right after
+
+    fault.on_invoke = arm_on_final_measure
+
+    record = coordinator.start_run("run-trip-final", "principal-a")
+
+    assert record["outcome"] == "tripped"
+    assert record["body_outcome"] == "tripped"
+    assert record["safe_state"] == "verified"
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_cancel_window_trip_still_carries_the_violation(tmp_path: Path) -> None:
+    """A cancel latched first in the final-dispatch window never erases the trip.
+
+    The principal cancel and the voltage fault arm together on the body's
+    last measure invoke. The post-dispatch tick honours the cancel BEFORE
+    the signals (``_check_body_phase`` runs first) and the cause latch is
+    first-wins, so ``cancelled`` owns the cause and the trip never latches —
+    no next dispatch exists to refuse either. The body completes and the
+    outcome follows the cancel window's own mapping (``passed``; a cancel is
+    principal intent, not a violation), but the observed violation must ride
+    in the reasons: outranked, never erased.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_cancel_and_trip(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 4:  # the body's final dispatch
+            coordinator.cancel("run-cancel-trip", "principal-a")
+            fault.force_voltage_v = 5.9  # violates the condition in the same window
+
+    fault.on_invoke = arm_cancel_and_trip
+
+    record = coordinator.start_run("run-cancel-trip", "principal-a")
+
+    assert record["body_outcome"] == "completed"
+    assert record["outcome"] == "passed"  # the cancel window's own mapping, by design
+    assert any("cancelled by principal" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_blocked_cancel_still_carries_the_violation(tmp_path: Path) -> None:
+    """The BLOCKED-cancel arm keeps an observed violation in the reasons.
+
+    The principal cancel and the voltage fault arm together on the third of
+    the body's four measures: the post-dispatch tick honours the cancel
+    before the signals (first-wins), so ``cancelled`` owns the cause while
+    the violation lands in the monitor's violations; the FOURTH measure's
+    pre-dispatch tick then blocks as a cancellation. The reclassification to
+    ``cancelled`` is right (a cancel is principal intent), but the arm may
+    not drop the observed violation on its way out.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def arm_cancel_and_trip(request: OperationRequest) -> None:
+        measures = [
+            r
+            for r in fault.dispatches
+            if r.verb is OperationVerb.INVOKE
+            and r.arguments.get("action_id") == PSU_MEASURE
+        ]
+        if len(measures) == 3:  # one dispatch remains for the cancel to block
+            coordinator.cancel("run-cancel-block", "principal-a")
+            fault.force_voltage_v = 5.9
+
+    fault.on_invoke = arm_cancel_and_trip
+
+    record = coordinator.start_run("run-cancel-block", "principal-a")
+
+    assert record["body_outcome"] == "cancelled"
+    assert record["outcome"] == "cancelled"  # the cancel's own mapping, by design
+    assert record["safe_state"] == "verified"
+    assert any("cancelled by principal" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_second_violation_after_latch_still_carries(tmp_path: Path) -> None:
+    """A violation observed AFTER the cause latched is never dropped either.
+
+    ``cause_reasons`` is the at-latch snapshot of the monitor's violations
+    (``_set_cause`` copies the list and is first-wins), so a SECOND
+    violation — here a stale signal first served on the read right after
+    the voltage escape latched the trip — lives only in
+    ``monitor.violations``. The blocked-trip arm may not return the
+    snapshot alone.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    fault.enable_sets_force = 5.9  # the voltage escape latches at read index 4
+    fault.stale_ms = 600  # max_age_ms is 500
+    fault.stale_from_read_index = 5  # the very next read: a second, later violation
+
+    record = coordinator.start_run("run-late-violation", "principal-a")
+
+    assert record["body_outcome"] == "tripped"
+    assert record["outcome"] == "tripped"
+    assert record["safe_state"] == "verified"
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert any("signal_invalid" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches(), "the safe action must have been dispatched"
+    _validate_record(record)
+
+
+def test_passed_is_reachable_from_exactly_one_body_outcome() -> None:
+    """``completed`` is the sole body outcome that maps to ``passed``.
+
+    The CTL-8 amendment's narrowed bound (a violation ends the body
+    ``tripped`` unless a principal cancel latched first) leans on this: a
+    second passed-producing row would silently falsify the sentence. This
+    pin reddens instead — over every body outcome the run-record schema
+    admits, not a hand-copied list.
+    """
+    schema = json.loads(RUN_RECORD_SCHEMA.read_text(encoding="utf-8"))
+    body_outcomes = schema["properties"]["body_outcome"]["enum"]
+    passed_producers = [
+        outcome
+        for outcome in body_outcomes
+        if terminal_outcome(outcome, "verified") == "passed"
+    ]
+    assert passed_producers == ["completed"]
 
 
 # --- lease lifecycle ----------------------------------------------------------------

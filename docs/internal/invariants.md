@@ -86,6 +86,22 @@ rather than rewriting the history — that is how this file earns trust.
   accepted-but-dispatchable window blocks it the same way (`cancelled`) —
   `src/benchweave/control/coordinator.py`. *A violation must never be observed and then
   worked around; it ends the body.*
+  Amendment (2026-10-22, issue #533; narrowed by the 2026-10-22 refute fold): the
+  block is the mechanism, not the definition — a violation observed during the body
+  ends the body `tripped` whatever the dispatch ordering. When no next dispatch
+  exists to refuse (the violation is first observed by the final action's
+  post-dispatch tick, `_MonitoringPlugin.dispatch`'s post-dispatch arm, or the
+  post-body tick in `_run_and_record`), the coordinator's body truth takes `tripped`
+  over the executor's `completed`. The bound, stated precisely: an observed violation
+  ALWAYS appears in the record and ends the body `tripped`, UNLESS a principal cancel
+  latched first in the final-dispatch window (the tick evaluates the cancel before
+  the signals and the cause latch is first-wins) — then the outcome follows the
+  cancel window's own mapping and the violation rides as an appended reason, never
+  erased. `completed` is the only body outcome that maps to `passed`, pinned by test
+  so a second passed-producing row reddens instead of silently falsifying this
+  sentence. Uncertain, failed, timed-out and cancelled bodies are untouched — the
+  cause stays an appended reason, never a reclassification. Pinned by
+  `tests/faults/test_protection.py`.
 - **[CTL-9]** One coordinator owns one run end to end — idempotent request acceptance,
   semantic admission, the run lease, run creation, monitored body, protective transition on
   ANY body end, terminal record, durable events, lease release. A run found at recovery
