@@ -411,3 +411,28 @@ half: denied).
   catch), and letter-only asset tags pass by design (the serial class
   requires a digit).
 
+
+## 15. Regression addendum II (2026-10-22): tilde approximation prose
+
+DEFECT (second, same screen, found on PR #529): the bare tilde-name class
+blocked ordinary approximation prose. Reproduced on #529's diff: the
+sentence "one fast unit module in `gates` (subprocess-driven, ~seconds)"
+blocked with tier=P id=tilde_home surface=content — it matched "~seconds".
+This repository writes "~seconds", "~2 min", "~10ms" constantly; the
+pinned-table approach of §13 could not hold, because new prose in every
+future PR would red the CI job — the pin was a ratchet over the tracked
+tree, not an allowlist for what has not been written yet.
+
+THE RULED TRADE, stated as a trade: a bare tilde token is indistinguishable
+by shape from approximation prose, and approximation prose is far more
+common here than a bare home reference. The tilde class now REQUIRES a
+path separator — tilde-slash and tilde-name-slash stay home shapes; a
+bare tilde token does not match. Consequence disclosed plainly: a bare
+~username reference with no path anywhere after it is now MISSED, and
+joins the §6 residuals. The tracked-tree sweep table moved accordingly:
+the 13 approximation-notation rows are deleted (their cause is gone) and
+8 separator-form rows are added — all the repository's own vocabulary
+(the screen's default list path in G0b, macOS launchd paths in the
+operator guide and CLI help, home-form checkout paths in tracked planning
+docs). The F6 and FOLD-A pins that asserted the bare form flipped with
+the ruling.

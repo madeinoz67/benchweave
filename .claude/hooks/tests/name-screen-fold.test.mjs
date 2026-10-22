@@ -167,20 +167,20 @@ test("F2 unit: loopback, doc ranges, example domains, version shapes pass; real 
 // identical to a bare home reference, so it is pinned, not silently allowed
 // — rewording to "about"/"approx." shrinks the table.
 const PINNED = [
+  { path: "docs/internal/review-rubric.md", id: "tilde_home", count: 1, why: "G0b names the screen's own default list path — the repo's vocabulary for its own config" },
+  { path: "docs/operator-guide.md", id: "tilde_home", count: 1, why: "macOS launchd system path in operator documentation" },
+  { path: "src/benchweave/cli/commands.py", id: "tilde_home", count: 1, why: "macOS launchd system path in CLI help text" },
+  { path: "src/benchweave/cli/diagnose.py", id: "tilde_home", count: 2, why: "macOS launchd/launchagent system paths in diagnostics prose" },
+  { path: "docs/implementation-planning/05-wp05-procedures-plan.md", id: "tilde_home", count: 1, why: "shell-config example in a planning doc" },
+  { path: "docs/superpowers/plans/2026-09-14-standards-sync.md", id: "tilde_home", count: 2, why: "home-form checkout paths in tracked planning docs — pre-existing, the §6 audit's companion class" },
+  { path: "docs/superpowers/plans/2026-09-15-sdk-repo-self-sufficiency.md", id: "tilde_home", count: 4, why: "home-form checkout paths in tracked planning docs — pre-existing, the §6 audit's companion class" },
+  { path: "docs/superpowers/specs/2026-09-15-sdk-repo-self-sufficiency-design.md", id: "tilde_home", count: 3, why: "home-form checkout paths in tracked planning docs — pre-existing, the §6 audit's companion class" },
   { path: "docs/internal/public-site-mockup.html", id: "ipv4", count: 5, why: "SVG path-data numeric runs in a generated mockup — not addresses (the leading-zero version shape now allows 2 of the original 7)" },
   { path: "tests/interfaces_ui/test_ui_guards.py", id: "ipv4", count: 4, why: "private-range (RFC 1918) host-matching fixtures — private ranges stay blocked by design, these are pinned test literals" },
   { path: "tests/standards/test_zero_literal_gate.py", id: "ipv4", count: 2, why: "private-range literals the zero-gate's own snapshot tests assert on" },
   { path: "docs/superpowers/plans/2026-09-15-sdk-pypi-brew-publishing.md", id: "home_path", count: 4, why: "OWNER TRIAGE (#518 audit class): pre-existing private home-dir occurrences in tracked public content — removal is an owner decision, never an allowlist" },
   { path: "docs/implementation-planning/04-wp01-completion.md", id: "home_path", count: 1, why: "OWNER TRIAGE (#518 audit class): pre-existing private home-dir occurrence" },
   { path: "tests/contracts/test_architecture.py", id: "home_path", count: 1, why: "docstring documenting the home-path SHAPE itself (ellipsised, no real user)" },
-  { path: "tests/cli/test_render.py", id: "tilde_home", count: 4, why: "approximation notation (tilde before a word) — bare tilde homes and this prose are indistinguishable; FOLD-A companion" },
-  { path: "tests/cli/test_retention.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
-  { path: "tests/unit/test_otdp_bridge.py", id: "tilde_home", count: 2, why: "approximation notation — FOLD-A companion" },
-  { path: "tests/unit/test_store_busy_window.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
-  { path: "tests/integration/test_capture_sequential_model.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
-  { path: "tests/integration/test_cross_instance_continuity.py", id: "tilde_home", count: 1, why: "approximation notation — FOLD-A companion" },
-  { path: "src/benchweave/cli/report.py", id: "tilde_home", count: 1, why: "docstring quantity name in approximation notation — FOLD-A companion" },
-  { path: "docs/superpowers/specs/2026-09-15-sdk-pypi-brew-publishing-design.md", id: "tilde_home", count: 2, why: "approximation notation in a planning date — FOLD-A companion" },
 ];
 
 test("F2: tracked-tree sweep (docs/ src/ packages/ tests/) — zero blocks outside the pinned table", async () => {
@@ -310,7 +310,8 @@ test("F6: windows drive homes, lowercase users-dirs, and bare tilde-name homes a
   assert.ok(hits(["/", "users", "/", "poisonbox", "/notes"].join("")), "lowercase users-dir missed");
   assert.ok(hits(["/", "Users", "/", "poisonbox", "/notes"].join("").toLowerCase()), "case-insensitive posix home missed");
   assert.ok(hits(["~", "poisonbox", "/bench"].join("")), "bare tilde home missed");
-  assert.deepEqual(m.publicScan(["~/", ".config/benchweave/name-screen.list"].join("")).filter((h) => h.id.includes("home")), [], "literal tilde-config path false-positives");
+  // flipped by the 2026-10-22 ruled trade: tilde-slash IS a home shape now
+  assert.ok(m.publicScan(["~/", ".config/x"].join("")).some((h) => h.id === "tilde_home"), "tilde-slash home path missed");
 });
 
 // ---- F4: the CI job's hardening (text-level pins on the workflow) -------------------
@@ -366,9 +367,11 @@ test("FOLD-A: the closed anchor rule — boundary chars hit, in-token paths neve
   // representative prose abutments still hit
   assert.ok(m.publicScan(`> ${home}`).some((h) => h.id === "home_path"), "spaced blockquote path missed");
   assert.ok(m.publicScan(`*${home}`).some((h) => h.id === "home_path"), "bullet-abutted path missed");
-  // bare tilde-name homes hit without a trailing separator
+  // bare tilde tokens do NOT match (the 2026-10-22 ruled trade); the
+  // separator forms do
   const bare = ["~", "poisonbox"].join("");
-  assert.ok(m.publicScan(`see ${bare} for the rig`).some((h) => h.id === "tilde_home"), "bare tilde home missed");
+  assert.deepEqual(m.publicScan(`see ${bare} for the rig`).filter((h) => h.id === "tilde_home"), [], "bare tilde token matched");
+  assert.ok(m.publicScan(["~", "poisonbox", "/rig"].join("")).some((h) => h.id === "tilde_home"), "tilde-name-slash home missed");
   // typing annotations are not homes
   assert.deepEqual(m.publicScan(["~", "benchweave.content.store.Context"].join("")).filter((h) => h.id === "tilde_home"), [], "typing annotation false-positives on tilde_home");
   // in-token negatives: word chars, dash/dot/underscore prefixes and nested
@@ -376,7 +379,7 @@ test("FOLD-A: the closed anchor rule — boundary chars hit, in-token paths neve
   assert.deepEqual(m.publicScan(`abc${home}`), [], "word-char prefix matched");
   assert.deepEqual(m.publicScan(`x-y${home}`), [], "dash-prefix matched");
   assert.deepEqual(m.publicScan(`x.y${home}`), [], "dot-prefix matched");
-  assert.deepEqual(m.publicScan(["~", "/x", home].join("")), [], "nested absolute path matched");
+  assert.deepEqual(m.publicScan(["/nested/dir", home].join("")), [], "nested absolute path matched");
   assert.deepEqual(m.publicScan("email/home/serial and docs/Users/index"), [], "mid-token path matched");
 });
 

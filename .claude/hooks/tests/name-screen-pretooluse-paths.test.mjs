@@ -67,3 +67,31 @@ test("(d) OUTSIDE-repo path + clean content -> ALLOW (path surface skipped, cont
   const dirty = runHook({ tool_name: "Write", tool_input: { file_path: outside, content: leak + "\n" } });
   assert.equal(dirty.status, 2, "content surface lost for outside-repo paths");
 });
+
+// ---- second defect (2026-10-22): tilde approximation prose ---------------------
+// PR #529 reddened the name-screen CI job on the sentence "subprocess-driven,
+// ~seconds" — the bare tilde-name class matched ordinary approximation prose,
+// which this repository writes constantly. Ruled trade: a bare tilde token is
+// indistinguishable from approximation prose and approximation prose is far
+// more common here, so the class REQUIRES a path separator — tilde-slash and
+// tilde-name-slash stay home shapes; a bare tilde token does not match. The
+// consequence is disclosed in the record addendum: a bare ~username reference
+// with no path is now missed.
+test("tilde trade: approximation prose allows; separator forms block", async () => {
+  const m = await import("../name-screen.mjs");
+  const tildes = (s) => m.publicScan(s).filter((h) => h.id === "tilde_home").length;
+  for (const prose of [["~", "seconds"].join(""), ["~", "approx"].join("")]) {
+    assert.equal(tildes(`fast, ${prose} per module`), 0, `approximation prose blocked: ${prose}`);
+  }
+  for (const prose of ["~5 min", "~10ms", "~2 min"]) {
+    assert.equal(tildes(prose), 0, `approximation prose blocked: ${prose}`);
+  }
+  // separator forms are home shapes (assembled where shape-like)
+  assert.ok(tildes(["~", "/.config/x"].join("")), "tilde-slash home path missed");
+  assert.ok(tildes(["~", "poisonbox", "/reports"].join("")), "tilde-name-slash home path missed");
+  const homes = (s) => m.publicScan(s).filter((h) => h.id.includes("home")).length;
+  assert.ok(homes(["see /", "Users", "/", "poisonbox", "/x"].join("")) > 0, "posix home path missed");
+  assert.ok(homes(["under /", "home/", "poisonbox", "/x"].join("")) > 0, "home-dir path missed");
+  // the ruled-out form: bare tilde token, no separator anywhere after it
+  assert.equal(tildes(["see ~", "poisonbox", " for the rig"].join("")), 0, "bare tilde token still matches — the trade was not taken");
+});
