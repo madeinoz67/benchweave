@@ -243,6 +243,9 @@ a row names a follow-on issue.
 | D4 | The reference-slot knowledge gap (`derive_ui:706`) — a class's own slot naming an unserved URN is a corpus fault, not a vendor gap; the split leaves it refusing | documentation here | a class reference in the corpus is shown to name an action URN that no served catalog describes |
 | D5 | Composed-class claims across two classes for one URN — refuse, never merge; a shared action class is a corpus-side design question | documentation here | a second plugin or a corpus class needs to claim an URN another class already claims |
 | D6 | The `_urn_for_binding` global terminal-slug resolution hazard (composition record §4) becomes easier to reach as more actions land on one device-features page | documentation here; recorded in `.claude/deep-review/2026-10-20-classref-composition-gate-design.md` §4 | the owner's ruling on that record's §4 rows arrives, or a composed device renders one class's staging fields under another class's button |
+| D7 | The SDK user guide's coverage of the new developer-facing surfaces — `resolution` provenance, `ui/class-reference.json`'s `custom_actions`, `verify-ui`'s `custom: <urn>` rows, and the "Custom device actions" section — is owed, not present (`user_guide/plugin-sdk.qmd`, currently mentioning `ui/class-reference.json` only for the `migrate-ui` pointer) | documentation — slice 4 of this increment (task #146) | the release cut that ships slice 1's behaviour, which must not land before this row closes |
+| D8 | The corpus prose for the declaration document is under-described: `standards/plugin-ui-class-reference/0.3.0/README.md` §"The deviation ledger contract" still describes the document as profile, version and `deviations` only, while the SDK now writes a third key. The "zero standards motion" claim in §9 is scoped to **schema bytes** — no schema governs the declaration's key set — and does not cover this prose | documentation — slice 2's standards leg, which adds the 0.4.0 copy | the release cut that ships slice 1's behaviour, which must not land before this row closes |
+| D9 | The CON-12 gateway mirror still refuses the recoverable case: `src/benchweave/presentation/classref.py::derive_attachment` raises `classref_unknown_action` at ~1765/1791/1805. Slice 1 is SDK-only by design, so the shipped state is "a plugin derives and previews", not yet "runs on a bench here" | documentation here; carried to the pointer PR | the gateway pointer advances to the release that carries slice 1 |
 
 ## 7. Pre-committed acceptance rule
 
@@ -264,7 +267,10 @@ mock and never a test-side reimplementation.
 3. **M3 — the layers are distinguishable.** The same action derives
    `resolution: "custom"` with no class, `"composed"` with a plugin-local class,
    and `"catalog"` when a served catalog describes it — three distinct outcomes
-   for one URN, each asserted.
+   for one URN, each asserted. **Leg ownership, stated so a later reader cannot
+   score this on a partial arm:** slice 1 closes the catalog and custom legs;
+   the composed leg is slice 2's, and M3 is satisfied only when all three are
+   asserted on one branch.
 4. **M4 — the integrity refusals survive.** A tampered pinned catalog (digest
    mismatch), an unreadable pinned catalog, and a missing profile catalog each
    still refuse, with distinct codes. Removing the recoverable refusal must not
