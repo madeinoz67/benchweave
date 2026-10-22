@@ -179,6 +179,7 @@ All notable changes to this project will be documented in this file.
 - Issue #533 trip-after-final-dispatch record, pre-measurement
 - Issue #533 addendum — measured substrate outcomes, post-ship
 - Issue #534 recovery-evidence record — corrupt retained bytes
+- Design record for the device-class table icon cells (#499)
 
 ### Features
 
@@ -227,6 +228,7 @@ All notable changes to this project will be documented in this file.
 - Wire the name screen — hooks, make hooks, PreToolUse, CI
 - Emit the reference's plot kind, gateway-side (#521)
 - ACK-or-stop bound script + RED-first tests (issue #517)
+- Icon cells for the generated device-class table (#499)
 
 ### Miscellaneous
 
@@ -322,6 +324,7 @@ All notable changes to this project will be documented in this file.
 - Pin the readings pairs' pre-existing finding as recorded state (#525)
 - Pin the line-number approximation form; record the f609e724 evidence
 - Restore the fixture to owner-only modes
+- Manifest count moves with the device-class gate's t2d
 
 ### Build
 
