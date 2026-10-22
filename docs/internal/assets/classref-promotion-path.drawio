@@ -1,0 +1,45 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="pkg" value="&lt;b&gt;Plugin package&lt;/b&gt;&lt;br&gt;&lt;br&gt;ui/action-classes.json&lt;br&gt;&lt;font color=&quot;#5b6f79&quot;&gt;vendor-local declarations only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f8f9;strokeColor=#c3cfd5;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="20" width="300" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="pin" value="&lt;b&gt;descriptor.contracts[]&lt;/b&gt;&lt;br&gt;&lt;br&gt;path + sha256 pin&lt;br&gt;&lt;font color=&quot;#5b6f79&quot;&gt;a digest mismatch still refuses&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f8f9;strokeColor=#c3cfd5;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="176" width="300" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="sdkr" value="&lt;b&gt;SDK resolves from the project&lt;/b&gt;&lt;br&gt;&lt;br&gt;derive-ui  ·  verify-ui" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dceef1;strokeColor=#0b7181;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="20" y="332" width="300" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="gwr" value="&lt;b&gt;Gateway resolves from admission&lt;/b&gt;&lt;br&gt;&lt;br&gt;the same pin, the same digest" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dceef1;strokeColor=#0b7181;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="480" y="332" width="300" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="cur" value="&lt;b&gt;Maintainer curation&lt;/b&gt;&lt;br&gt;&lt;br&gt;a reviewed copy, not an authoring gate" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5b6f79;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="480" y="478" width="300" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="corpus" value="&lt;b&gt;Corpus family version&lt;/b&gt;&lt;br&gt;&lt;br&gt;digest-pinned, copy never move" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dceef1;strokeColor=#0b7181;strokeWidth=2;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="624" width="300" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="hosts" value="&lt;b&gt;Every host, every device&lt;/b&gt;&lt;br&gt;&lt;br&gt;no upstream request was needed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e4ebef;strokeColor=#c3cfd5;fontColor=#17242c;fontFamily=Helvetica;fontSize=12;fontStyle=1;arcSize=12;spacing=10;" vertex="1" parent="1">
+      <mxGeometry x="250" y="770" width="300" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="pkg" target="pin">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="pin" target="sdkr">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="pin" target="gwr">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e4" value="promotion is available, never required" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#5b6f79;strokeWidth=1.5;endArrow=block;endSize=7;fontColor=#5b6f79;fontFamily=Helvetica;fontSize=11;fontStyle=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="gwr" target="cur">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.5;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="cur" target="corpus">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#8fa3ad;strokeWidth=1.5;endArrow=block;endSize=7;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="corpus" target="hosts">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
