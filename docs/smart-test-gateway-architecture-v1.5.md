@@ -14,7 +14,7 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema were reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version in `otdp/0.2.2/`. Version 0.2.3 is active; version 0.2.0 remains served. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema were reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version in `otdp/0.2.2/`. Version 0.2.4 is active; version 0.2.3 remains served. Versions 0.2.2 and 0.2.0 also remain served. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
 OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; a change to a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
@@ -268,7 +268,7 @@ The listed architectural choices are selected below for this design baseline; th
 | D08 | Reviewed, versioned trusted plugins only; executable changes are release changes | Project owner admits integrations and records any required containment |
 | D09 | Per-identity, per-bench observer/controller/admin permissions with explicit delegated authority | Administrator selects provider and protocol baseline, then verifies interoperability |
 | D10 | Separate audit/capture budgets; logging loss blocks new energising work but never protection | System owner sets capacities, retention and bounded active-work response |
-| D11 | New integrations target the reconciled OTDP descriptor, runtime and measurement schemas at a served version: 0.2.3 is active and 0.2.0/0.2.2 remain served. They also target the class catalog and adapter API 1.1; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
+| D11 | New integrations target the reconciled OTDP descriptor, runtime and measurement schemas at a served version: 0.2.4 is active and 0.2.2/0.2.3 remain served (0.2.0 also remains served). They also target the class catalog and adapter API 1.1; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
 
 D11 is closed architecturally. The specification and schemas now define authoring inputs, package layout, operation semantics, host interfaces, supported bindings and required conformance evidence. The original v0.1 schema is not presented as a sufficient safety/admission validator. Bench safety information deliberately remains in gateway-owned configuration, rather than ignorable device extensions.
 
@@ -276,7 +276,7 @@ The commissioning record names the accountable owners for D01–D10 and captures
 
 ## 16. Device-class coverage in v1.1
 
-The OTDP package defines 12 composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Version 0.2.3 is active; version 0.2.0 remains served. 50 versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
+The OTDP package defines 12 composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Version 0.2.4 is active; version 0.2.3 remains served. Versions 0.2.2 and 0.2.0 also remain served. 50 versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
 
 Profile actions use validated invoke dispatch with scoped configuration and acquisition identities. Required actions establish class membership; optional features and actual model limits are explicit. Multi-profile instruments retain shared resource ownership. Sources, sinks, switching and measurements that produce stimulus remain subject to the same bench policy and protection requirements.
 
@@ -330,7 +330,7 @@ The [interface review scenarios](../standards/interface/0.1.1/review-scenarios.m
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.2.3, adapter API 1.1, registry 0.1.3, execution 0.2.0 and interface 0.1.1. The MCP transport is pinned to 2026-07-28. The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.2.4, adapter API 1.1, registry 0.1.3, execution 0.2.0 and interface 0.1.1. The MCP transport is pinned to 2026-07-28. The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
 The [registry composition review](acceptance/registry-composition-review.md) resolves 16 reuse and dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces 26 normal and failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 

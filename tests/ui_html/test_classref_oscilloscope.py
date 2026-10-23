@@ -63,7 +63,7 @@ from benchweave.vendoring import corpus_root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = FAMILY_DIR / "class-oscilloscope.json"
-DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.3/examples/class-oscilloscope.json"
+DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-oscilloscope.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-oscilloscope.html"
 
 #: The capture classes' hook families (the L13 census extension): the

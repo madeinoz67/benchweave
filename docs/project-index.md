@@ -15,7 +15,7 @@ This repository carries the BenchWeave implementation for packages WP01 to WP07.
 
 ## Contract Sets
 
-- [OTDP 0.2.3](../standards/otdp/0.2.3/otdp-specification.md)
+- [OTDP 0.2.4](../standards/otdp/0.2.4/otdp-specification.md)
 - [Registry v0.1.3](../standards/registry/0.1.3/registry-specification.md)
 - [Contributor publishing design record](implementation-planning/10-contributor-publishing-design.md)
 - [Publishing guide](publishing-guide.md)

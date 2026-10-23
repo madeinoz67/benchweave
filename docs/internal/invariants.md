@@ -571,11 +571,15 @@ rather than rewriting the history — that is how this file earns trust.
   shapes, the (channel, quantity) variable ids, the readings-page
   observation expansion and the reading-tile layout strip all mirrored
   from `benchweave_sdk.classref` at the v0.18.0 pin, byte-pinned by the
-  f6-smu fixture (B8). Same read-only posture as the L4 arms: the
-  zero-readable-parameters corpus examples derive without the readings
-  expansion (the composition's unchanged validator reports their
-  pre-existing `invalid_plot`; the SDK refuses the same shape at
-  authoring time), and an over-16 analog y refuses typed
+  f6-smu fixture (B8). Same read-only posture as the L4 arms: since
+  issue #525's OTDP 0.2.4 fix the committed corpus examples declare
+  their readable parameters (every census pair derives and validates
+  clean), while the zero-readable-parameters TOLERANCE stays a pinned
+  behavior of `_resolve_parameters` (such a descriptor derives without
+  the readings expansion and the validator reports exactly one
+  `invalid_plot`; the SDK refuses the same shape at authoring time —
+  the gate's mutation arm carries the recorded state), and an over-16
+  analog y refuses typed
   (`classref_series_ceiling`) rather than emitting a manifest the schema
   would refuse diffusely — `src/benchweave/presentation/classref.py`.
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP

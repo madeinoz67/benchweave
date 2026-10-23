@@ -63,9 +63,9 @@ from benchweave.vendoring import corpus_root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
 REFERENCE = FAMILY_DIR / "class-function_generator.json"
-DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.3/examples/class-function_generator.json"
+DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-function_generator.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-function_generator.html"
-CATALOG = REPO_ROOT / "standards/otdp/0.2.3/device-profile-catalog.json"
+CATALOG = REPO_ROOT / "standards/otdp/0.2.4/device-profile-catalog.json"
 CONFIGURE_ACTION = "otdp.function_generator.configure/1.0.0"
 
 #: The pure-source class's hook families — the sweep's thinnest census:

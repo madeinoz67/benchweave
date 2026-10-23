@@ -266,13 +266,13 @@ The coverage census is mechanical: the canonical fixtures (`packages/ui-html/src
 
 The class-reference standards family (plugin-ui-class-reference 0.3.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the only source for the pattern-library class page, the SDK expander, and the rendered-output gate. The expander turns a class-conformant descriptor into a normal plugin-ui manifest set. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
 
-The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.3/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
+The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.3.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.4/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
 
 The `class-output` pattern-library page composes the `otdp.dc_psu`
 output-page composition the same way: the reference
 (`standards/plugin-ui-class-reference/0.3.0/class-dc_psu.json`, the L11
 class) expanded against the OTDP reference descriptor
-(`standards/otdp/0.2.3/examples/class-dc_psu.json`), rendered from the
+(`standards/otdp/0.2.4/examples/class-dc_psu.json`), rendered from the
 §E.1 partials the renderer already ships — one reading tile per
 (channel, quantity) pair of the declared source outputs, one
 `engineering-plot` trend over the measure dataset, one `data-table`, and
@@ -292,7 +292,7 @@ readings-page composition the same way: the reference
 (`standards/plugin-ui-class-reference/0.3.0/class-dmm.json`, the L12
 class — observation-pure: no sourcing action, no directional safety
 surface, no capture view) expanded against the OTDP reference descriptor
-(`standards/otdp/0.2.3/examples/class-dmm.json`), rendered from the
+(`standards/otdp/0.2.4/examples/class-dmm.json`), rendered from the
 §E.1 partials the renderer already ships — one reading tile per
 (channel, quantity) pair of the declared measure inputs, one
 `engineering-plot` trend over the measure dataset (one trace per
@@ -315,7 +315,7 @@ capture-page composition the same way: the reference
 L13 class — the sweep's first waveform-shaped one: capture view over the
 fetch dataset, acquisition-lifecycle run controls, no decode) expanded
 against the OTDP reference descriptor
-(`standards/otdp/0.2.3/examples/class-oscilloscope.json`), rendered from
+(`standards/otdp/0.2.4/examples/class-oscilloscope.json`), rendered from
 the §E.1 partials the renderer already ships — one `engineering-plot`
 waveform over the capture dataset (one trace per (channel, declared
 quantity) of the declared analogue inputs), the per-trace acquisition
@@ -343,7 +343,7 @@ the L14 class — the sweep's first PURE SOURCE: no measurement action,
 so no observation binds and no plot template names an over-slot; two
 pages, zero layout blocks, zero numeric literals) expanded against the
 OTDP reference descriptor
-(`standards/otdp/0.2.3/examples/class-function_generator.json`),
+(`standards/otdp/0.2.4/examples/class-function_generator.json`),
 rendered from the §E.1 partials the renderer already ships — one
 `data-table` over the configure schema's field rows (the field names
 and the conditional Notes wording are the catalog's own strings) and
@@ -372,7 +372,7 @@ the L15 class — the sweep's first energy-ADMITTING instrument, the
 PSU's mirror over `sink`-role channels; zero vocabulary motion, the
 first sweep class since the analyser needing none) expanded against the
 OTDP reference descriptor
-(`standards/otdp/0.2.3/examples/class-electronic_load.json`),
+(`standards/otdp/0.2.4/examples/class-electronic_load.json`),
 rendered from the §E.1 partials the renderer already ships — one
 `reading-tile` per (channel, quantity) of the example's two declared
 sink channels (2 × 3), one `time_series` `engineering-plot` over the
@@ -406,7 +406,7 @@ output-page composition the same way: the reference
 the L16 class — the PSU's shape over a THIRD channel role,
 `source_measure`; zero vocabulary motion, L12's zero-surface result
 second application and stronger) expanded against the OTDP reference
-descriptor (`standards/otdp/0.2.3/examples/class-smu.json`), rendered
+descriptor (`standards/otdp/0.2.4/examples/class-smu.json`), rendered
 from the §E.1 partials the renderer already ships — one `reading-tile`
 per (channel, quantity) of the example's two declared source_measure
 channels (2 × 3), one `time_series` `engineering-plot` over the

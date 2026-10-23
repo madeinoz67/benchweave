@@ -350,29 +350,20 @@ def _plot_page_kind(reference: dict[str, Any]) -> str:
 def _assert_pair_validates(
     derived: DerivedAttachment,
     descriptor_raw: bytes,
-    reference: dict[str, Any],
-    page_id: str,
 ) -> None:
-    """Acceptance 3's validation half, scoped by the pair's own plot-page
-    kind (discovered from the reference, never a class list). A
-    DATASET-page pair's derived triple passes the unchanged
-    ``validate_attachment`` (valid=true) — the serving lie's closure
-    proof: these are the pairs whose pre-mirror derivation validated AND
-    served the wrong-kind plot.
-
-    A READINGS-page pair's assertion below records a PRE-EXISTING STATE,
-    not an expectation: before this slice, all four readings pairs
-    (dc_psu, dmm, electronic_load, smu — measured against HEAD) derived
-    valid=False with exactly ONE ``invalid_plot`` finding, because the
-    committed OTDP examples declare zero readable parameters, so the
-    readings page carries no observation bindings while the plot binds
-    the dataset slot (issue #525 tracks the corpus gap; the fix belongs
-    there, never in this slice). The assertion pins that state — it
-    REDS on a second finding and on any change to the finding's shape
-    (code or path) — the old state is pinned, not blessed. The
-    parameters-carrying readings pair validates clean (f6-smu,
-    TestParityB8's validator arm): the readings path itself is sound
-    once the descriptor owes what the reference authors."""
+    """Acceptance 3's validation half: the derived triple passes the
+    unchanged ``validate_attachment`` (valid=true) for EVERY pair the
+    census walks, readings-page and dataset-page alike. The
+    zero-parameter recorded state is closed (issue #525, the corpus fix
+    the recorded state's own ruling assigned — "the fix belongs
+    there"): the committed OTDP examples now declare their readable
+    parameters, a readings page carries its observation bindings, and
+    the finding's disappearance is the assertion — this strictens the
+    recorded-state pin it replaces (`6d041a7b`): a finding now fails
+    the arm; before, its absence did. The parameters-carrying readings
+    pair validates clean (f6-smu, TestParityB8's validator arm): the
+    readings path itself is sound once the descriptor owes what the
+    reference authors."""
     from benchweave.interfaces.ui_presentation import _pin_scoped_documents
     from benchweave.presentation.admission import validate_attachment
     from benchweave.presentation.panels import SUPPORTED_PANELS
@@ -389,12 +380,7 @@ def _assert_pair_validates(
         supported_panels=SUPPORTED_PANELS,
         firmware=str(firmware),
     )
-    if _plot_page_kind(reference) == "readings":
-        assert [(row.code, row.path) for row in report.findings] == [
-            ("invalid_plot", f"pages.{page_id}.plots")
-        ], report.findings
-    else:
-        assert report.valid, report.findings
+    assert report.valid, report.findings
 
 
 class TestPlotKindEmission:
@@ -423,21 +409,35 @@ class TestPlotKindEmission:
         self, profile_id: str
     ) -> None:
         """The committed pair derives the reference's own kind: exactly one
-        plot, ``time_series``, over the dataset binding, with NO
-        ``lane_groups`` and NO ``decoder_lanes`` (the manifest schema's
-        analog branch bans both), ``y`` exactly the (channel, quantity)
-        variable ids, and the bound target's x variable the receipt-time
-        scalar in seconds (the canonical validator's own rule)."""
+        plot, ``time_series``, with NO ``lane_groups`` and NO
+        ``decoder_lanes`` (the manifest schema's analog branch bans both)
+        and the bound target's x variable the receipt-time scalar in
+        seconds (the canonical validator's own rule). The bound target
+        is page-kind-aware, derived from the reference's own plot page
+        (never a class list): a DATASET page binds its dataset slot with
+        ``y`` exactly the (channel, quantity) variable ids; a READINGS
+        page (the #525-fixed examples) binds the page's FIRST
+        observation with ``y`` that observation's single value id — the
+        f6-smu convention the parity fixture pins byte for byte."""
         slug, reference = _active_family()[profile_id]
         descriptor_path = _committed_example(slug)
         descriptor_raw = descriptor_path.read_bytes()
+        descriptor = json.loads(descriptor_raw)
         derived = derive_attachment(descriptor_raw, corpus=corpus_root())
-        page, plot = _the_plot(derived)
+        _, plot = _the_plot(derived)
         assert plot["kind"] == "time_series", plot
         assert "lane_groups" not in plot, plot
         assert "decoder_lanes" not in plot, plot
         assert plot["x"] == "time", plot
-        assert plot["y"] == _variable_ids(reference, json.loads(descriptor_raw))
+        if _plot_page_kind(reference) == "readings":
+            template = next(p for p in reference["pages"] if p.get("plot"))
+            over = str(template["plot"]["over_slot"])
+            lane = _numeric_channels(reference, descriptor)[0]
+            quantity = str((lane.get("quantities") or [])[0])
+            assert plot["binding_id"] == f"{over}-{lane['id']}-{quantity}", plot
+            assert plot["y"] == [f"{lane['id']}-{quantity}"], plot
+        else:
+            assert plot["y"] == _variable_ids(reference, descriptor), plot
         variables = _bound_variables(derived, plot)
         x_var = variables[plot["x"]]
         assert x_var["axis_role"] == "receipt_time", x_var
@@ -449,7 +449,7 @@ class TestPlotKindEmission:
         for name in plot["y"]:
             row = variables[name]
             assert (row["type"], row["shape"]) == ("number", "scalar"), row
-        _assert_pair_validates(derived, descriptor_raw, reference, str(page["id"]))
+        _assert_pair_validates(derived, descriptor_raw)
 
     def test_a_numeric_series_ceiling_refuses_typed(self) -> None:
         """The analog y ceiling (the manifest schema's ``y maxItems 16``,
@@ -461,7 +461,14 @@ class TestPlotKindEmission:
         not), so the schema never has to refuse diffusely. The mutated
         descriptor keeps the committed pair's class shape (nine channels
         of the slot's own role, two quantities each — 18 variables over
-        the 16 ceiling, computed from the mutation, never a literal)."""
+        the 16 ceiling, computed from the mutation, never a literal) and
+        strips ``parameters``/``parameter_names`` (the tolerance shape
+        the zero-parameter arm pins): post-#525 the readings pair's plot
+        binds its first observation's single value id, so the DATASET
+        fallback with every variable id is the only route by which an
+        over-ceiling readings descriptor reaches the y check at all —
+        with parameters declared, the same mutation refuses
+        ``classref_parameter_map`` first (measured on the bumped tree)."""
         profile_id = sorted(_plot_classes("time_series"))[0]
         slug, reference = _active_family()[profile_id]
         slot = next(
@@ -471,6 +478,7 @@ class TestPlotKindEmission:
         )
         role = str(slot.get("where_role", ""))
         descriptor = json.loads(_committed_example(slug).read_bytes())
+        descriptor.pop("parameters", None)
         descriptor["channels"] = [
             {
                 "id": f"m{index}",
@@ -485,6 +493,61 @@ class TestPlotKindEmission:
                 (json.dumps(descriptor) + "\n").encode(), corpus=corpus_root()
             )
 
+    def test_a_zero_parameter_readings_descriptor_derives_the_tolerated_shape(
+        self,
+    ) -> None:
+        """The disclosed gateway-SDK divergence, pinned as a BEHAVIOR now
+        the committed corpus no longer carries the shape (issue #525's
+        fix completes the examples): a readings-class descriptor stripped
+        of ``parameters`` and ``parameter_names`` IN MEMORY (no corpus
+        byte touched) derives WITHOUT refusing — the SDK expander meets
+        the same descriptor at authoring time and refuses
+        ``classref_parameter_map``; the gateway tolerates, which is what
+        kept the pre-#525 examples derivable — so the readings page
+        carries no observation bindings, the plot falls back to the
+        dataset binding with every (channel, quantity) variable id, and
+        validation reports exactly ONE ``invalid_plot`` finding at the
+        plot page: the ``6d041a7b`` recorded state, pinned here on the
+        mechanism's behavior instead of the committed corpus."""
+        from benchweave.interfaces.ui_presentation import _pin_scoped_documents
+        from benchweave.presentation.admission import validate_attachment
+        from benchweave.presentation.panels import SUPPORTED_PANELS
+
+        readings = sorted(
+            profile_id
+            for profile_id, (_, reference) in _plot_classes("time_series").items()
+            if _plot_page_kind(reference) == "readings"
+        )
+        assert readings, sorted(_plot_classes("time_series"))
+        slug, reference = _active_family()[readings[0]]
+        template = next(p for p in reference["pages"] if p.get("plot"))
+        descriptor = json.loads(_committed_example(slug).read_bytes())
+        descriptor.pop("parameters", None)
+        for channel in descriptor["channels"]:
+            channel.pop("parameter_names", None)
+        descriptor_raw = (json.dumps(descriptor) + "\n").encode()
+        derived = derive_attachment(descriptor_raw, corpus=corpus_root())
+        page, plot = _the_plot(derived)
+        assert str(page["id"]) == str(template["id"]), page
+        assert plot["binding_id"] == str(template["plot"]["over_slot"]), plot
+        assert plot["y"] == _variable_ids(reference, descriptor), plot
+        firmware = (descriptor.get("identity", {}).get("supported_firmware") or ["0"])[
+            0
+        ]
+        report = validate_attachment(
+            derived.envelope_raw,
+            descriptor_raw=descriptor_raw,
+            verified_resources=derived.resources,
+            binding_catalogue=derived.catalogue,
+            schema_documents=_pin_scoped_documents(descriptor),
+            supported_features=frozenset(),
+            supported_panels=SUPPORTED_PANELS,
+            firmware=str(firmware),
+        )
+        assert [(row.code, row.path) for row in report.findings] == [
+            ("invalid_plot", f"pages.{template['id']}.plots")
+        ], report.findings
+
     @pytest.mark.parametrize("profile_id", sorted(_plot_classes("waveform")))
     def test_a_waveform_reference_derives_the_waveform_plot(
         self, profile_id: str
@@ -498,7 +561,7 @@ class TestPlotKindEmission:
         descriptor_path = _committed_example(slug)
         descriptor_raw = descriptor_path.read_bytes()
         derived = derive_attachment(descriptor_raw, corpus=corpus_root())
-        page, plot = _the_plot(derived)
+        _, plot = _the_plot(derived)
         assert plot["kind"] == "waveform", plot
         assert "lane_groups" not in plot, plot
         assert "decoder_lanes" not in plot, plot
@@ -514,7 +577,7 @@ class TestPlotKindEmission:
         for name in plot["y"]:
             row = variables[name]
             assert (row["type"], row["shape"]) == ("number", "vector"), row
-        _assert_pair_validates(derived, descriptor_raw, reference, str(page["id"]))
+        _assert_pair_validates(derived, descriptor_raw)
 
 
 class TestDecoderDerivation:

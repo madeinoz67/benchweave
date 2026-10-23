@@ -50,7 +50,7 @@ UI_MANIFEST = ROOT / "standards/plugin-ui/0.4.0/ui-manifest.schema.json"
 
 # The class's actions per the OTDP 0.2.3 catalogue (the profile row the
 # reference binds); the reference's action URNs must all exist there.
-OTDP_CATALOG = ROOT / "standards/otdp/0.2.3/device-profile-catalog.json"
+OTDP_CATALOG = ROOT / "standards/otdp/0.2.4/device-profile-catalog.json"
 
 
 def schemas() -> dict[str, dict[str, Any]]:
