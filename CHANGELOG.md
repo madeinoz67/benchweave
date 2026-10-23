@@ -180,6 +180,7 @@ All notable changes to this project will be documented in this file.
 - Issue #533 addendum — measured substrate outcomes, post-ship
 - Issue #534 recovery-evidence record — corrupt retained bytes
 - Design record for the device-class table icon cells (#499)
+- Issue #525 corpus parameters design record
 
 ### Features
 
@@ -229,6 +230,7 @@ All notable changes to this project will be documented in this file.
 - Emit the reference's plot kind, gateway-side (#521)
 - ACK-or-stop bound script + RED-first tests (issue #517)
 - Icon cells for the generated device-class table (#499)
+- OTDP 0.2.4 — the readings-class examples declare their readable parameters (issue #525)
 
 ### Miscellaneous
 
@@ -267,6 +269,7 @@ All notable changes to this project will be documented in this file.
 - The full-battery fold — win-core manifest refresh, the B3 specimen motion
 - Advance the pointer to v0.17.0 — the pairing window closes here
 - Advance packages/sdk to v0.18.0 (#463 gap 2, closes none)
+- Advance the pointer to v0.19.0 — the OTDP 0.2.4 pairing
 
 ### Refactoring
 
@@ -325,6 +328,7 @@ All notable changes to this project will be documented in this file.
 - Pin the line-number approximation form; record the f609e724 evidence
 - Restore the fixture to owner-only modes
 - Manifest count moves with the device-class gate's t2d
+- Flip the gate for #525 — clean validation, page-kind-aware plot
 
 ### Build
 
