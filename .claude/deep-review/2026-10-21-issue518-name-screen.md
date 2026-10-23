@@ -452,3 +452,77 @@ suite and the pattern itself describe the shapes in words and assemble
 them at runtime — no added line in this branch carries a tilde token, so
 the base branch's pre-fix screen passes this diff too. A rule
 relaxation must be screenable by the rule it relaxes.
+
+## 16. Regression addendum III (2026-10-23): the message screen refused prose that describes the rule (issue #527)
+
+DEFECT (the residual after §14's fix, measured on main at `2962892b`): the
+CI message screen — and the pre-push leg — refused a commit message that
+quotes placeholder shapes while DESCRIBING the rule. The issue's example
+sentence (a home path with a placeholder name component, written twice —
+once tilde-form, once Users-dir form) fired two hits, `home_path` and
+`tilde_home`, both surface=content, exit 3, and the refusal taught
+nothing: no statement of what the hit was, no remedy, no way to tell a
+false self-fire from a real leak. The #521 lane had already amended a
+commit message for this class, and the #526 lane recorded the workaround
+in the proposal ledger ("the message must describe the shape without
+carrying it"). A screen whose refusal teaches nothing trains lanes to
+route around it — the failure mode the issue itself names.
+
+THE JUDGEMENT (the #527 fork, resolved as its second option): documentation
+and messages describing the screen must not write the shapes — and the
+refusal message says so. Grounds, each measured:
+
+1. The repo already practices this discipline. §15's DIFF DISCIPLINE rules
+   it for added lines (describe in words, assemble at runtime — "a rule
+   relaxation must be screenable by the rule it relaxes"), and the #526
+   lane practiced it for messages (ledger entry: reword to "an
+   approximation marker before a line number").
+2. The tracked tree carries zero placeholder-username home shapes — no
+   tilde-name form, no Users-dir placeholder form, anywhere. The one
+   tracked docstring that documents the home-path shape is ellipsised and
+   pinned. A placeholder allowlist would be unmeasured, violating the F2
+   precedent: tier-P allowlists are measured from vocabulary this
+   repository actually carries, and this repository carries none.
+3. Honesty: the screen cannot tell a placeholder from a real name by
+   shape. A placeholder-reading username is a real username on some host —
+   single-user Linux systems commonly carry a real account whose name is
+   the generic one — so allowing placeholder components weakens the
+   protected home class, which #527's bounds forbid ("do not weaken what
+   counts as a protected name").
+4. A placeholder allowlist would not even fix the commonest real
+   self-fire, measured in the suite: a message quoting the screen's own
+   default list path still fires the tilde class, because the component
+   after the tilde separator is fixed vocabulary (a dot-prefixed config
+   directory), not a name. The discipline closes that and every future
+   documented shape with one rule; an allowlist chases them one shape at
+   a time, each entry a new place a real path could hide behind.
+
+MECHANISM: a BLOCK carrying any home-family hit (`home_path`, `win_home`,
+`tilde_home`) appends one guidance line stating the epistemic limit and
+the remedy — describe the shape in words or assemble it in code; a real
+home path is a leak, remove it. The guidance sentence is shape-free by
+construction, and the suite pins that the screen's blocked OUTPUT passes
+the screen's own scan. The header's default-list-path spelling was
+reworded to the words form for the same reason: on main the screen's own
+bytes did NOT pass its own public scan (one tilde-class hit, header line
+20 col 6, measured) — the screen's documentation now ships the discipline
+it states, and a suite arm holds it there.
+
+ARMS (`name-screen-message.test.mjs`, 8 tests): RED pre-fix 4/8 — the
+three guidance arms (the issue's sentence, the default-path quote, the
+genuine-catch-with-guidance arm) and the screen-self-scan arm; GREEN 8/8
+post-fix. The four stability arms passed pre-fix on purpose and stay
+green after: the words-only way through passes (the remedy is real, not
+aspirational), the serial class blocks WITHOUT the home note (the
+guidance is scoped, not blanket), tier L blocks by entry index with no
+guidance, and the blocked output passes the screen. The full hook-test
+family: 166/166 green post-fix.
+
+DEFERRAL: describing prose that quotes OTHER tier-P shape classes (the
+serial class, measured in the scoping arm) is the same epistemic class
+but has not fired on a lane; the guidance stays scoped to the home
+family until one does.
+
+DIFF DISCIPLINE: this addendum describes every shape in words; the suite
+assembles them at runtime. No added line in this branch carries a
+contiguous home shape.

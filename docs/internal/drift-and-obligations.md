@@ -717,9 +717,10 @@ and remain the reviewer's job.
     (`.claude/hooks/name-screen.mjs`), its three wirings (the
     `.claude/settings.json` PreToolUse entry, the `.githooks/` pair plus
     chain shims installed by `make hooks`, and the `name-screen` CI job),
-    the tier-P pattern set, and the two suites
-    (`.claude/hooks/tests/name-screen.test.mjs`,
-    `name-screen-wiring.test.mjs`) move together: a pattern added or
+    the tier-P pattern set, and the screen's suites under
+    `.claude/hooks/tests/` (name-screen, name-screen-wiring,
+    name-screen-fold, name-screen-pretooluse-paths, name-screen-message)
+    move together: a pattern added or
     retired lands in the screen and both suites' corpora in the same change
     (the pattern set mirrors `privacy-screen.mjs`'s deterministic classes —
     keep the two in step, both files say so); a wiring change moves the

@@ -16,9 +16,10 @@
 //   or first-octet-zero quads) — RFC 1918 private ranges stay BLOCKED: a
 //   bench's internal addressing is operational specificity, and the fold's
 //   tracked-tree sweep pins the test fixtures that carry them.
-//   Tier L (local list): plain names at $BENCHWEAVE_NAME_LIST (default
-//   ~/.config/benchweave/name-screen.list — OUTSIDE every repo of the family,
-//   so the list itself can never land in one). One per line, minimum length
+//   Tier L (local list): plain names at $BENCHWEAVE_NAME_LIST (default: the
+//   name-screen.list file under benchweave/ in the user's config directory,
+//   assembled in loadList — OUTSIDE every repo of the family, so the list
+//   itself can never land in one). One per line, minimum length
 //   4, case-insensitive substring — plus INFLECTION-tolerant matching
 //   (spaced entry vs hyphenated/underscored/dotted filename) through a
 //   canonical form. A list that exists but cannot be read (directory,
@@ -50,6 +51,14 @@
 // missed (substring per line); content past the first 1 MiB of a blob is
 // missed with the truncation announced; a name absent from the list is
 // invisible to every tier.
+//
+// MESSAGE/DOC DISCIPLINE (issue #527, design record §16): prose that
+// describes this screen — commit messages, documentation, this very header —
+// must not quote the home shapes. The screen cannot tell a placeholder name
+// from a real one by shape, and it does not guess: a username that reads as
+// a placeholder is a real username on some host. Describe a shape in words
+// or assemble it in code; a block that carries a home-shape hit teaches the
+// same discipline at the point of friction.
 
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -140,6 +149,18 @@ const PATTERNS = [
   { id: "secret_gorag", re: /\bgorag_[A-Za-z0-9]{16,}/g },
   { id: "secret_bearer", re: /\bBearer[ \t]+(?=[A-Za-z0-9._~+/=-]*[0-9._~+/=])[A-Za-z0-9._~+/=-]{16,}/g },
 ];
+
+// The home family — the classes whose DESCRIBING prose must quote a shape
+// (issue #527). A block carrying one of these ids appends the guidance
+// below: the screen cannot tell a placeholder from a real home path by
+// shape, so it refuses both and teaches the discipline instead of guessing
+// which quoted shapes are "just placeholders" — a placeholder-reading
+// username is a real username on some host, and allowing it would weaken
+// the protected class. The guidance sentence is deliberately shape-free:
+// the screen's own output passes its own scan (pinned in the message suite).
+const HOME_FAMILY = new Set(["home_path", "win_home", "tilde_home"]);
+const HOME_GUIDANCE =
+  "the screen cannot tell a placeholder from a real home path by shape — a real home path is a leak, remove it; if this hit is prose describing the screen, do not quote the shape: describe it in words (a tilde home reference, a Users-dir path, a drive-letter home) or assemble it in code";
 
 function scanEmailsLine(line, lineNo, hits) {
   // Linear per-line walk, bounded spans — the privacy-screen F2 shape (no
@@ -380,6 +401,11 @@ function report(result) {
     } else {
       for (const h of result.hits.slice(0, 5)) lines.push(`  ${cite(h)}`);
       if (result.hits.length > 5) lines.push(`  … and ${result.hits.length - 5} more`);
+      // #527: a home-family hit teaches the discipline — the screen refuses
+      // quoted placeholder shapes and real paths alike, and says why.
+      if (result.hits.some((h) => HOME_FAMILY.has(h.id))) {
+        lines.push(`  home-shape guidance: ${HOME_GUIDANCE}`);
+      }
     }
   } else {
     lines.push("name-screen: PASS");
