@@ -330,6 +330,7 @@ All notable changes to this project will be documented in this file.
 - Restore the fixture to owner-only modes
 - Manifest count moves with the device-class gate's t2d
 - Flip the gate for #525 — clean validation, page-kind-aware plot
+- Window-immune active-row derivation in the gateway sync arm (#543)
 
 ### Build
 
