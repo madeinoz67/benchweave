@@ -582,7 +582,7 @@
     },
     "tests/sdk/test_standards_sync.py": {
       "core": 0,
-      "total": 24
+      "total": 27
     },
     "tests/standards/test_check.py": {
       "core": 0,
