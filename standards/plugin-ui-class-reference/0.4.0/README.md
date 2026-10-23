@@ -440,16 +440,48 @@ degrade by ignoring, never an error.
 ## The deviation ledger contract
 
 A project declares conformance state in an author-owned
-`ui/class-reference.json`: the reference the project follows (`profile_id`
-and family version) and the declared-deviation ledger
-`deviations: [{expectation_id, reason}]`. An `expectation_id` outside the
-reference's expect vocabulary is refused (`classref_unknown_expectation:`) —
-an unknown id cannot launder a divergence. A declared deviation downgrades
-exactly that expectation's failure to a REPORTED row in the gate output;
-an undeclared divergence FAILS the gate. D7-class expectations are
-non-downgradable: a deviation may never name an energy-removing action's
-reachability — the ledger refuses (`classref_deviation_forbidden:`);
-nothing may stand between the operator and abort.
+`ui/class-reference.json`: the references the project follows (`profile_ids`,
+with `contract_version` and `reference_version` naming the family version the
+document was derived against) and four inventories. The declared-deviation
+ledger `deviations: [{expectation_id, reason}]` is the conformance record
+proper. An `expectation_id` outside the reference's expect vocabulary is
+refused (`classref_unknown_expectation:`) — an unknown id cannot launder a
+divergence. A declared deviation downgrades exactly that expectation's
+failure to a REPORTED row in the gate output; an undeclared divergence FAILS
+the gate. D7-class expectations are non-downgradable: a deviation may never
+name an energy-removing action's reachability — the ledger refuses
+(`classref_deviation_forbidden:`); nothing may stand between the operator and
+abort.
+
+The other three inventories record what the reference never claimed, so the
+project's own conformance record states it from birth and never loses it:
+
+- `custom_actions: [{action, resolution: "custom", reason}]` — the residual
+  members: every declared action no served catalog and no composed class
+  described. The reason is level-aware — it names what actually derives
+  (controls from the descriptor's own `input_constraints`, or nothing).
+- `composed_actions: [{action, resolution: "composed", class}]` — every
+  declared action a composed class claimed, carrying the action-to-class
+  mapping.
+- `composed_classes: [{class, validated_against}]` — each consumed class urn
+  and the family version it was validated against. **The ledger records the
+  classes the derivation applied:** a class applies when at least one of its
+  claims names an action the descriptor declares. A pinned class that applied
+  nowhere is disclosed by the gate's REPORTED channel on every run and stays
+  out of the ledger by design. A class urn's own version is content and is
+  never re-stamped.
+
+Both tools key to that set. `verify-ui` reads the authored inventories back
+against the derivation — both directions, including the action-to-class
+mapping — and reports every mismatch as a REPORTED row, never a findings
+failure. `migrate-ui` re-stamps `contract_version`, `reference_version` and
+each `composed_classes[].validated_against` to the target family version,
+re-resolving and re-validating every ledger-named class from its pin first,
+and refuses (`migrate_ui_composed_unresolved` / `migrate_ui_ledger_drift`)
+with nothing written whenever the ledger's inventories disagree with set
+arithmetic over the current descriptor and pins. No schema governs this
+document's key set — the deviation vocabulary is validated, and the
+inventories are read back by the tools named above.
 
 ## Authoring path and provenance
 
