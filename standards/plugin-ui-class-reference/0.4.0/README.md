@@ -293,7 +293,19 @@ whose device is mostly a class but carries vendor operations no served
 catalog describes gets those operations derived — styled, gated,
 provenance-labelled — with no refusal and no upstream request. It is layer 2
 of the three-layer action resolution: **layer 2 is layer 1 with the catalogue
-side supplied by the composed document.** The D13 narrowing intersection, the
+side supplied by the composed document.**
+
+**What `claims` may name.** A claim is a versioned action key:
+`^[A-Za-z0-9][A-Za-z0-9._:-]*/[0-9]+\.[0-9]+\.[0-9]+$`. This vocabulary is
+deliberately at least as permissive at the naming seam as the two layers it
+sits between — the OTDP descriptor puts no pattern on its action keys, and a
+layer-1 pinned vendor catalog serves any key shape — so `com.vendor.op/1.0.0`,
+`urn:otdp:acme:op/1.0.0` and `otdp.acme.op/1.0.0` all claim. A stricter
+pattern here would have made the composed path unusable for exactly the
+naming conventions found in the wild, and would have forced an already
+shipped plugin to rename its descriptor actions. Class-action URNs in a
+reference's `expect.controls` stay `otdp.`-namespaced: that set is the
+family's own vocabulary, not a vendor's. (Owner ruling, 2026-10-23.) The D13 narrowing intersection, the
 reachability ladder and the field-row derivation run unchanged; the plan row
 carries `resolution: "composed"` and the class it resolved through.
 
