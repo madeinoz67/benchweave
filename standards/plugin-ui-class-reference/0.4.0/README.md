@@ -349,14 +349,19 @@ refuses (`classref_composed_side_effect_under`) — a class may claim
 `state_change` or says nothing, and must not claim `none` where the
 descriptor says `state_change`.
 
-**Two sources, one resolver.** The plugin-package source rides the existing
-`descriptor.contracts[]` pin seam: path plus sha256, resolved
-descriptor-relative by the SDK (`_vendor_catalogs`) and from admission bytes
-by the gateway (`_vendor_catalog_documents`) — a pinned document that is
-neither a vendor action catalog nor a schema-valid composed class refuses
-typed. Corpus promotion is literally a file move from the plugin's
-declaration directory into a corpus version directory — maintainer curation
-that never blocks authoring.
+**Two sources; one resolver in this version.** The plugin-package source
+rides the existing `descriptor.contracts[]` pin seam: path plus sha256,
+resolved descriptor-relative by the SDK (`_vendor_catalogs`) — there a
+pinned document that is neither a vendor action catalog nor a
+schema-valid composed class refuses typed. The gateway's admission-bytes
+mirror (`_vendor_catalog_documents`) is deferred to the named follow-on:
+this version's gateway still reads only vendor action catalogs, so a
+composed pin's bytes are digest-verified yet contribute no actions —
+`derive_attachment` keeps refusing `classref_unknown_action` for a
+claimed action, and a gateway today refuses what the SDK resolves.
+Corpus promotion is literally a file move from the plugin's declaration
+directory into a corpus version directory — maintainer curation that
+never blocks authoring.
 
 **Versioning.** The document's `contract_version` is the dialect version
 (`0.1.0`), not the family version: pinned vendor bytes survive family bumps
