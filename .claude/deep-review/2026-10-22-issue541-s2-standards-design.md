@@ -93,7 +93,7 @@ exit 1, 15 failures, the code census above.
     "title":     { "$ref": "#/$defs/title" },
     "claims": {
       "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
-      "items": { "$ref": ".../0.4.0/class-reference.schema.json#/$defs/action_urn" }
+      "items": { "$ref": "#/$defs/claimed_action_urn" }
     },
     "input_schema": { "type": "object" },
     "side_effect":  { "$ref": "#/$defs/side_effect" }
@@ -101,6 +101,8 @@ exit 1, 15 failures, the code census above.
   "$defs": {
     "class_urn":   { "type": "string", "minLength": 1, "maxLength": 256,
                      "pattern": "^otdp\\.action\\.[a-z_][a-z0-9_]*/[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "claimed_action_urn": { "type": "string", "minLength": 3, "maxLength": 256,
+                     "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*/[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "title":       { "type": "string", "minLength": 1, "maxLength": 256 },
     "side_effect": { "enum": ["none", "state_change", "energy_removing"] }
   }
@@ -140,10 +142,22 @@ Each decision, with its derivation:
   enforcement to the safety-behaviours slice) — and the 0.4.0 README
   carries the standing rule that a widening must ship its consuming arm in
   the same change.
-- **`claims` — explicit, many-per-class, closed shape.** Entries are action
-  URNs validated by `$ref` to the family schema's existing
-  `$defs.action_urn` (one authority for the pattern — the same cross-file
-  `$ref` style the family schema already uses for layout).
+- **`claims` — explicit, many-per-class, and as permissive at the naming
+  seam as its neighbours.** Entries are versioned action keys validated
+  against the document's own `$defs.claimed_action_urn`
+  (`^[A-Za-z0-9][A-Za-z0-9._:-]*/[0-9]+\.[0-9]+\.[0-9]+$`). *Corrected
+  2026-10-23, owner ruling after refute lane A:* the first cut `$ref`'d the
+  family's `$defs.action_urn`, which is `otdp.`-namespaced. Executed, that
+  admitted no observed vendor shape at all: `com.veridian-labs.auto-threshold`
+  (this increment's own fixture URN), bare `set_trigger_position`, any hyphen,
+  and `urn:`-prefixed keys all refused `classref_invalid_composed_class`. The
+  OTDP descriptor puts no pattern on its action keys and layer 1's pinned
+  vendor catalogs serve any key shape, so a layer-2 pattern stricter than
+  both would have made the composed path unavailable to exactly the naming
+  conventions in the wild, and an already-shipped plugin could not adopt a
+  class without renaming its descriptor action URNs. Class-action URNs in
+  `expect.controls` stay `otdp.`-namespaced: that set is the family's own
+  vocabulary, not a vendor's.
   `minItems: 1` (a class claiming nothing is meaningless), `maxItems: 64`
   (the family's slots ceiling; the largest corpus profile declares 6
   actions), `uniqueItems: true`. A claim naming an URN a served catalog row
@@ -339,9 +353,24 @@ versions down. Slice 2 extends it:
    `numeric_staging/1.2.0` re-pins and re-derives, migrate-ui only refuses.
    `migrate_ui_ledger_drift:` — the ledger's inventories must match set
    arithmetic over the current descriptor and pins (custom = declared −
-   (catalog ∪ composed-claimed); composed = composed-claimed ∩ declared);
-   a mismatch means the project drifted and needs `derive-ui`, not a
-   version write.
+   (catalog ∪ composed-claimed); composed = composed-claimed ∩ declared;
+   **classes = the class URNs the descriptor's pins declare**); a mismatch
+   means the project drifted and needs `derive-ui`, not a version write.
+
+   *Correction, refute lane 2026-10-23:* this section originally stated the
+   arithmetic over **actions only** and left the class set out, and the
+   build implemented it exactly as written — so a ledger whose
+   `composed_classes` rows were deleted still passed both `verify-ui` and
+   `migrate-ui` green, and the next family bump then re-stamped the family
+   stamps without re-resolving the now-unnamed classes, silently losing the
+   validation record. The omission was the record's, not the build's. Two
+   requirements follow and are mandatory: the drift arithmetic carries the
+   **class set**, and the verify surface gains a **composed read-back**
+   that mirrors slice 1's `_custom_inventory_findings` — the authored
+   ledger's composed rows compared against the derivation's, both
+   directions, REPORTED and never a `findings` failure. Slice 1 learned
+   this same lesson about `custom_actions` being write-only; the design
+   repeated it one field over.
 
 ## 9. Invariant and drift impacts
 
