@@ -72,6 +72,7 @@ All notable changes to this project will be documented in this file.
 - Merge observed violations on EVERY _body_truth arm (#533 arm sweep)
 - Split corrupt retained bytes from honest absence in recovery
 - Fold F1-F5 — access failure defers, corruption contains
+- Teach the describe-in-words discipline on home-shape blocks (#527)
 
 ### Documentation
 
