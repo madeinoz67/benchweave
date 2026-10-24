@@ -526,3 +526,79 @@ family until one does.
 DIFF DISCIPLINE: this addendum describes every shape in words; the suite
 assembles them at runtime. No added line in this branch carries a
 contiguous home shape.
+
+## 17. Regression addendum IV (2026-10-24): the email class refused the bots' own trailers (issue #553)
+
+DEFECT (measured on the seven open dependabot PRs, 545–551): every
+dependabot PR failed the CI lane on the bot's own sign-off trailer — the
+trailer's mailbox is public GitHub infrastructure, published in every
+dependabot commit, not personal data and not a name. The screen was
+working as designed; the class was too broad for content a bot authored.
+Seven PRs red; no dependency update could reach green.
+
+THE JUDGEMENT (the issue's fork, resolved as the allowlist): admit a
+measured allowlist of the addresses the bots in this repository family
+ACTUALLY emit — never an exclusion of bot-authored commits. Grounds, each
+measured:
+
+1. An identity-based exclusion is a smuggling channel: content authored
+   under a bot identity would leave the message and content scan
+   entirely, and a bot identity is obtainable (a workflow can commit as
+   one) — the issue itself names this risk.
+2. The measured enumeration (2026-10-24, gateway repository): the
+   dependabot sign-off mailbox — 18 occurrences in merged commit bodies,
+   the only email in every open dependabot PR's body; and GitHub's
+   bot-account noreply convention, whose local part ends in a bracketed
+   bot marker — the numeric dependabot form (6 in merged bodies, all
+   seven open PRs' author metadata), the code-scanning bot form (2 in
+   merged bodies), and the bare bracketed form (the actions bot, the
+   changelog bot, in author metadata).
+3. The whole noreply domain is NOT admissible: three human identities
+   carry it in this repository's own history. The bracket marker is the
+   boundary — GitHub reserves the bracketed bot suffix for bot accounts,
+   so a person's address cannot carry it. The mechanism pins the bracket,
+   not the domain: the local-part walk cannot cross the bracket, so the
+   candidate is the bracket's tail and the character before the candidate
+   must BE the closing bracket. A human address, bracket-less, never
+   satisfies it — even a person whose username reads as the bot tail.
+4. Refused on measurement, each: any other mailbox on the github.com
+   domain (the allow is one exact public mailbox, never the domain); the
+   github no-reply mailbox the issue suggested (zero occurrences in this
+   family — a guessed entry violates the F2 precedent that tier-P
+   allowlists are measured from vocabulary the repository actually
+   carries); the bracket-less agent co-author (one occurrence, an agent
+   credited on a human commit — not infrastructure; stays blocked).
+5. The KILL check the issue required: no genuine leak becomes
+   unreachable. A person cannot hold the public sign-off mailbox, and a
+   person's noreply address cannot carry the bracketed bot marker. Both
+   refusal arms are pinned in the suite, alongside the bot tail without
+   the bracket, the agent co-author form, and another mailbox on the same
+   domain.
+
+MECHANISM: `allowedEmail` takes the character preceding the candidate and
+admits exactly two shapes — the assembled sign-off mailbox (exact match)
+and the bracket-anchored bot noreply tail. Tier L is untouched: a listed
+name still blocks content that carries the trailer (pinned). The hook's
+own literals are assembled (the §16 discipline), so this branch's added
+lines pass the base-side screen that judges them.
+
+ARMS (`name-screen-botmail.test.mjs`, 5 tests): RED pre-fix 4/5 — the
+five-form allow arm, the full-body CLI arm (the #553 defect shape), the
+tier-L arm's trailer assertion, and the tally; the refused-forms arm
+passed pre-fix on purpose and stays green after (those shapes block today
+and must keep blocking). GREEN 5/5 post-fix; the full hook-test family
+171/171.
+
+DEMONSTRATION (the real artifact, not the synthetic): the pre-fix screen
+over PR 548's real commit body — BLOCK, one hit, the email class at the
+trailer's line and column, exit 3; the fixed screen over all seven open
+PR bodies (545–551) — PASS each, exit 0.
+
+DEFERRAL: other public-bot mailboxes (a renovate or codecov bot) are not
+in this family's history and are not admitted until one fires; the
+unmeasured github no-reply mailbox stays out on the same measured-only
+rule.
+
+DIFF DISCIPLINE: this addendum and the suite describe every address in
+words; the suite and the hook assemble them at runtime. No added line in
+this branch carries a contiguous email shape.

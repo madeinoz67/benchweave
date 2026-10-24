@@ -719,7 +719,8 @@ and remain the reviewer's job.
     chain shims installed by `make hooks`, and the `name-screen` CI job),
     the tier-P pattern set, and the screen's suites under
     `.claude/hooks/tests/` (name-screen, name-screen-wiring,
-    name-screen-fold, name-screen-pretooluse-paths, name-screen-message)
+    name-screen-fold, name-screen-pretooluse-paths, name-screen-message,
+    name-screen-botmail)
     move together: a pattern added or
     retired lands in the screen and both suites' corpora in the same change
     (the pattern set mirrors `privacy-screen.mjs`'s deterministic classes —
