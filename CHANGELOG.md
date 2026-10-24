@@ -282,6 +282,12 @@ All notable changes to this project will be documented in this file.
 - Sweep the family-version literals to 0.4.0
 - Advance the pointer to v0.21.0 — the classref 0.4.0 pairing (#541)
 - Bump ruff from 0.17.0 to 0.17.1
+- Bump playwright from 1.63.0 to 1.64.0
+- Bump cryptography from 50.0.1 to 50.0.2
+- Bump fastapi from 0.143.0 to 0.156.4
+- Bump uvicorn from 0.52.4 to 0.54.0
+- Bump the codeql-action group across 1 directory with 2 updates
+- Bump pypa/gh-action-pypi-publish from 1.14.2 to 1.14.3
 
 ### Refactoring
 
