@@ -12,8 +12,11 @@
 //   filenames, with a measured allowlist for shapes this repository's own
 //   legitimate vocabulary carries (loopback and RFC 5737 documentation
 //   addresses, example-domain emails, scp git URLs on known hosting domains,
-//   and version-shaped four-part strings — exactly: leading-zero, out-of-range
-//   or first-octet-zero quads) — RFC 1918 private ranges stay BLOCKED: a
+//   version-shaped four-part strings — exactly: leading-zero, out-of-range
+//   or first-octet-zero quads — and the public bot mailboxes of issue #553:
+//   the dependabot sign-off mailbox and the bracket-marked bot noreply
+//   tail, enumerated from what the repository family's bots actually emit)
+//   — RFC 1918 private ranges stay BLOCKED: a
 //   bench's internal addressing is operational specificity, and the fold's
 //   tracked-tree sweep pins the test fixtures that carry them.
 //   Tier L (local list): plain names at $BENCHWEAVE_NAME_LIST (default: the
@@ -82,7 +85,27 @@ const EXAMPLE_DOMAINS = ["example.com", "example.net", "example.org", "example.t
 // walk in through the URL exemption.
 const HOSTING_DOMAINS = ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"];
 
-function allowedEmail(candidate) {
+// The public-bot allowlist (issue #553, design record §17): addresses
+// public GitHub infrastructure emits as its own identity in commit
+// trailers, enumerated from this repository family's real history and open
+// dependabot PRs (2026-10-24) — never a guess. Two shapes, both assembled
+// so this file's own added lines carry no contiguous email shape (the #527
+// discipline): the dependabot sign-off mailbox (18 occurrences in merged
+// commit bodies; the only email in every open dependabot PR's body), and
+// GitHub's bot-account noreply convention, whose local part ends in a
+// bracketed bot marker (the numeric dependabot form, the code-scanning
+// bot, the bare actions and changelog bots). NOT admitted, each on
+// measurement: the bare noreply domain — three HUMAN identities carry it
+// in this repository's own history, and a human's noreply address is a
+// personal address — any other mailbox on the github.com domain, the
+// unmeasured github no-reply mailbox (zero occurrences here), and the
+// bracket-less agent co-author (one occurrence, an agent credited on a
+// human commit, not infrastructure).
+const BOT_SIGNOFF_MAILBOX = ["support", "@", "github.com"].join("");
+const BOT_NOREPLY_DOMAIN = ["users", "noreply", "github", "com"].join(".");
+const BOT_NOREPLY_LOCAL = "bot";
+
+function allowedEmail(candidate, prev) {
   const at = candidate.indexOf("@");
   if (at === -1) return false;
   const local = candidate.slice(0, at);
@@ -90,6 +113,18 @@ function allowedEmail(candidate) {
   if (local.toLowerCase() === "git") {
     return HOSTING_DOMAINS.some((h) => domain === h || domain.endsWith("." + h));
   }
+  // Issue #553: the dependabot sign-off — public GitHub infrastructure's
+  // own mailbox, exact match, never the domain (any other mailbox on the
+  // hosting domain stays a candidate).
+  if (candidate.toLowerCase() === BOT_SIGNOFF_MAILBOX) return true;
+  // Issue #553: GitHub's bot-account noreply form, local part ending in a
+  // bracketed bot marker. The local walk cannot cross the bracket, so the
+  // candidate is the bracket's tail and the character before the candidate
+  // must BE the closing bracket — pinning the full form to the bracketed
+  // bot convention. A human's noreply address carries no bracket and no
+  // bot marker, and stays blocked; the bracket is GitHub's structural
+  // boundary between a bot account and a person.
+  if (prev === "]" && local.toLowerCase() === BOT_NOREPLY_LOCAL && domain === BOT_NOREPLY_DOMAIN) return true;
   return EXAMPLE_DOMAINS.some((d) => domain === d);
 }
 
@@ -175,7 +210,7 @@ function scanEmailsLine(line, lineNo, hits) {
     while (e < line.length && e - at - 1 < 255 && DOMAIN_CHAR.test(line[e])) e++;
     while (e > at + 1 && (line[e - 1] === "." || line[e - 1] === "-")) e--;
     const cand = line.slice(s, e);
-    if (EMAIL_SHAPE.test(cand) && !allowedEmail(cand)) {
+    if (EMAIL_SHAPE.test(cand) && !allowedEmail(cand, s > 0 ? line[s - 1] : "")) {
       hits.push({ tier: "P", id: "email", surface: "content", line: lineNo, col: s + 1 });
       return;
     }
