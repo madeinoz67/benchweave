@@ -73,6 +73,7 @@ All notable changes to this project will be documented in this file.
 - Split corrupt retained bytes from honest absence in recovery
 - Fold F1-F5 — access failure defers, corruption contains
 - Teach the describe-in-words discipline on home-shape blocks (#527)
+- Close the 0.4.0 sweep's missed test surfaces
 
 ### Documentation
 
@@ -182,6 +183,9 @@ All notable changes to this project will be documented in this file.
 - Issue #534 recovery-evidence record — corrupt retained bytes
 - Design record for the device-class table icon cells (#499)
 - Issue #525 corpus parameters design record
+- Composition diagrams — resolution, render path, promotion
+- The composition architecture note and the 0.4.0 ledger-contract prose
+- The 0.4.0 resolver paragraph states the split that ships
 
 ### Features
 
@@ -232,6 +236,8 @@ All notable changes to this project will be documented in this file.
 - ACK-or-stop bound script + RED-first tests (issue #517)
 - Icon cells for the generated device-class table (#499)
 - OTDP 0.2.4 — the readings-class examples declare their readable parameters (issue #525)
+- Plugin-ui-class-reference 0.4.0 — composed action classes
+- Widen the composed claims vocabulary to any versioned action key
 
 ### Miscellaneous
 
@@ -271,6 +277,9 @@ All notable changes to this project will be documented in this file.
 - Advance the pointer to v0.17.0 — the pairing window closes here
 - Advance packages/sdk to v0.18.0 (#463 gap 2, closes none)
 - Advance the pointer to v0.19.0 — the OTDP 0.2.4 pairing
+- Regenerate the compatibility matrix for 0.4.0
+- Sweep the family-version literals to 0.4.0
+- Advance the pointer to v0.21.0 — the classref 0.4.0 pairing (#541)
 
 ### Refactoring
 
@@ -331,11 +340,18 @@ All notable changes to this project will be documented in this file.
 - Manifest count moves with the device-class gate's t2d
 - Flip the gate for #525 — clean validation, page-kind-aware plot
 - Window-immune active-row derivation in the gateway sync arm (#543)
+- The served-set total is 19 in the #525+#541 merge result
 
 ### Build
 
 - Bump fastmcp from 4.0.10 to 4.0.11
 - Regenerate uv.lock for fastmcp 4.0.11 (dependabot lock-companion)
+
+### Design
+
+- Three-layer class-reference composition for actions
+- Fold the review's record rows — three deferrals, one leg map
+- Correct the D13 claim and extend D7 to slice 2's contract
 
 ### Fold
 
