@@ -74,6 +74,7 @@ All notable changes to this project will be documented in this file.
 - Fold F1-F5 — access failure defers, corruption contains
 - Teach the describe-in-words discipline on home-shape blocks (#527)
 - Close the 0.4.0 sweep's missed test surfaces
+- Admit the measured public-bot mailboxes (#553)
 
 ### Documentation
 
