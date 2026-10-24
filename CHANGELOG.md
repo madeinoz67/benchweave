@@ -281,6 +281,7 @@ All notable changes to this project will be documented in this file.
 - Regenerate the compatibility matrix for 0.4.0
 - Sweep the family-version literals to 0.4.0
 - Advance the pointer to v0.21.0 — the classref 0.4.0 pairing (#541)
+- Bump ruff from 0.17.0 to 0.17.1
 
 ### Refactoring
 
