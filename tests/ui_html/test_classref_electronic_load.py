@@ -66,7 +66,7 @@ from benchweave.presentation.classref import validate_reference_document
 from benchweave.vendoring import corpus_root
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
+FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.4.0"
 REFERENCE = FAMILY_DIR / "class-electronic_load.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-electronic_load.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-electronic_load.html"

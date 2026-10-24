@@ -524,7 +524,10 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # carries interface 0.1.0 — the predecessor's SDK leg was complete, so
     # the G-5 sync-completion pacing holds. The L11 bump
     # (2026-10-18, slot L11) adds the family's 0.2.0->0.3.0 entry the
-    # same way (the 0.3.0 README's from-predecessor note).
+    # same way (the 0.3.0 README's from-predecessor note). The
+    # composed-action-class bump (2026-10-22, gateway issue #541) adds the
+    # family's 0.3.0->0.4.0 entry the same way (the 0.4.0 README's
+    # from-predecessor note).
     # The otdp 0.2.4 bump (2026-10-22, gateway issue #525 — the
     # readings-class examples' readable parameters) joins compliant the
     # same way: the SDK lock at its gitlink (3fa10c75, v0.18.0) carries
@@ -540,5 +543,6 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
         ("registry", "0.1.3", "0.1.2"),
         ("plugin-ui-class-reference", "0.2.0", "0.1.0"),
         ("plugin-ui-class-reference", "0.3.0", "0.2.0"),
+        ("plugin-ui-class-reference", "0.4.0", "0.3.0"),
     ]
     assert check_train_windows(ROOT) == ()

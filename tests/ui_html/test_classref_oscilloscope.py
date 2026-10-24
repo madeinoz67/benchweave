@@ -61,7 +61,7 @@ from benchweave.presentation.classref import (
 from benchweave.vendoring import corpus_root
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.3.0"
+FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.4.0"
 REFERENCE = FAMILY_DIR / "class-oscilloscope.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-oscilloscope.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-oscilloscope.html"
@@ -370,7 +370,7 @@ def test_a_scratch_time_series_template_still_requires_series() -> None:
 
 
 def test_every_committed_class_document_validates() -> None:
-    """Every class reference in the 0.3.0 family passes the family
+    """Every class reference in the 0.4.0 family passes the family
     schema — the oscilloscope document's own `waveform` plot included
     (a committed document failing is a kill; the mockup's A3 arms keep
     the document and mockup in step)."""

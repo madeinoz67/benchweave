@@ -7,4 +7,6 @@
 	# the capture_series rider (#450), cut at the registration commit 9e0449e.
 	# v0.18.0 = the gateway #463 gap-2 pairing: the classref render arms
 	# and the numeric plot-kind expander, cut at 3fa10c7.
-	pin = v0.19.0
+	# v0.21.0 = the gateway #541 pairing: the classref 0.4.0 family with
+	# composed action classes and the widened claims, cut at 88dcc4d.
+	pin = v0.21.0
