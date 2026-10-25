@@ -532,6 +532,14 @@
       "core": 0,
       "total": 68
     },
+    "tests/presentation/test_classref_member_disclosures.py": {
+      "core": 0,
+      "total": 15
+    },
+    "tests/presentation/test_classref_members.py": {
+      "core": 0,
+      "total": 25
+    },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,
       "total": 21
