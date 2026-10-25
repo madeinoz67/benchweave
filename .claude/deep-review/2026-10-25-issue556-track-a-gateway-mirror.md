@@ -307,6 +307,16 @@ pin exists to catch. The expected delta class, stated before the regen runs:
    or report the divergence to the maintainer, never to edit the fixture to
    match the gateway** (kill direction (e) below).
 
+Addendum (2026-10-25, the build leg, after the regeneration ran): the
+envelope digest re-pin is ENTAILED by delta 1 — each manifest's bytes
+changed, so the envelope's pinned manifest sha256 moved with them.
+Observed on the committed regeneration diff (23a7c642): each of the four
+envelope files (`f1`, `f2`, `f1-da`, `f6-smu`) differs by exactly one
+added and one removed line, both the `"sha256"` line, and nothing else
+(+4/−4 across the four; the +4/−44 commit total is the four digest lines
+plus the manifests' −40). The regen commit's message carries the same
+statement.
+
 Regeneration procedure (build leg, step 0): materialize the pinned SDK
 without touching the submodule working tree —
 `git -C packages/sdk archive 88dcc4d | tar -x -C /tmp/sdk-021` — then run
