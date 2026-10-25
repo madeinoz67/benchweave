@@ -896,8 +896,9 @@ def test_refused_derivation_renders_the_typed_finding(
 ) -> None:
     """The fail-closed arm: a derivation refusal renders its typed
     classref_* finding (the vendor catalog is not admitted here — the
-    gateway resolves pinned vendor catalogs from the admission store),
-    never a partial page."""
+    gateway resolves pinned vendor catalogs from the admission store;
+    the refusal split's ``classref_vendor_catalog_unreadable``), never a
+    partial page."""
     descriptor_raw = _f1_descriptor_raw("f1")
     state = compose_device_presentation(
         gateway.content, descriptor_raw, vendor_catalogs={}
@@ -906,7 +907,8 @@ def test_refused_derivation_renders_the_typed_finding(
     assert state.valid is False
     assert state.pages == ()
     assert any(
-        code == "classref_unknown_action" for code, _path, _message in state.findings
+        code == "classref_vendor_catalog_unreadable"
+        for code, _path, _message in state.findings
     )
 
 

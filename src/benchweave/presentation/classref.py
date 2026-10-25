@@ -1112,7 +1112,18 @@ def _vendor_catalog_documents(
     content store by digest — the gateway has no plugin package dir; the
     SDK resolves descriptor-relative files, the admission store is the
     gateway's equivalent). Missing or digest-divergent pinned bytes
-    refuse typed, never silent."""
+    refuse typed, never silent.
+
+    The refusal split (issue #556 Track A; the SDK expander at the
+    v0.21.0 pin): a pin the admission store cannot serve refuses under
+    the SDK's ``classref_vendor_catalog_unreadable`` — the ONE deliberate
+    code-vocabulary divergence of detail, disclosed here as the
+    ``_resolve_parameters`` divergence is disclosed beside its own
+    mechanism: the SDK's arm names an unreadable file, the gateway's
+    names a pin the admission store does not carry, and one code across
+    both derivations is what the mirror discipline (CON-12 at test
+    level) wants. Digest-divergent bytes and non-object shapes keep
+    their own codes, exactly the SDK's."""
     actions: dict[str, Any] = {}
     for row in descriptor.get("contracts", []):
         identifier = str(row.get("id", ""))
@@ -1122,16 +1133,33 @@ def _vendor_catalog_documents(
         raw = (vendor_catalogs or {}).get(pin)
         if raw is None:
             raise _refuse(
-                "classref_unknown_action",
+                "classref_vendor_catalog_unreadable",
                 f"pinned vendor catalog {row.get('path')} is not admitted "
                 f"(digest {pin})",
             )
         if hashlib.sha256(raw).hexdigest() != pin:
             raise _refuse(
-                "classref_unknown_action",
+                "classref_vendor_catalog_digest_mismatch",
                 f"pinned vendor catalog {row.get('path')} digest mismatch",
             )
         document = json.loads(raw)
+        if not isinstance(document, dict):
+            # The SDK's B7 row: a non-object pin refuses typed — the
+            # pre-split walk crashed on a bare AttributeError, which is
+            # not a typed refusal face.
+            raise _refuse(
+                "classref_vendor_catalog_invalid",
+                f"pinned vendor catalog {row.get('path')} is not a JSON object",
+            )
+        if "actions" in document and not isinstance(document["actions"], dict):
+            # The SDK's R4 row: a digest-valid object whose ``actions``
+            # map is not an object refuses typed (``{"actions": 5}``
+            # crashed the walk at the merge).
+            raise _refuse(
+                "classref_vendor_catalog_invalid",
+                f"pinned vendor catalog {row.get('path')} 'actions' is not a "
+                f"JSON object (got {type(document['actions']).__name__})",
+            )
         actions.update(document.get("actions", {}))
     return actions
 
@@ -1149,8 +1177,10 @@ def _catalog_document(
     try:
         return dict(_read_corpus_json(corpus, row_key, pins))
     except FileNotFoundError as exc:
+        # A platform fault (incomplete corpus), never the recoverable
+        # knowledge gap — its own code since the split (the SDK's).
         raise _refuse(
-            "classref_unknown_action",
+            "classref_profile_catalog_unserved",
             f"the descriptor's profile catalog {row_key} is not served",
         ) from exc
 
@@ -1742,6 +1772,10 @@ def derive_attachment(
             "classref_invalid_reference",
             "no reference applies to the descriptor's profiles",
         )
+    # The SDK's position (``derive_ui`` runs the slot-conflict check
+    # immediately after reference resolution): a multi-fault descriptor
+    # raises the same code both sides.
+    _check_slot_conflicts(references)
     for item in references:
         profile = str(item["profile_id"])
         if profile not in (descriptor.get("profiles") or []):
@@ -1793,8 +1827,11 @@ def derive_attachment(
     for item in references:
         row = profile_rows.get(str(item["profile_id"]))
         if row is None:
+            # A platform fault — the profile catalog is served but
+            # carries no row for this profile (re-coded since the split,
+            # the SDK's own code; still refusing).
             raise _refuse(
-                "classref_unknown_action",
+                "classref_profile_absent",
                 f"profile {item['profile_id']} absent from the served profile catalog",
             )
         for urn in row.get("required_actions", []):
@@ -1811,7 +1848,6 @@ def derive_attachment(
                     "classref_unknown_action",
                     f"slot {key} names {urn}, absent from the served catalogs",
                 )
-    _check_slot_conflicts(references)
     return _assemble_triple(
         descriptor,
         descriptor_raw,

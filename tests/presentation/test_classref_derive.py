@@ -745,30 +745,6 @@ class TestRefusals:
         with pytest.raises(ClassRefusal, match="^classref_required_action_absent:"):
             _derive_from_document(raw)
 
-    def test_unadmitted_vendor_catalog_refuses_classref_unknown_action(
-        self,
-    ) -> None:
-        """The gateway resolution source is the ADMISSION store (design
-        §1: read-time composition over admitted bytes); a pinned vendor
-        catalog that is not admitted refuses typed, never silent."""
-        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
-        with pytest.raises(ClassRefusal, match="^classref_unknown_action:"):
-            derive_attachment(
-                descriptor_raw,
-                corpus=corpus_root(),
-                vendor_catalogs={},
-            )
-
-    def test_tampered_vendor_catalog_bytes_refuse(self) -> None:
-        raw = (FIXTURES / "vendor-catalog.json").read_bytes() + b" "
-        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
-        with pytest.raises(ClassRefusal, match="classref_unknown_action:"):
-            derive_attachment(
-                descriptor_raw,
-                corpus=corpus_root(),
-                vendor_catalogs={hashlib.sha256(raw).hexdigest(): raw},
-            )
-
     def test_satisfies_target_compares_per_parsed_operator(self) -> None:
         """The target grammar's four operators (parent record §2.2
         admission-fold note), tested at the comparator."""
@@ -807,6 +783,174 @@ class TestRefusals:
             _derive_from_document(
                 json.loads((FIXTURES / "descriptor-f1.json").read_bytes()),
                 references_override=[reference],
+            )
+
+
+class TestRefusalSplit:
+    """The refusal split (issue #556 Track A, design §3.1): every integrity
+    arm fires with its own code, mirroring the SDK expander at the v0.21.0
+    pin. The pre-split code wore ``classref_unknown_action`` for all of
+    these; the split keeps that code for exactly ONE condition (the D4
+    reference-slot arm below) and nothing else."""
+
+    def test_not_admitted_pin_refuses_classref_vendor_catalog_unreadable(
+        self,
+    ) -> None:
+        """The gateway-specific resolution fault keeps its own detail
+        sentence under the SDK's ``classref_vendor_catalog_unreadable``
+        code — the admission store is the gateway's equivalent of the
+        SDK's unreadable pinned file (the module docstring's disclosed
+        divergence)."""
+        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
+        with pytest.raises(
+            ClassRefusal, match="^classref_vendor_catalog_unreadable:"
+        ) as caught:
+            derive_attachment(descriptor_raw, corpus=corpus_root(), vendor_catalogs={})
+        assert "is not admitted" in str(caught.value)
+
+    def test_tampered_pin_bytes_refuse_classref_vendor_catalog_digest_mismatch(
+        self,
+    ) -> None:
+        """Pinned bytes that fail their digest are an integrity fault —
+        its own code since the split, never the recoverable gap's. The
+        map is keyed by the descriptor's PIN (the resolution lookup's
+        own key) with tampered bytes as the value, so the arm exercises
+        the digest check itself — keying by the tampered bytes' own
+        digest would miss the lookup and fire the not-admitted arm
+        instead (the pre-split arm passed that way, asserting its code
+        for the wrong reason)."""
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        pin = str(
+            next(
+                row["sha256"]
+                for row in descriptor["contracts"]
+                if not str(row["id"]).startswith("urn:otdp:")
+            )
+        )
+        raw = (FIXTURES / "vendor-catalog.json").read_bytes() + b" "
+        with pytest.raises(
+            ClassRefusal, match="^classref_vendor_catalog_digest_mismatch:"
+        ):
+            derive_attachment(
+                (FIXTURES / "descriptor-f1.json").read_bytes(),
+                corpus=corpus_root(),
+                vendor_catalogs={pin: raw},
+            )
+
+    def test_non_object_pin_refuses_classref_vendor_catalog_invalid(self) -> None:
+        """A digest-valid pin whose document is not a JSON object refuses
+        typed (the SDK's B7 row: the pre-split walk crashed on a bare
+        AttributeError — never an SDK error face, never a 500)."""
+        raw = b"[1, 2, 3]\n"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        row = next(
+            item
+            for item in descriptor["contracts"]
+            if not str(item["id"]).startswith("urn:otdp:")
+        )
+        row["sha256"] = hashlib.sha256(raw).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_vendor_catalog_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={row["sha256"]: raw},
+            )
+
+    def test_non_object_actions_map_refuses_classref_vendor_catalog_invalid(
+        self,
+    ) -> None:
+        """A digest-valid object pin whose ``actions`` is not an object
+        refuses typed (the SDK's R4 row: ``{"actions": 5}`` used to crash
+        the walk at ``.items()``)."""
+        raw = b'{"actions": 5}\n'
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        row = next(
+            item
+            for item in descriptor["contracts"]
+            if not str(item["id"]).startswith("urn:otdp:")
+        )
+        row["sha256"] = hashlib.sha256(raw).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_vendor_catalog_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={row["sha256"]: raw},
+            )
+
+    def test_unserved_profile_catalog_refuses_its_own_code(
+        self, tmp_path: Path
+    ) -> None:
+        """A descriptor pinning a version whose profile catalog the corpus
+        does not carry is a platform fault (the SDK's own split code
+        ``classref_profile_catalog_unserved``) — never the recoverable
+        gap's code."""
+        import shutil
+
+        corpus = tmp_path / "standards"
+        shutil.copytree(corpus_root(), corpus)
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        catalog = corpus / "otdp" / str(descriptor["otdp_version"])
+        catalog.joinpath("device-profile-catalog.json").unlink()
+        with pytest.raises(ClassRefusal, match="^classref_profile_catalog_unserved:"):
+            derive_attachment(
+                (FIXTURES / "descriptor-f1.json").read_bytes(), corpus=corpus
+            )
+
+    def test_absent_profile_refuses_classref_profile_absent(self) -> None:
+        """A reference whose profile the served catalog does not carry is
+        a platform fault — re-coded ``classref_profile_absent`` (the
+        SDK's own code), still refusing."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["profile_id"] = "otdp.meridian_ghost/1.0.0"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        descriptor["profiles"].append("otdp.meridian_ghost/1.0.0")
+        with pytest.raises(ClassRefusal, match="^classref_profile_absent:"):
+            _derive_from_document(descriptor, references_override=[reference])
+
+    def test_slot_naming_an_unserved_urn_keeps_classref_unknown_action(self) -> None:
+        """The D4 corpus fault SURVIVES the retirement of its own code:
+        a reference slot naming an URN absent from every served catalog
+        is the ONE condition that still refuses
+        ``classref_unknown_action`` gateway-side."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["slots"]["abort"]["action"] = "otdp.logic_analyser.ghost/1.0.0"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^classref_unknown_action:"):
+            _derive_from_document(descriptor, references_override=[reference])
+
+    def test_slot_conflicts_fire_before_the_profile_claims_check(self) -> None:
+        """The SDK's position (``derive_ui`` runs ``_check_slot_conflicts``
+        immediately after reference resolution): a multi-fault descriptor —
+        a URN claimed by named slots in two references AND a profile the
+        descriptor does not claim — raises the slot-conflict code both
+        sides, never the later check's."""
+        first = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        second = json.loads(json.dumps(first))
+        second["profile_id"] = "otdp.meridian_ghost/1.0.0"
+        for key, slot in second["slots"].items():
+            if slot.get("action") == "otdp.logic_analyser.abort/1.0.0":
+                second["slots"][f"ghost-{key}"] = slot
+                del second["slots"][key]
+                break
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^classref_profile_slot_conflict:"):
+            _derive_from_document(
+                descriptor, references_override=[first, second]
             )
 
 
