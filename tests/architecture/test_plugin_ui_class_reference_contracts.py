@@ -1470,6 +1470,80 @@ def test_member_declaration_profile_row_is_the_catalog_shape_verbatim() -> None:
     )
 
 
+def _member_schema() -> dict[str, Any]:
+    schema: dict[str, Any] = json.loads(MEMBER_DECLARATION.read_bytes())
+    return schema
+
+
+def test_member_declaration_plot_is_the_reference_plot_block_verbatim() -> None:
+    """V5's plot vocabulary is the reference's own, not a second one: the
+    member's plot def is structurally identical to
+    ``page_template.plot``, per-kind conditionals included. A widening here
+    without a widening there would fork the vocabulary."""
+    reference_plot = schemas()["class-reference"]["$defs"]["page_template"][
+        "properties"
+    ]["plot"]
+    assert _member_schema()["$defs"]["plot"] == reference_plot
+
+
+def test_member_declaration_channels_fields_are_the_reference_branch() -> None:
+    """The channels member carries the reference's channels-branch fields
+    and their closed sets unchanged (``key`` and ``label`` are consts)."""
+    reference_branch = schemas()["class-reference"]["$defs"]["slot"]["oneOf"][0]
+    properties = _member_schema()["$defs"]["channels_member"]["properties"]
+    for name in ("kind", "where_role", "key", "label"):
+        assert properties[name] == reference_branch["properties"][name], name
+
+
+def test_member_declaration_action_fields_are_the_reference_branch() -> None:
+    """The action member carries the reference's action-branch fields and
+    their closed sets unchanged; only the singular ``action`` is replaced by
+    a claim set (the next arm)."""
+    reference_branch = schemas()["class-reference"]["$defs"]["slot"]["oneOf"][1]
+    properties = _member_schema()["$defs"]["action_member"]["properties"]
+    for name in ("kind", "when_declared", "schema_source", "host_supplied"):
+        assert properties[name] == reference_branch["properties"][name], name
+
+
+def test_member_declaration_claims_replace_the_reference_singular_action() -> None:
+    """A member claims URNs; the claim pattern is the composed action
+    class's own, so both pinned document kinds admit exactly the same naming
+    seam. The reference's singular ``action`` does not survive into a member."""
+    reference_branch = schemas()["class-reference"]["$defs"]["slot"]["oneOf"][1]
+    assert "action" in reference_branch["properties"]
+    member = _member_schema()
+    assert "action" not in member["$defs"]["action_member"]["properties"]
+    composed = json.loads(
+        (DIRECTORY / "composed-action-class.schema.json").read_bytes()
+    )
+    assert member["$defs"]["claimed_action_urn"] == composed["$defs"][
+        "claimed_action_urn"
+    ]
+
+
+def test_member_declaration_profile_row_is_the_catalog_profile_row() -> None:
+    """The optional vendor profile row is the device-profile-catalog's row
+    shape verbatim — the shape the canonical validator's profile map already
+    reads, so a vendor row resolves under the existing rule."""
+    catalog_schema = json.loads(
+        (ROOT / "standards/otdp/0.2.4/device-profile-catalog.schema.json").read_bytes()
+    )
+    assert (
+        _member_schema()["$defs"]["vendor_profile"]
+        == catalog_schema["properties"]["profiles"]["items"]
+    )
+
+
+def test_member_declaration_page_id_is_the_reference_page_id_shape() -> None:
+    """A member names an existing reference page by the reference's own page
+    id shape; the existence check is a document-pair rule the derivation
+    owns."""
+    reference_page_id = schemas()["class-reference"]["$defs"]["page_template"][
+        "properties"
+    ]["id"]
+    assert _member_schema()["$defs"]["page_id"] == reference_page_id
+
+
 def test_member_declaration_refuses_unknown_top_level_keys() -> None:
     """The document states members (and at most one profile row); a catalog
     or action-class key set on the same pin is the ambiguity the derivation
