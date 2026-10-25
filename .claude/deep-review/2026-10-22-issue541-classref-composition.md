@@ -357,6 +357,32 @@ ceiling, a plot on a page that already hosts one, the composed series past
 the analog ceiling) drop and REPORT, per the 2026-10-25
 capacity-versus-declaration boundary.
 
+**B7 divergence entry, ruled by the team lead 2026-10-26 — the class-only
+analog over-ceiling case.** CON-12 binds the gateway to the SDK's intended
+semantics, not to every behaviour the SDK happens to ship, and an unhandled
+failure where a refusal belongs is not a semantic; mirroring it would make
+two halves wrong together. The condition, precisely: an analog plot
+(`time_series` or `waveform`) whose OWN y series — the class's traces, NOT
+the composed computed variables (those mirror the SDK's B1 fold exactly:
+dropped from the plot, disclosed on the residual channel, wire shape
+unchanged) — exceed the manifest schema's `y.maxItems` 16 (`_ANALOG_Y_CEILING`).
+The gateway refuses typed: `classref_series_ceiling: {N} numeric variables
+ride the {kind} plot (ceiling 16)`, counted over the non-computed ids only —
+pinned by `test_a_numeric_series_ceiling_refuses_typed`
+(`tests/presentation/test_classref_derive.py`). The SDK at `bac0ac3` emits
+the y set for that same shape unrefused and undropped, and the load dies
+untyped; the evidence is the SDK-side measurement recorded in the Track B
+record's own B1 addendum (2026-10-25, F2 "a pre-existing ceiling defect,
+recorded and not touched"; measured there on the B1 worktree with a
+17-analogue-input descriptor: `plot waveform y count: 17`, and `verify_ui`
+raising `PluginLoadError: standalone_plugin_invalid:
+preview_invalid_presentation: invalid_document: ui-manifest: Document does
+not satisfy its schema`) — that reproduction is the SDK record's own, not
+re-measured gateway-side here; the gateway arm above is this side's
+evidence. The divergence is deliberate and convergent, and it is an
+OUTSTANDING MIRROR OBLIGATION: the moment the SDK fixes its own
+class-over-ceiling handling, the gateway adopts whatever it lands on.
+
 Only **one** refusal is removed, and only in its knowledge-gap sense: "I do not
 know what this action admits" becomes "I derived it from the plugin's own
 declaration, and I am telling you so."
