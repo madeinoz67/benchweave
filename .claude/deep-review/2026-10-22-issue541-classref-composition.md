@@ -335,6 +335,28 @@ of a reviewer, so the survivors are listed before the build:
   itself inconsistently; the code is enumerated in the track B record §3
   rule 4, the family 0.5.0 schema description and README).
 
+**B7 addendum (2026-10-26, #556 Track B):** the composed-member mirror adds
+its own survivors to this set, the SDK's walk-side inventory carried over
+(the B3 fold's F3 and the B5 fold's F3 named this row as the gateway-side
+home): the member-declaration schema refusal
+(`classref_invalid_member_declaration` — a schema-invalid document, a member
+pin against a corpus whose active family serves no member schema, and an
+applied action member whose declaration carries no vendor profile row);
+`classref_composed_plot_slot_mismatch` (the over-slot self-reference);
+the member conflict family under `classref_composed_slot_conflict` (a slot
+key a reference slot or another member holds, a claim a member, class or
+reference slot holds, a page the reference does not declare, and a member
+slot key spelling a derived observation id at the mint);
+`classref_composed_plot_page_mismatch` (a dataset-binding plot kind on a
+readings page); the member half of D4 (`classref_unknown_action` for an
+applied procedure or configuration claim no served or pinned catalog
+describes); and `pinned_id_shadow` over exactly the accepted pin set (the
+shared guard's own code, not a `classref_*` name). None of these replaces
+a disclosure: capacity and placement limits (the joined page over the lane
+ceiling, a plot on a page that already hosts one, the composed series past
+the analog ceiling) drop and REPORT, per the 2026-10-25
+capacity-versus-declaration boundary.
+
 Only **one** refusal is removed, and only in its knowledge-gap sense: "I do not
 know what this action admits" becomes "I derived it from the plugin's own
 declaration, and I am telling you so."

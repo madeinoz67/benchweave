@@ -53,7 +53,23 @@ resolution mirror at v0.21.0 (issue #556 Track A; design record
 residual (custom) resolution with its fold hardening (W2/W3/W5/M6/W7/
 W9/G4), the composed walk with its conflict arms and disclosures, the
 W1/W8 emission order, and the m400 acceptance tag pinning all three
-layers in one descriptor. A re-pin that moves the SDK
+layers in one descriptor — PLUS the composed-member mirror (issue #556
+Track B, slice B7; the SDK's composed-member tips
+``feat/556-b3-members`` ``2dd718d`` through
+``feat/556-b5-datasets-plots`` ``bac0ac3``, folds included): the member
+walk (one ``_pin_shape_groups`` definition, the generalized ambiguity
+refusal, the member conflict family, the shared ``pinned_id_shadow``
+guard over the accepted set), the injection seam with per-slot channel
+resolution and the page-level join, the member target arms (the vendor
+profile row the seam admits), the plot-kind inheritance and the member
+plot, the computed variables, the placement dispositions and the
+mint-collision refusal, and the residual rows the SDK gate renders on
+its REPORTED channel — carried on ``PresentationState.disclosures`` in
+the SDK's own wording. The member-declaration SCHEMA itself joins the
+family at 0.5.0 (the B2 standards motion): until that bump merges, a
+member pin against this corpus refuses typed as a platform fault (the
+lazy-loader rule below) and member-pin-free derivations are unaffected.
+A re-pin that moves the SDK
 derivation moves these functions in the same arc (the design's
 fixture-freeze re-pin rule); B8 reds otherwise.
 
