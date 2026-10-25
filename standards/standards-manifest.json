@@ -76,6 +76,7 @@
         "range": ">=0.1.0,<0.6.0",
         "yanked": {},
         "retired": [],
+        "note": "Range ceiling moved with the 0.5.0 admission (gateway issue #556 track B; design record .claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md section 10, the owner-decided one-document-one-bump motion): admitting the version entails the served range carries it - the same entailed-admission widening as the 0.4.0 admission (gateway issue #541 s2, >=0.1.0,<0.4.0 -> >=0.1.0,<0.5.0). No floor motion, no yank, no retirement; this note is the G-3 linked ruling reference.",
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.2.0/README.md"

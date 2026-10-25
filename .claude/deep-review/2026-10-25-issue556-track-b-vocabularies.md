@@ -169,10 +169,16 @@ from controls to slots.
 **The generalized honesty rules (the action track's four, extended):**
 
 1. **Provenance, one writer, applied set.** `DerivedUI` gains
-   `composed_members` — per vocabulary, the APPLIED member set (a member
-   applies when its claim is declared by this descriptor — the R1 rule
-   carried over verbatim). Only the composed-member walk writes
-   `composed_member` provenance; the ledger records the applied set, and
+   `composed_members` — per vocabulary, the APPLIED member set (a
+   claim-bearing member applies when its claim is declared by this
+   descriptor — the R1 rule carried over verbatim; a claim-less member —
+   `channels` — applies when at least one channel the descriptor declares
+   matches its `where_role`; a claim-less member that matches nothing
+   applies nowhere and discloses on the applied-nowhere REPORTED row.
+   Claim-less application rule added by the B2 review fold, 2026-10-25 —
+   the R1 wording could not describe a `channels` member, which carries no
+   claim). Only the composed-member walk writes `composed_member`
+   provenance; the ledger records the applied set, and
    a pin whose members apply nowhere is a REPORTED row
    (`composed member declaration <path> applied nowhere`), never drift.
 2. **The ledger gains one inventory key, read back both directions with
@@ -197,8 +203,14 @@ from controls to slots.
    with a reference slot, another member, or a composed action class's
    claim refuses `classref_composed_slot_conflict` (new code, the
    parent §8 refuse-never-merge family); a `page` naming no existing
-   page refuses the same code; an ambiguous pin (key-set overlap)
-   refuses the R2 code.
+   page refuses the same code; a `plot.over_slot` that is not the
+   member's own `slot` key refuses `classref_composed_plot_slot_mismatch`
+   (added by the B2 review fold, 2026-10-25 — the schema description and
+   README had promised this refusal but the enumeration did not carry
+   it, so the B3 builder would never have implemented it; it is a
+   declaration conflict, a document referring to itself inconsistently,
+   and joined the parent §8 survivor list in the same fold); an
+   ambiguous pin (key-set overlap) refuses the R2 code.
 
 ## 4. Per-vocabulary design
 
@@ -583,3 +595,66 @@ by path rules regardless of the scan.
   named-outside motion (dual family + host arm). If the owner wants it
   in-run, the track grows a B5b slice and a plugin-ui family bump —
   flagged now so "no deferrals" is decided with the cost visible.
+- **The V5 terminal state.** A fourth plot kind (spectrum, image) is a
+  named-outside motion (dual family + host arm). If the owner wants it
+  in-run, the track grows a B5b slice and a plugin-ui family bump —
+  flagged now so "no deferrals" is decided with the cost visible.
+
+## Addendum — the B2 review fold (dated 2026-10-25, same arc)
+
+Three review lanes (standards-governor, integrity refute, schema-semantics
+refute) reported on the B2 slice; their findings are folded here as
+corrections and additions, never retrofits of the text above.
+
+**§0.2's seam sentence, corrected.** "A vendor profile row in a pinned
+document plus the descriptor claiming that profile id admits vendor targets
+under the EXISTING rule — no validator weakening, no plugin-ui schema
+change" — the rule is real and needs no weakening, but it reads the PLURAL
+key: `_target_findings` builds its profile map from
+`documents[*].profiles` (contracts.py:451), and the first draft of the
+composed-member-declaration schema published the row under a singular
+`profile` object — a key no reader owns, while the reader's key was refused
+by `additionalProperties: false`. Nothing could be both schema-valid and
+validator-readable. The fold corrects the schema, not the record's claim
+about the rule: the 0.5.0 schema carries `profiles` (an array of exactly
+one row, `minItems: 1`, `maxItems: 1`), the README's normative section and
+the schema description say so, and a new arm
+(`tests/unit/test_presentation_profiles.py::
+test_schema_valid_member_declaration_resolves_a_vendor_target`) proves the
+intersection non-empty — a schema-valid declaration, merged through the
+real `merge_pinned_documents`, resolves a vendor profile target through the
+real `validate_presentation` with zero target findings.
+
+**The disclose-not-refuse boundary, ruled and applied (F2a).** A member
+`plot` on a page whose class template already hosts a plot is silently
+inert under §4 V5's wording ("a page with a template keeps the class's" —
+kept, but nothing said the member's plot was disclosed). The owner's
+ruling, recorded in the SDK-side Track B record and applied here: a
+refusal is for a declaration conflict the schema cannot express; a capacity
+or placement limit where the declaration is admissible is disclosed on the
+REPORTED channel. The disposition is now named on all three surfaces — the
+schema description's not-catch list, the README's rule 4, and this record:
+the page keeps the class's plot, the member's plot derives nothing, and
+every run REPORTS `composed plot <slot>: page <page> already hosts a plot
+(the page keeps the class's plot)` — the row shape B3 mints.
+
+**Three wording corrections, with the correct denominators (governor
+LOW-4 and both NITs).** §7 says "the 0.4.0 tree and its 27 rows frozen" —
+27 is the FAMILY total across all four predecessor trees (0.1.0–0.4.0),
+not 0.4.0's alone; the 0.4.0 tree carries its own rows and the same repin
+verifies all 27. §7 says "byte-identical class files in the 0.5.0 copy" —
+each 0.5.0 class file differs from its 0.4.0 counterpart by exactly its
+`contract_version` line; it is the composition gate's PAIR SET that is
+unchanged, and a new arm
+(`test_restamp_fidelity_every_050_machine_file_equals_040_modulo_the_restamp`)
+now pins the re-stamp shape byte-for-byte. §7 and §5 say the
+`tests/presentation/classref_fixtures/` motion is a "regeneration" — the
+committed tree shows the in-arc version re-stamp (each fixture's
+version-bearing line); regeneration from the new derivation is B7's, not
+B2's. Also from the fold: the copy-fidelity arm exists because the
+verbatim-lift arms compare two 0.5.0 files and are equal-pair blind by
+construction — the refute's identical sabotage of the member block and the
+reference block left every lift arm green, and only the corpus pin caught
+the working-tree divergence, which a repin clears mechanically; the new
+arm anchors the re-stamped 0.5.0 files to the digest-frozen 0.4.0 bytes
+and survives a repin (demonstrated: sabotage, repin, the arm still red).

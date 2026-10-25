@@ -437,12 +437,19 @@ digest-verified document survives family bumps (the composed-action-class
 precedent). `members` is the declaration proper: at least one, at most 64 —
 the reference's own `slots` ceiling (`maxProperties: 64`), since every member
 injects one slot.
-Optionally, `profile` states ONE vendor profile row — `id`, `title`,
+Optionally, `profiles` states ONE vendor profile row — an array of exactly
+one row (`minItems: 1`, `maxItems: 1`), each row `id`, `title`,
 `channel_roles`, `required_actions`, `optional_actions` — in the
-device-profile-catalog's own row shape verbatim; the descriptor makes the
-profile claimable by listing its id in its namespace-open `profiles[]`, which is
+device-profile-catalog's own row shape verbatim, under the PLURAL `profiles`
+key because that is the spelling the canonical validator's profile map reads
+(`documents[*].profiles`); the descriptor makes the profile claimable by
+listing its id in its namespace-open `profiles[]`, which is
 what lets a composed target resolve under the canonical validator's existing
-profile rule rather than a widened one.
+profile rule rather than a widened one. A declaration is therefore both
+schema-valid and validator-readable at once — a singular `profile` object is
+refused by this schema (a key no reader owns), and the seam is proven by an
+arm that drives a schema-valid declaration through the real validator to a
+resolved vendor target with zero target findings.
 
 **What a member states.** `slot` is the slot key the member injects;
 `kind` is one of the four values this directory's `$defs.slot` already closes —
@@ -466,22 +473,46 @@ vocabulary, unchanged:
   verbatim: a `digital_lanes`, `time_series` or `waveform` plot with the same
   per-kind conditionals (the group machinery on `digital_lanes` alone; the
   `series: "numeric_variables"` rule required on the two analog kinds and
-  banned on lanes). `plot.over_slot` names the member's own slot key. The plot
+  banned on lanes). `plot.over_slot` names the member's own slot key — a
+  mismatch is the document referring to itself inconsistently and refuses
+  typed `classref_composed_plot_slot_mismatch` (rule 2 below). The plot
   field belongs to a dataset member and to no other kind — a configuration or
   procedure member carrying one is refused by the schema. A fourth plot kind is
   a dual-family standards motion (this family plus plugin-ui, whose consuming
-  render arms the project does not ship), not a member field.
+  render arms the project does not ship), not a member field. One placement
+  outcome is disclosed, not refused: a `plot` on a page whose class template
+  already hosts a plot is admissible (the declaration contradicts nothing the
+  schema can see), and the page keeps the class's plot — the member's plot
+  derives nothing and every run REPORTS it: `composed plot <slot>: page <page>
+  already hosts a plot (the page keeps the class's plot)`. A refusal is for a
+  declaration conflict; a placement limit the declaration cannot see is a
+  disclosure.
 
-**What the schema cannot catch, and where the rule lives instead.** Three rules
+**What the schema cannot catch, and where the rule lives instead.** Four rules
 are relations between documents or between a document and its consumers, and no
-JSON Schema can express them; each refuses typed in the consuming derivation,
+JSON Schema can express them. Three refuse typed in the consuming derivation,
 never silently merged:
 
-1. `page` must name a page the composed reference actually declares.
+1. `page` must name a page the composed reference actually declares — a
+   violation refuses `classref_composed_slot_conflict`.
 2. `plot.over_slot` must equal the member's own `slot` (draft 2020-12 cannot
-   compare two instance values).
+   compare two instance values) — a violation is a declaration conflict, a
+   document referring to itself inconsistently, and refuses
+   `classref_composed_plot_slot_mismatch`.
 3. A member's slot key or a claimed action URN must not collide with a
-   reference slot, another member, or a composed action class's claim.
+   reference slot, another member, or a composed action class's claim — a
+   violation refuses `classref_composed_slot_conflict`.
+
+The fourth is a disclosure, not a refusal:
+
+4. A dataset member's `plot` on a page whose class template already hosts a
+   plot is ADMISSIBLE — the declaration contradicts nothing the schema can
+   see, so it does not refuse. The page keeps the class's plot, the member's
+   plot derives nothing, and every run REPORTS the row `composed plot <slot>:
+   page <page> already hosts a plot (the page keeps the class's plot)`. The
+   boundary, as ruled for this mechanism: a refusal is for a declaration
+   conflict; a capacity or placement limit where the declaration is admissible
+   is disclosed on the REPORTED channel.
 
 **Shape discrimination on the pin seam.** A declaration rides the existing
 `descriptor.contracts[]` path plus sha256 seam, and is discriminated from its

@@ -16,12 +16,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from benchweave.presentation.contracts import (
     SCHEMA_ROOT,
     DocumentError,
     Finding,
     ValidationReport,
+    merge_pinned_documents,
     validate_presentation,
 )
 
@@ -107,8 +109,14 @@ def validate_with(
     *,
     descriptor: JsonObject | None = None,
     target: JsonObject | None = None,
+    schema_asset: JsonObject | None = None,
 ) -> ValidationReport:
-    """Validate a configuration-target specimen over the given document set."""
+    """Validate a configuration-target specimen over the given document set.
+
+    ``schema_asset`` overrides the bytes the manifest's ``settings`` asset
+    carries (default: the corpus action's input schema) — a vendor target
+    supplies its own action schema the same way the corpus specimen does.
+    """
     descriptor = descriptor if descriptor is not None else base_descriptor()
     if target is None:
         action_schema = corpus_catalog()["actions"][CORPUS_ACTION]["input_schema"]
@@ -139,7 +147,9 @@ def validate_with(
             }
         ],
     }
-    action_schema_raw = encode(corpus_catalog()["actions"][CORPUS_ACTION]["input_schema"])
+    if schema_asset is None:
+        schema_asset = corpus_catalog()["actions"][CORPUS_ACTION]["input_schema"]
+    action_schema_raw = encode(schema_asset)
     assets = {"settings": action_schema_raw}
     manifest["assets"] = [
         {"id": name, "path": name + ".json", "sha256": digest(raw)} for name, raw in assets.items()
@@ -201,7 +211,6 @@ def test_pinned_duplicate_divergent_rows_refuses() -> None:
 
 def test_merge_guard_refuses_planted_corpus_id() -> None:
     """A pinned document may not embed a served schema `$id` (the poisoning vector)."""
-    from benchweave.presentation.contracts import merge_pinned_documents
 
     planted = pinned_catalog([corpus_profile_row()], id_=SCHEMA_ROOT + "ui-manifest.schema.json")
     with pytest.raises(DocumentError) as excinfo:
@@ -213,7 +222,6 @@ def test_merge_guard_refuses_planted_corpus_id() -> None:
 
 def test_merge_guard_refuses_action_schema_id_collision() -> None:
     """The guard also scans a pinned document's action-schema `$id`s."""
-    from benchweave.presentation.contracts import merge_pinned_documents
 
     action_schema_id = corpus_catalog()["actions"][CORPUS_ACTION]["input_schema"]["$id"]
     planted = pinned_catalog(
@@ -241,7 +249,6 @@ def test_merge_guard_refuses_pinned_pairwise_collision() -> None:
 
 def test_merge_guard_admits_unique_vendor_ids() -> None:
     """A pinned document with unique vendor `$id`s merges under its pinned: key."""
-    from benchweave.presentation.contracts import merge_pinned_documents
 
     vendor = pinned_catalog([corpus_profile_row()])
     merged = merge_pinned_documents(documents(), {"vendor-cat": vendor})
@@ -250,3 +257,128 @@ def test_merge_guard_admits_unique_vendor_ids() -> None:
     # The merged set validates the corpus specimen unchanged.
     report = validate_with(merged)
     assert report.valid, report.findings
+
+
+# --- the #556 track B composed-member seam (B2 fold, F1) -------------------------
+#
+# The composed-member declaration's vendor profile row must ride the PLURAL
+# ``profiles`` key — the one ``_target_findings`` reads. The first draft of
+# the family schema published it under a singular ``profile`` object, which
+# the canonical validator never reads (and ``additionalProperties: false``
+# refuses on the validator's spelling), so nothing could be both
+# schema-valid and validator-readable. The arm below proves the
+# intersection is non-empty: schema-valid AND resolved, zero findings.
+
+VENDOR_PROFILE_ID_556 = "com.meridian.m400/1.0.0"
+VENDOR_ACTION_556 = "com.meridian.m400.arm/1.0.0"
+VENDOR_INPUT_SCHEMA_ID = "urn:vendor:m400:arm-input:1.0.0"
+
+
+def member_declaration_556() -> JsonObject:
+    return {
+        "contract_version": "0.1.0",
+        "profiles": [
+            {
+                "id": VENDOR_PROFILE_ID_556,
+                "title": "Meridian M-400",
+                "channel_roles": ["digital_input"],
+                "required_actions": [VENDOR_ACTION_556],
+                "optional_actions": [],
+            }
+        ],
+        "members": [
+            {
+                "slot": "arm",
+                "kind": "procedure",
+                "claims": [VENDOR_ACTION_556],
+                "page": "capture",
+            }
+        ],
+    }
+
+
+def vendor_action_catalog_556() -> JsonObject:
+    """The sibling pinned document a vendor target's action schema rides
+    (the vendor-catalog shape of the pin-seam discrimination): the action
+    and its input schema, no profile row — the profile row belongs to the
+    declaration alone."""
+    return {
+        "$id": "urn:vendor:m400:actions:1.0.0",
+        "actions": {
+            VENDOR_ACTION_556: {
+                "input_schema": {
+                    "$id": VENDOR_INPUT_SCHEMA_ID,
+                    "type": "object",
+                    "properties": {
+                        "hold_s": {"type": "number", "minimum": 0}
+                    },
+                    "required": ["hold_s"],
+                    "additionalProperties": False,
+                }
+            }
+        },
+    }
+
+
+def vendor_claiming_descriptor_556() -> JsonObject:
+    descriptor: JsonObject = json.loads(json.dumps(base_descriptor()))
+    descriptor["profiles"] = sorted(
+        set(descriptor.get("profiles", [])) | {VENDOR_PROFILE_ID_556}
+    )
+    descriptor["actions"][VENDOR_ACTION_556] = json.loads(
+        json.dumps(descriptor["actions"][CORPUS_ACTION])
+    )
+    return descriptor
+
+
+def test_schema_valid_member_declaration_resolves_a_vendor_target() -> None:
+    """The F1 seam, driven end to end: a composed-member declaration that
+    validates against the family's 0.5.0 schema, merged into the document
+    set through the real ``merge_pinned_documents`` guard, resolves a
+    vendor profile target through the real ``validate_presentation`` with
+    ZERO target findings — the descriptor claims the vendor profile id, the
+    declaration's ``profiles[0]`` row is what the validator's profile map
+    reads, and the vendor action's schema arrives pinned beside it. Under
+    the singular ``profile`` spelling this intersection was empty: the
+    schema admitted a key no reader owns."""
+    schema = json.loads(
+        (
+            ROOT
+            / "standards/plugin-ui-class-reference/0.5.0"
+            / "composed-member-declaration.schema.json"
+        ).read_bytes()
+    )
+    declaration = member_declaration_556()
+    assert Draft202012Validator(schema).is_valid(declaration), (
+        "the declaration must be schema-valid for the seam to be proven"
+    )
+    merged = merge_pinned_documents(
+        documents(),
+        {
+            "m400-declaration": declaration,
+            "m400-catalog": vendor_action_catalog_556(),
+        },
+    )
+    vendor_schema = vendor_action_catalog_556()["actions"][VENDOR_ACTION_556][
+        "input_schema"
+    ]
+    report = validate_with(
+        merged,
+        descriptor=vendor_claiming_descriptor_556(),
+        target={
+            "id": "configure",
+            "kind": "configuration",
+            "action_id": VENDOR_ACTION_556,
+            "profile_ids": [VENDOR_PROFILE_ID_556],
+            "input_schema_id": VENDOR_INPUT_SCHEMA_ID,
+            "schema_asset_id": "settings",
+            "preset_asset_ids": [],
+        },
+        schema_asset=vendor_schema,
+    )
+    assert report.valid, report.findings
+    assert not [
+        finding
+        for finding in report.findings
+        if finding.code in ("capability_mismatch", "unresolved_reference", "profile_shadow")
+    ]

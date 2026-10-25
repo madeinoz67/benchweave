@@ -928,6 +928,60 @@ def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
     assert manifest_schema["properties"]["contract_version"]["const"] == "0.3.1"
 
 
+# --- copy fidelity against the frozen 0.4.0 predecessor (B2 fold, F3) ------------
+#
+# The verbatim-lift arms compare two 0.5.0 files with each other, so an
+# edit applied identically to BOTH sides of a lift keeps every one of them
+# green (the refute's equal-pair sabotage). This arm anchors each
+# re-stamped 0.5.0 machine file to the digest-frozen 0.4.0 bytes instead.
+
+PREDECESSOR = ROOT / "standards/plugin-ui-class-reference/0.4.0"
+CLASS_FILES = (
+    "class-daq.json",
+    "class-dc_psu.json",
+    "class-dmm.json",
+    "class-electronic_load.json",
+    "class-function_generator.json",
+    "class-logic_analyser.json",
+    "class-oscilloscope.json",
+    "class-smu.json",
+)
+FAMILY_SCHEMAS = (
+    "class-reference.schema.json",
+    "layout.schema.json",
+    "composed-action-class.schema.json",
+)
+
+
+def test_restamp_fidelity_every_050_machine_file_equals_040_modulo_the_restamp() -> None:
+    """Copy fidelity against the frozen predecessor: every re-stamped
+    machine file in 0.5.0 equals its 0.4.0 counterpart modulo the declared
+    version-line re-stamp and NOTHING else — the eight class files change
+    exactly their one ``contract_version`` line, the three family schemas
+    change exactly their version-bearing lines (every occurrence of the
+    literal 0.4.0, and only that: $id, title, the version const and the
+    same-directory $ref). What this arm does NOT catch: an edit applied
+    identically to BOTH version trees preserves the modulo-re-stamp
+    equality and stays green here — that shape is caught by the
+    retained-freeze digest arms over the 0.4.0 rows and by
+    ``test_manifest_hashes_match_contract_files`` over every row; and a
+    hand-forged predecessor corpus row defeats those too, which is the
+    repin-only discipline (CON-7), outside what any in-tree comparison arm
+    can catch. The new ``composed-member-declaration.schema.json`` has no
+    0.4.0 counterpart and is outside this arm by construction."""
+    for name in CLASS_FILES:
+        old = (PREDECESSOR / name).read_bytes()
+        new = (DIRECTORY / name).read_bytes()
+        stamp = b'"contract_version": "0.4.0"'
+        assert old.count(stamp) == 1, name
+        assert new == old.replace(stamp, b'"contract_version": "0.5.0"'), name
+    for name in FAMILY_SCHEMAS:
+        old = (PREDECESSOR / name).read_bytes()
+        new = (DIRECTORY / name).read_bytes()
+        assert old.count(b"0.4.0") == new.count(b"0.5.0"), name
+        assert new == old.replace(b"0.4.0", b"0.5.0"), name
+
+
 # --- the L11 widening and the dc_psu reference (issue #463 slot L11) ------------
 
 
@@ -1446,27 +1500,59 @@ def test_member_declaration_plot_belongs_to_dataset_members() -> None:
     )
 
 
-def test_member_declaration_profile_row_is_the_catalog_shape_verbatim() -> None:
-    """The optional vendor profile row is the device-profile-catalog's own
-    row shape: five required keys, no others. Its ``id`` carries no pattern
-    in the owner either, which is what lets a vendor profile id (outside the
-    corpus ``otdp.*`` namespace) validate here."""
-    validator = member_declaration_validator()
-    profile = {
+def vendor_profile_row() -> dict[str, Any]:
+    return {
         "id": "com.meridian.m400/1.0.0",
         "title": "Meridian M-400",
         "channel_roles": ["digital_input"],
         "required_actions": ["com.meridian.m400.arm/1.0.0"],
         "optional_actions": [],
     }
-    assert validator.is_valid(minimal_member_declaration(profile=profile))
+
+
+def test_member_declaration_profile_row_is_the_catalog_shape_verbatim() -> None:
+    """The optional vendor profile row is the device-profile-catalog's own
+    row shape: five required keys, no others. Its ``id`` carries no pattern
+    in the owner either, which is what lets a vendor profile id (outside the
+    corpus ``otdp.*`` namespace) validate here."""
+    validator = member_declaration_validator()
+    profile = vendor_profile_row()
+    assert validator.is_valid(minimal_member_declaration(profiles=[profile]))
     for field in ("id", "title", "channel_roles", "required_actions", "optional_actions"):
         incomplete = {key: value for key, value in profile.items() if key != field}
         assert not validator.is_valid(
-            minimal_member_declaration(profile=incomplete)
+            minimal_member_declaration(profiles=[incomplete])
         ), field
     assert not validator.is_valid(
-        minimal_member_declaration(profile={**profile, "extra": True})
+        minimal_member_declaration(profiles=[{**profile, "extra": True}])
+    )
+
+
+def test_member_declaration_profiles_is_an_array_of_exactly_one_row() -> None:
+    """The F1 seam: the vendor profile row rides the PLURAL ``profiles``
+    key — an array of exactly one row — because that is the key the
+    canonical validator's profile map reads (``documents[*].profiles`` in
+    ``_target_findings``), the same spelling the device-profile-catalog
+    itself uses. Under the first draft's singular ``profile`` object the
+    schema admitted a key no reader owns and the reader read a key the
+    schema refuses (``additionalProperties: false``): nothing could be both
+    schema-valid and validator-readable. The bounds are part of the
+    contract — one row per document, never zero, never two."""
+    validator = member_declaration_validator()
+    profile = vendor_profile_row()
+    assert validator.is_valid(minimal_member_declaration(profiles=[profile]))
+    # Zero rows state no profile: refuse rather than carry an empty array.
+    assert not validator.is_valid(minimal_member_declaration(profiles=[]))
+    # Two rows would mint two vendor profiles from one declaration; the
+    # document states one (a second profile is a second document).
+    assert not validator.is_valid(
+        minimal_member_declaration(profiles=[profile, vendor_profile_row()])
+    )
+    # The singular spelling is refused, not tolerated: a document carrying
+    # it must fail the schema, never pass while contributing nothing to the
+    # validator's profile map.
+    assert not validator.is_valid(
+        minimal_member_declaration(profile=profile)
     )
 
 
