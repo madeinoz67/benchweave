@@ -94,6 +94,33 @@ class TestParityB8:
             )
             assert derived.profile_ids == (expected_profile,)
 
+    def test_w8_one_field_one_control_on_derived_pages(self) -> None:
+        """W8 (issue #556 Track A; the SDK expander's fold, mirrored): a
+        numeric staging node the section already carries is never
+        re-emitted — the pair used to render twice on every derived page,
+        catalogued pairs included (the pre-fold committed fixtures pinned
+        the doubling; the regeneration at the v0.21.0 expander collapsed
+        it, and this arm holds the mechanism on the derivation's own
+        output, fixture-independent)."""
+        for tag, binding, field in (
+            ("f1", "auto-threshold", "margin_ppm"),
+            ("f1", "auto-threshold", "hysteresis_mv"),
+            ("f6-smu", "arm", "max_duration_ms"),
+            ("f6-smu", "fetch", "max_bytes"),
+        ):
+            derived = _derive(tag)
+            block = derived.manifest["extensions"][
+                "plugin-ui-class-reference:layout"
+            ]
+            pairs = [
+                (node.get("binding_id"), node.get("field"))
+                for page in block["pages"]
+                for section in page["sections"]
+                for node in section.get("children", [])
+                if node.get("kind") == "numeric"
+            ]
+            assert pairs.count((binding, field)) == 1, (tag, binding, field, pairs)
+
     def test_f5_trio_derives_the_staging_section_at_l2(self) -> None:
         """The L5 widening's proof surface (B1 extends to F5): the invented
         vendor action ``com.veridian-labs.auto-band/1.0.0`` requires a free

@@ -29,7 +29,15 @@ the same way over the new corpus, a 10-line stamp-only delta (each layout
 block's ``contract_version`` and each envelope's derived manifest pin:
 five pairs); every pre-edit manifest digest equaled its envelope's recorded
 pin, so the delta is the version line and its digest only. The SDK's own
-vendored corpus carries 0.3.0 until the SDK leg re-stamps its side.
+vendored corpus carries 0.3.0 until the SDK leg re-stamps its side. At
+issue #556 Track A the five triples were REGENERATED from the pinned
+v0.21.0 expander (``88dcc4d``, materialized through ``git archive`` —
+the submodule working tree stays pristine), a 44-line delta in exactly
+the design record §5's stated class: the W8 fold collapses each doubled
+staging numeric to one occurrence (f1/f2/f1-da's ``margin_ppm``/
+``hysteresis_mv``, f6-smu's ``max_duration_ms``/``max_bytes``) and the
+envelope's manifest pin follows; f5-trio moved zero bytes and no
+completion-appended pair appeared (the W1 prediction held).
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -923,23 +931,39 @@ def _insert_ladder_numerics(
     sections: list[dict[str, Any]], plan: Mapping[str, Mapping[str, Any]]
 ) -> None:
     """Authored button nodes for an L2 action gain the action's numeric
-    field nodes immediately before the button (the staging-pair order)."""
+    field nodes immediately before the button (the staging-pair order).
+
+    W8 (issue #556 Track A; the SDK expander's fold, mirrored): a
+    numeric node the section already carries — a derived page's staging
+    emission, or a layout that authored its own numerics — is not
+    re-emitted: one field, one control (the pair used to render twice on
+    every derived page, catalogued pairs included)."""
     for section in sections:
         children = section.get("children", [])
+        present = {
+            (str(node.get("binding_id")), node.get("field"))
+            for node in children
+            if node.get("kind") == "numeric"
+        }
         out: list[dict[str, Any]] = []
         for node in children:
             if node.get("kind") == "button" and isinstance(node.get("binding_id"), str):
                 urn = _urn_for_binding(plan, str(node["binding_id"]))
                 row = plan.get(urn or "", {}) if urn else {}
                 for field_row in row.get("fields", []):
-                    if field_row["mode"] == "numeric":
-                        out.append(
-                            {
-                                "binding_id": node["binding_id"],
-                                "kind": "numeric",
-                                "field": field_row["field"],
-                            }
-                        )
+                    if field_row["mode"] != "numeric":
+                        continue
+                    key = (str(node["binding_id"]), field_row["field"])
+                    if key in present:
+                        continue
+                    present.add(key)
+                    out.append(
+                        {
+                            "binding_id": node["binding_id"],
+                            "kind": "numeric",
+                            "field": field_row["field"],
+                        }
+                    )
             out.append(node)
         section["children"] = out
 
@@ -1070,8 +1094,12 @@ def _build_layout(
                 if children
                 else []
             )
-        _insert_ladder_numerics(sections, plan)
         _complete_authored_buttons(sections, plan, page_id)
+        # W1 (issue #556 Track A; the SDK expander's fold, mirrored):
+        # completion runs BEFORE the ladder-numeric insert — a button the
+        # completion pass appends must arrive in time for the insert to
+        # give it its numeric staging pair.
+        _insert_ladder_numerics(sections, plan)
         if sections:
             block_pages.append({"page_id": page_id, "sections": sections})
     block: dict[str, Any] = {
