@@ -494,7 +494,7 @@
     },
     "tests/interfaces_ui/test_ui_presentation.py": {
       "core": 0,
-      "total": 41
+      "total": 43
     },
     "tests/interfaces_ui/test_ui_read_views.py": {
       "core": 0,
@@ -530,7 +530,7 @@
     },
     "tests/presentation/test_classref_derive.py": {
       "core": 0,
-      "total": 33
+      "total": 66
     },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,
