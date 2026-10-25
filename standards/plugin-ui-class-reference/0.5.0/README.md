@@ -434,7 +434,9 @@ component inventory is the existing one, applied by the existing rule.
 **What the document states — two things.** `contract_version` is the document's
 dialect version (`0.1.0`), decoupled from this directory's version so a pinned,
 digest-verified document survives family bumps (the composed-action-class
-precedent). `members` is the declaration proper: at least one, at most 64.
+precedent). `members` is the declaration proper: at least one, at most 64 —
+the reference's own `slots` ceiling (`maxProperties: 64`), since every member
+injects one slot.
 Optionally, `profile` states ONE vendor profile row — `id`, `title`,
 `channel_roles`, `required_actions`, `optional_actions` — in the
 device-profile-catalog's own row shape verbatim; the descriptor makes the
