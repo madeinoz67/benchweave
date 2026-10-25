@@ -17,7 +17,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
 from classref_members_support import build_member_corpus
 
 from benchweave.presentation.classref import (
@@ -29,11 +28,12 @@ FIXTURES = Path(__file__).parent / "classref_fixtures"
 
 
 
-@pytest.fixture()
-def member_corpus(tmp_path: Path) -> Path:
+def _member_corpus(tmp_path: Path) -> Path:
     """The scratch corpus carrying a member-declaration schema at the
     ACTIVE family version (see classref_members_support for the
-    posture)."""
+    posture). Plain helper, not a pytest fixture — the decorator line
+    trips the name screen's empty-local email shape (the repo's
+    convention: explicit tmp_path args, module-level support)."""
     return build_member_corpus(tmp_path)
 
 
@@ -147,7 +147,7 @@ class TestAppliedNowhereRows:
     wording, one row each, never silent and never a finding."""
 
     def test_a_pin_that_applied_nowhere_discloses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         document = _members_document(
@@ -161,13 +161,13 @@ class TestAppliedNowhereRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed member declaration members.json applied nowhere" in lines
         ), lines
 
     def test_a_dead_member_inside_an_applied_pin_discloses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         _declare(
@@ -206,7 +206,7 @@ class TestAppliedNowhereRows:
         catalogs = _vendor_catalogs()
         catalogs |= _pin(descriptor, vendor_row, name="vendor-extra.json")
         catalogs |= _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed member declaration members.json member vendor-configure "
             "applied nowhere (its claims name no action this descriptor "
@@ -217,7 +217,7 @@ class TestAppliedNowhereRows:
         )
 
     def test_a_dead_channels_member_names_the_role(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         document = _members_document(
@@ -231,7 +231,7 @@ class TestAppliedNowhereRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed member declaration members.json member trigger-lanes "
             "applied nowhere (no declared channel carries role trigger_bus)"
@@ -246,7 +246,7 @@ class TestPlacementAndResidualRows:
     and dataset control rows, and the V2/V3 residual closures."""
 
     def test_a_plot_on_a_page_that_already_hosts_one_discloses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The 2026-10-25 capacity-versus-declaration ruling: a placement
         limit the declaration cannot see is a disclosure, never a refusal
@@ -265,14 +265,14 @@ class TestPlacementAndResidualRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed plot vendor-lanes: page capture already hosts a plot "
             "(the page keeps the class's plot)" in lines
         ), lines
 
     def test_a_plot_on_a_configuration_page_discloses_the_page_kind(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         _declare(descriptor, "com.meridian.m400.wave/1.0.0")
@@ -288,14 +288,14 @@ class TestPlacementAndResidualRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed plot vendor-plot: page configuration admits no plot "
             "(plots render on dataset and readings pages alone)" in lines
         ), lines
 
     def test_a_dataset_member_no_plot_carries_names_the_emitted_binding(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B5 fold's F2: the reason names the EMITTED plot's binding
         — the daq capture page's waveform plot binds the class capture
@@ -313,14 +313,14 @@ class TestPlacementAndResidualRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "composed dataset vendor-capture: no plot carries its binding "
             "(the plot on page capture binds capture)" in lines
         ), lines
 
     def test_the_join_overflow_discloses_one_row_per_dropped_lane(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _f2()
         for index in range(40):
@@ -344,7 +344,7 @@ class TestPlacementAndResidualRows:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         dropped = [line for line in lines if line.startswith("composed lane ")]
         assert len(dropped) == 8, dropped
         assert (
@@ -354,7 +354,7 @@ class TestPlacementAndResidualRows:
         ), lines
 
     def test_a_staged_unclaimed_action_carries_the_settings_row(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The classifier is the derived state: an action with a
         catalogue side derives L2 staging, and unclaimed (device-features)
@@ -382,7 +382,7 @@ class TestPlacementAndResidualRows:
         catalogs = _vendor_catalogs() | _pin(
             descriptor, vendor_row, name="vendor-extra.json"
         )
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "settings member com.meridian.m400.staged/1.0.0: no settings "
             "surface declared (controls render staged on device-features)"
@@ -394,17 +394,17 @@ class TestPlacementAndResidualRows:
         ), lines
 
     def test_a_class_listed_run_verb_never_carries_the_settings_row(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B4 fold's F5: a claimed profile's served row listing is the
         one honest class-action signal — otdp.smu.arm stages on
         device-features and stays off this row."""
-        lines = _lines(_derive_document(_f6_smu(), _vendor_catalogs(), member_corpus))
+        lines = _lines(_derive_document(_f6_smu(), _vendor_catalogs(), _member_corpus(tmp_path)))
         settings_rows = [line for line in lines if line.startswith("settings member ")]
         assert not any("otdp.smu." in row for row in settings_rows), settings_rows
 
     def test_an_unclaimed_bare_button_carries_the_dataset_row(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         _declare(descriptor, "com.meridian.m400.ping/1.0.0")
@@ -422,7 +422,7 @@ class TestPlacementAndResidualRows:
             },
         }
         catalogs = _vendor_catalogs() | _pin(descriptor, vendor_row, name="ping.json")
-        lines = _lines(_derive_document(descriptor, catalogs, member_corpus))
+        lines = _lines(_derive_document(descriptor, catalogs, _member_corpus(tmp_path)))
         assert (
             "dataset member com.meridian.m400.ping/1.0.0: no dataset surface "
             "declared (the action's control renders on device-features)"
@@ -430,7 +430,7 @@ class TestPlacementAndResidualRows:
         ), lines
 
     def test_an_unresolved_channel_role_reports_every_run(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B1 closure: a channel whose role matches no resolved
         channels slot derives nothing and reports — never silent."""
@@ -445,12 +445,12 @@ class TestPlacementAndResidualRows:
             }
         )
         lines = _lines(
-            _derive_document(descriptor, _vendor_catalogs(), member_corpus)
+            _derive_document(descriptor, _vendor_catalogs(), _member_corpus(tmp_path))
         )
         assert "channel aux1 (role aux): resolves to no lanes surface" in lines, lines
 
     def test_an_unhosted_decoder_names_the_plot_kind(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
@@ -462,7 +462,7 @@ class TestPlacementAndResidualRows:
             }
         ]
         lines = _lines(
-            _derive_document(descriptor, _vendor_catalogs(), member_corpus)
+            _derive_document(descriptor, _vendor_catalogs(), _member_corpus(tmp_path))
         )
         assert (
             "custom decoder uart-decoder: no lane host (this class's plot "
@@ -470,7 +470,7 @@ class TestPlacementAndResidualRows:
         ), lines
 
     def test_a_computed_variable_states_its_composed_surface(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         descriptor["derived_variables"] = [
@@ -482,7 +482,7 @@ class TestPlacementAndResidualRows:
             }
         ]
         lines = _lines(
-            _derive_document(descriptor, _vendor_catalogs(), member_corpus)
+            _derive_document(descriptor, _vendor_catalogs(), _member_corpus(tmp_path))
         )
         assert (
             "observation variable rms_v: computed variable derives into "
@@ -498,7 +498,7 @@ class TestTheSeam:
     pinned rows load-bearing, not decorative."""
 
     def _composed_settings_derivation(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> tuple[DerivedAttachment, dict[str, Any], dict[str, bytes]]:
         descriptor = _m400()
         _declare(descriptor, "com.meridian.m400.profile_mode/1.0.0")
@@ -534,11 +534,11 @@ class TestTheSeam:
         catalogs = _vendor_catalogs()
         catalogs |= _pin(descriptor, vendor_row, name="vendor-extra.json")
         catalogs |= _pin(descriptor, document)
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         return derived, descriptor, catalogs
 
     def test_a_composed_target_validates_through_the_merged_documents(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         from benchweave.interfaces.ui_presentation import _pin_scoped_documents
         from benchweave.presentation.admission import validate_attachment
@@ -546,7 +546,7 @@ class TestTheSeam:
         from benchweave.presentation.contracts import merge_pinned_documents
 
         derived, descriptor, admitted = self._composed_settings_derivation(
-            member_corpus
+            _member_corpus(tmp_path)
         )
         documents = merge_pinned_documents(
             _pin_scoped_documents(descriptor),
@@ -565,7 +565,7 @@ class TestTheSeam:
         assert report.valid, [str(f) for f in report.findings]
 
     def test_the_pinned_rows_are_load_bearing(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The negative control (the B3 first-commit arm's shape): without
         the merge the same derivation fails validation on the vendor
@@ -574,7 +574,7 @@ class TestTheSeam:
         from benchweave.presentation.admission import validate_attachment
 
         derived, descriptor, _admitted = self._composed_settings_derivation(
-            member_corpus
+            _member_corpus(tmp_path)
         )
         report = validate_attachment(
             derived.envelope_raw,

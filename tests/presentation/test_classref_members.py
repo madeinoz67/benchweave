@@ -39,11 +39,12 @@ from benchweave.vendoring import corpus_root
 FIXTURES = Path(__file__).parent / "classref_fixtures"
 
 
-@pytest.fixture()
-def member_corpus(tmp_path: Path) -> Path:
+def _member_corpus(tmp_path: Path) -> Path:
     """The scratch corpus carrying a member-declaration schema at the
     ACTIVE family version (see classref_members_support for the
-    posture)."""
+    posture). Plain helper, not a pytest fixture — the decorator line
+    trips the name screen's empty-local email shape (the repo's
+    convention: explicit tmp_path args, module-level support)."""
     return build_member_corpus(tmp_path)
 
 
@@ -136,7 +137,7 @@ class TestMemberWalk:
     the mirror of the SDK walk at ``bac0ac3``."""
 
     def test_a_schema_invalid_member_document_refuses_typed(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """A ``members`` pin that fails the served member schema refuses
         ``classref_invalid_member_declaration`` (the
@@ -158,10 +159,10 @@ class TestMemberWalk:
         with pytest.raises(
             ClassRefusal, match="^classref_invalid_member_declaration:"
         ):
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
 
     def test_plot_over_slot_not_the_members_own_slot_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The self-reference rule (the README's named cannot-catch: the
         schema cannot compare two instance values): ``plot.over_slot``
@@ -189,10 +190,10 @@ class TestMemberWalk:
         with pytest.raises(
             ClassRefusal, match="^classref_composed_plot_slot_mismatch:"
         ):
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
 
     def test_one_slot_two_members_in_one_document_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The same-document duplicate names the document once and says
         the pair is internal (the B3 fold's NIT wording)."""
@@ -217,11 +218,11 @@ class TestMemberWalk:
         document = _members_document([member, other])
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
         with pytest.raises(ClassRefusal, match="^classref_composed_slot_conflict:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "declared by two members in the same pinned document" in str(exc.value)
 
     def test_one_slot_two_documents_refuses_naming_both_pins(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         _declare(
@@ -253,11 +254,11 @@ class TestMemberWalk:
         catalogs |= _pin(descriptor, first, name="members-a.json")
         catalogs |= _pin(descriptor, second, name="members-b.json")
         with pytest.raises(ClassRefusal, match="^classref_composed_slot_conflict:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "members-a.json and members-b.json" in str(exc.value)
 
     def test_one_claim_two_members_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         _declare(descriptor, "com.meridian.m400.sweep/1.0.0")
@@ -279,11 +280,11 @@ class TestMemberWalk:
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
         with pytest.raises(ClassRefusal, match="^classref_composed_slot_conflict:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "is claimed by both member" in str(exc.value)
 
     def test_a_claim_a_composed_class_holds_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """One claim, one owner: the class owns the catalogue side, the
         member the placement — a member claiming the class's URN refuses
@@ -301,13 +302,13 @@ class TestMemberWalk:
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
         with pytest.raises(ClassRefusal, match="^classref_composed_slot_conflict:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "which composed class otdp.action.meridian_burst/1.0.0 claims" in str(
             exc.value
         )
 
     def test_a_members_key_set_overlapping_the_catalog_keys_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The R2 question generalized to three key vocabularies: a pin
         carrying ``members`` AND ``actions`` is ambiguous — one key set is
@@ -330,12 +331,12 @@ class TestMemberWalk:
         with pytest.raises(
             ClassRefusal, match="^classref_invalid_composed_class:"
         ) as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "carries keys of more than one pin shape" in str(exc.value)
         assert "members, actions" in str(exc.value)
 
     def test_a_members_key_set_overlapping_the_class_keys_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         descriptor = _m400()
         document = _members_document(
@@ -353,11 +354,11 @@ class TestMemberWalk:
         with pytest.raises(
             ClassRefusal, match="^classref_invalid_composed_class:"
         ) as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "members, composed-class" in str(exc.value)
 
     def test_two_catalogs_sharing_an_embedded_id_refuse_in_the_walk(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The walk-side half of the shared ``pinned_id_shadow`` guard
         (the B4 fold's F3): the derive and the canonical validation refuse
@@ -379,7 +380,7 @@ class TestMemberWalk:
         catalogs |= _pin(descriptor, first, name="catalog-a.json")
         catalogs |= _pin(descriptor, second, name="catalog-b.json")
         with pytest.raises(ClassRefusal, match="^pinned_id_shadow:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "shadows a served schema $id" in str(exc.value)
 
     def test_a_tampered_member_pin_refuses_under_the_neutral_wording(
@@ -566,7 +567,7 @@ class TestMemberInjection:
         return base, catalogs
 
     def test_a_channels_member_injects_a_second_slot_and_joins_the_page(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V3 layer 2 (B3 motion 3): a channels member whose role the
         descriptor carries injects beside the reference's own channels
@@ -594,7 +595,7 @@ class TestMemberInjection:
             ]
         )
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         capture_target = next(
             row
             for row in derived.catalogue["targets"]
@@ -610,7 +611,7 @@ class TestMemberInjection:
         )
 
     def test_a_procedure_member_composes_its_target_with_the_vendor_row(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V1 layer 2 (B4 motion 2): the procedure loop composes the
         target and binding for an injected member slot, the profile ids
@@ -631,7 +632,7 @@ class TestMemberInjection:
                 )
             },
         )
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         target = next(
             row
             for row in derived.catalogue["targets"]
@@ -645,7 +646,7 @@ class TestMemberInjection:
         )
 
     def test_a_configuration_member_composes_the_settings_idiom(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V6 layer 2 (B4 motion 3): the configuration arm derives the
         settings schema asset per surface (one asset per slot, keyed by
@@ -667,7 +668,7 @@ class TestMemberInjection:
                 )
             },
         )
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "settings/vendor-configure.schema.json" in derived.resources
         target = next(
             row
@@ -679,7 +680,7 @@ class TestMemberInjection:
         assert target["schema_asset_id"] == "settings/vendor-configure.schema.json"
 
     def test_a_dataset_member_composes_target_and_binding_beside_the_pair(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V4 layer 2 (B5): every dataset slot beyond the founding pair
         whose action the descriptor declares composes its own target and
@@ -702,7 +703,7 @@ class TestMemberInjection:
                 )
             },
         )
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         target = next(
             row
             for row in derived.catalogue["targets"]
@@ -715,7 +716,7 @@ class TestMemberInjection:
         assert "ch1-voltage" in variable_ids
 
     def test_a_member_plot_joins_a_plotless_page_template(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V5 layer 2 (B5): a dataset member's ``plot`` choice joins the
         page template when the page hosts no plot of its own and the
@@ -745,7 +746,7 @@ class TestMemberInjection:
             else page
             for page in reference["pages"]
         ]
-        derived = _derive_refs(descriptor, catalogs, member_corpus, [reference])
+        derived = _derive_refs(descriptor, catalogs, _member_corpus(tmp_path), [reference])
         capture_page = next(
             page for page in derived.manifest["pages"] if page["id"] == "capture"
         )
@@ -766,7 +767,7 @@ class TestMemberInjection:
         )
 
     def test_an_applied_action_member_without_a_profile_row_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The admission refusal (B4): an APPLIED action-kind member
         composes a target naming the declaration's vendor profile row (the
@@ -792,13 +793,13 @@ class TestMemberInjection:
         with pytest.raises(
             ClassRefusal, match="^classref_invalid_member_declaration:"
         ) as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "composes a target naming the declaration's vendor profile row" in str(
             exc.value
         )
 
     def test_an_applied_claim_no_catalog_describes_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The D4 rule's member half (B4): an APPLIED procedure or
         configuration member composes a target whose input_schema_id names
@@ -816,11 +817,11 @@ class TestMemberInjection:
             ],
         )
         with pytest.raises(ClassRefusal, match="^classref_unknown_action:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "the composed target needs the catalogue side" in str(exc.value)
 
     def test_a_dataset_member_is_exempt_from_the_catalogue_side_rule(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """B5's split: the dataset target carries measurement_schema_id —
         the descriptor's pinned measurement contract — never
@@ -836,7 +837,7 @@ class TestMemberInjection:
                 }
             ],
         )
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         target = next(
             row
             for row in derived.catalogue["targets"]
@@ -845,7 +846,7 @@ class TestMemberInjection:
         assert target["measurement_schema_id"].startswith("urn:otdp:measurement")
 
     def test_a_member_slot_spelling_an_observation_id_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B5 fold's F4: a member slot key that spells a derived
         observation binding id makes the member's dataset target and the
@@ -869,11 +870,11 @@ class TestMemberInjection:
         _declare(descriptor, "com.meridian.m400.wave/1.0.0")
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
         with pytest.raises(ClassRefusal, match="^classref_composed_slot_conflict:") as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "collides with an id the derivation already mints" in str(exc.value)
 
     def test_a_member_waveform_plot_on_a_readings_page_refuses(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B5 fold's F3: readings pages admit observation bindings
         alone, so a dataset-binding plot kind (waveform, digital_lanes)
@@ -904,11 +905,11 @@ class TestMemberInjection:
         with pytest.raises(
             ClassRefusal, match="^classref_composed_plot_page_mismatch:"
         ) as exc:
-            _derive_document(descriptor, catalogs, member_corpus)
+            _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         assert "readings page output cannot host" in str(exc.value)
 
     def test_a_member_time_series_plot_on_a_readings_page_composes(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The F3 sibling: ``time_series`` — the one kind a readings page
         hosts, binding an observation — composes. Over a PLOT-LESS
@@ -942,7 +943,7 @@ class TestMemberInjection:
             else page
             for page in reference["pages"]
         ]
-        derived = _derive_refs(descriptor, catalogs, member_corpus, [reference])
+        derived = _derive_refs(descriptor, catalogs, _member_corpus(tmp_path), [reference])
         output_page = next(
             page for page in derived.manifest["pages"] if page["id"] == "output"
         )
@@ -959,7 +960,7 @@ class TestMemberInjection:
         )
 
     def test_the_lane_join_over_the_ceiling_drops_from_the_plot_alone(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B3 fold's F1 (the capacity boundary's join half): the sum
         of admissible declarations is not an authoring error — the joined
@@ -991,7 +992,7 @@ class TestMemberInjection:
             "com.meridian.m400.sweep/1.0.0"
         ]
         catalogs = _vendor_catalogs() | _pin(descriptor, document)
-        derived = _derive_document(descriptor, catalogs, member_corpus)
+        derived = _derive_document(descriptor, catalogs, _member_corpus(tmp_path))
         plot = next(
             plot
             for page in derived.manifest["pages"]
@@ -1012,7 +1013,7 @@ class TestMemberInjection:
         assert len(lane_vars) == 72
 
     def test_computed_variables_derive_into_dataset_shapes(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """V2 (B1, mirrored): a computed measurement is an ordinary value
         variable of EVERY dataset target — the shape follows the
@@ -1025,7 +1026,7 @@ class TestMemberInjection:
             {"id": "rms_v", "quantity": "voltage", "unit": "V", "expression": "rms(ch1)"},
             {"id": "ch1-voltage", "quantity": "voltage", "unit": "V", "expression": "x"},
         ]
-        derived = _derive_document(descriptor, _vendor_catalogs(), member_corpus)
+        derived = _derive_document(descriptor, _vendor_catalogs(), _member_corpus(tmp_path))
         capture_target = next(
             row
             for row in derived.catalogue["targets"]
@@ -1048,7 +1049,7 @@ class TestMemberInjection:
         )
 
     def test_an_unclaimed_slug_sharing_a_placed_slot_keys_spelling_keeps_its_own_action(
-        self, member_corpus: Path
+        self, tmp_path: Path
     ) -> None:
         """The B4 fold's F1 (the mint discipline, mirrored): a placed slot
         key must not capture a binding id that only shares its spelling —
@@ -1068,7 +1069,7 @@ class TestMemberInjection:
                 "properties": {"margin_ms": {"type": "integer", "minimum": 1}}
             },
         }
-        derived = _derive_document(descriptor, _vendor_catalogs(), member_corpus)
+        derived = _derive_document(descriptor, _vendor_catalogs(), _member_corpus(tmp_path))
         block = derived.manifest["extensions"][
             "plugin-ui-class-reference:layout"
         ]
