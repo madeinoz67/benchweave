@@ -1164,6 +1164,339 @@ class TestResidualResolution:
         )
 
 
+class TestComposedResolution:
+    """The composed layer (issue #556 Track A, design §3.2): a pinned,
+    digest-verified composed action-class document supplies the catalogue
+    side for the URNs it claims — layer 2 between the served catalog and
+    the residual derivation. Conflicts refuse, never merge."""
+
+    _BURST_URN = "com.veridian-labs.burst/1.0.0"
+    _CLASS_URN = "otdp.action.veridian_burst/1.0.0"
+
+    @staticmethod
+    def _composed_document(
+        *,
+        urn: str = "otdp.action.veridian_burst/1.0.0",
+        claims: tuple[str, ...] = ("com.veridian-labs.burst/1.0.0",),
+        side_effect: str = "state_change",
+        title: str | None = "Veridian burst mode",
+    ) -> dict[str, Any]:
+        document: dict[str, Any] = {
+            "contract_version": "0.1.0",
+            "urn": urn,
+            "claims": list(claims),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "burst_count": {"type": "integer", "minimum": 1, "maximum": 1024}
+                },
+                "required": ["burst_count"],
+                "additionalProperties": False,
+            },
+            "side_effect": side_effect,
+        }
+        if title is not None:
+            document["title"] = title
+        return document
+
+    def _descriptor_with_composed_pin(
+        self,
+        *documents: dict[str, Any],
+        declare_burst: bool = True,
+        burst_side_effect: str = "state_change",
+    ) -> tuple[bytes, dict[str, bytes]]:
+        """The f1 descriptor with its vendor-catalog pin replaced by one
+        composed-class pin per document (the admission resolution keyed
+        by digest), plus the burst action declared."""
+        descriptor: dict[str, Any] = json.loads(
+            (FIXTURES / "descriptor-f1.json").read_bytes()
+        )
+        catalogs: dict[str, bytes] = {}
+        pins: list[dict[str, Any]] = []
+        for document in documents:
+            raw = (json.dumps(document, indent=2) + "\n").encode()
+            digest = hashlib.sha256(raw).hexdigest()
+            catalogs[digest] = raw
+            pins.append(
+                {
+                    "id": f"urn:veridian:composed:{len(pins) + 1}",
+                    "path": f"composed-{len(pins)}.json",
+                    "sha256": digest,
+                }
+            )
+        descriptor["contracts"] = [
+            row for row in descriptor["contracts"]
+            if str(row["id"]).startswith("urn:otdp:")
+        ] + pins
+        if declare_burst:
+            descriptor["actions"][self._BURST_URN] = {
+                "binding": {"kind": "adapter", "key": "fixture"},
+                "input_constraints": {},
+                "timeout_ms": 5000,
+                "side_effect": burst_side_effect,
+                "cancellable": True,
+                "retry": "never",
+            }
+        # The vendor action the un-pinned catalog used to describe is
+        # gone with the pin: drop it from the declared set too.
+        descriptor["actions"].pop("com.veridian-labs.auto-threshold/1.0.0", None)
+        return json.dumps(descriptor).encode(), catalogs
+
+    def test_composed_class_supplies_the_catalogue_side(self) -> None:
+        """A composed pin supplies the catalogue side for its claimed
+        URNs: resolution "composed" naming the class, the controls from
+        the class's input_schema, D13 narrowing unchanged on them, and
+        the member renders in the MAIN section (composed is not
+        custom)."""
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            self._composed_document()
+        )
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._BURST_URN] == ("composed", self._CLASS_URN)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        section_ids = [section["id"] for section in features["sections"]]
+        assert "device-features-custom" not in section_ids, section_ids
+        main = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-section"
+        )
+        kinds = [
+            (node.get("kind"), node.get("field")) for node in main["children"]
+        ]
+        assert ("numeric", "burst_count") in kinds
+        assert ("button", None) in kinds
+
+    def test_ds3_a_claim_the_descriptor_does_not_declare_joins_the_map(self) -> None:
+        """DS3: a claim the descriptor does not declare simply does not
+        apply — it joins the catalogue side (so a named reference slot
+        may bind a composed-claimed URN; the family schema's slot action
+        pattern is the otdp three-segment shape, so the claim uses it),
+        and the class rides back as UNAPPLIED when none of its claims
+        applied."""
+        unclaimed = "otdp.logic_analyser.burst/1.0.0"
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            self._composed_document(claims=(unclaimed,)),
+            declare_burst=False,
+        )
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.unapplied_classes == (
+            (self._CLASS_URN, "composed-0.json"),
+        )
+        # The slot check runs against the MERGED map: a procedure slot
+        # naming the composed-claimed URN passes (pre-walk this exact
+        # input refused classref_unknown_action) — the slot is
+        # when-declared and the descriptor does not declare the action,
+        # so it contributes no target, exactly the SDK's shape.
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        arm_action = str(reference["slots"]["arm"]["action"])
+        reference["slots"]["arm"]["action"] = unclaimed
+        descriptor = json.loads(descriptor_raw)
+        _derive_from_document(
+            descriptor,
+            references_override=[reference],
+            extra_vendor_catalogs=catalogs,
+        )
+        # The declared half — the §3.5 composed tolerance: a DECLARED
+        # composed-claimed action in the configuration slot derives its
+        # settings schema from the class's input_schema alone, the $id
+        # falling back to the derived action-input urn.
+        descriptor["actions"][unclaimed] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "input_constraints": {},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        reference["slots"]["arm"]["action"] = arm_action
+        reference["slots"]["configure"]["action"] = unclaimed
+        derived = _derive_from_document(
+            descriptor,
+            references_override=[reference],
+            extra_vendor_catalogs=catalogs,
+        )
+        settings = next(
+            blob
+            for name, blob in derived.resources.items()
+            if name.startswith("settings/")
+        )
+        schema = json.loads(settings)
+        assert schema["$id"] == f"urn:otdp:action:{unclaimed}:input"
+        assert "burst_count" in schema["properties"]
+        assert derived.unapplied_classes == ()
+
+    def test_schema_invalid_composed_doc_refuses(self) -> None:
+        document = self._composed_document(title=None)  # title is required
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_invalid_composed_class:"
+        ):
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+
+    def test_ambiguous_pin_refuses_naming_the_carried_keys(self) -> None:
+        document = self._composed_document()
+        document["actions"] = {}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="ambiguous pin"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "actions" in str(caught.value)
+        assert "urn" in str(caught.value)
+        assert "claims" in str(caught.value)
+
+    def test_claim_against_the_served_catalog_refuses(self) -> None:
+        document = self._composed_document(
+            claims=("otdp.logic_analyser.arm/1.0.0",)
+        )
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "served OTDP catalog" in str(caught.value)
+
+    def test_claim_against_a_pinned_row_refuses(self) -> None:
+        """Two pins: one vendor catalog describing auto-threshold, one
+        class claiming the same URN — the claim collides with the pinned
+        row and refuses naming the pinned document."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        composed = self._composed_document(
+            claims=("com.veridian-labs.auto-threshold/1.0.0",)
+        )
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            composed, catalog
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "pinned document" in str(caught.value)
+
+    def test_two_classes_one_claim_refuses(self) -> None:
+        first = self._composed_document()
+        second = self._composed_document(urn="otdp.action.veridian_alt/1.0.0")
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            first, second
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "both class" in str(caught.value)
+
+    def test_one_class_urn_in_two_pins_refuses(self) -> None:
+        first = self._composed_document()
+        second = self._composed_document()
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            first, second
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "two pinned documents" in str(caught.value)
+
+    def test_side_effect_under_refuses(self) -> None:
+        """The S20 direction at the class layer: a class declaring
+        side_effect none under a descriptor action declaring
+        state_change under-classifies and refuses (over-classification
+        stays legal)."""
+        document = self._composed_document(side_effect="none")
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_side_effect_under:"
+        ):
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+
+    def test_shapeless_pin_is_disclosed_as_ignored(self) -> None:
+        """A digest-valid pin matching neither shape discriminator
+        contributes nothing and is DISCLOSED (never silently dropped)."""
+        document = {"catalog_version": "1.0.0", "vendor": "com.veridian-labs"}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.ignored_pins == ("composed-0.json",)
+
+    def test_empty_actions_pin_is_disclosed(self) -> None:
+        document: dict[str, Any] = {"actions": {}}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.empty_action_pins == ("composed-0.json",)
+
+    def test_stray_composed_class_key_is_stripped_not_laundered(self) -> None:
+        """N2: composed provenance has exactly one writer — the composed
+        walk. A vendor-catalog action row carrying a stray
+        ``composed_class`` key is stripped and resolves CATALOG, never a
+        laundered composed label."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        catalog["actions"]["com.veridian-labs.auto-threshold/1.0.0"][
+            "composed_class"
+        ] = "otdp.action.veridian_fake/1.0.0"
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(catalog)
+        # The helper drops the un-pinned vendor action from the declared
+        # set; this arm is exactly about that row — re-declare it.
+        descriptor = json.loads(descriptor_raw)
+        descriptor["actions"]["com.veridian-labs.auto-threshold/1.0.0"] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "input_constraints": {},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        descriptor_raw = json.dumps(descriptor).encode()
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions["com.veridian-labs.auto-threshold/1.0.0"] == (
+            "catalog",
+            None,
+        )
+
+
 class TestRefusalSplit:
     """The refusal split (issue #556 Track A, design §3.1): every integrity
     arm fires with its own code, mirroring the SDK expander at the v0.21.0
@@ -1382,15 +1715,22 @@ def _derive_from_document(
     document: dict[str, Any],
     *,
     references_override: list[dict[str, Any]] | None = None,
+    extra_vendor_catalogs: dict[str, bytes] | None = None,
 ) -> DerivedAttachment:
     """A raw-bytes derivation with the vendor catalog admitted, for the
-    refusal arms that mutate the descriptor document."""
+    refusal arms that mutate the descriptor document. Composed-class
+    arms admit their pinned documents through
+    ``extra_vendor_catalogs`` (the admission resolution keyed by
+    digest)."""
     descriptor_raw = json.dumps(document).encode()
     decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
+    catalogs = _vendor_catalogs()
+    if extra_vendor_catalogs is not None:
+        catalogs.update(extra_vendor_catalogs)
     return derive_attachment(
         descriptor_raw,
         corpus=corpus_root(),
-        vendor_catalogs=_vendor_catalogs(),
+        vendor_catalogs=catalogs,
         decoder_docs={hashlib.sha256(decoder_raw).hexdigest(): decoder_raw},
         references_override=references_override,
     )

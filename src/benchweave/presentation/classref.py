@@ -229,9 +229,11 @@ def _family_documents_cached(
     corpus_text: str, state: tuple[str, str]
 ) -> dict[str, Any]:
     """The family's machine files, digest-verified, for one corpus state:
-    the reference schema and the layout schema (the layout block's only
+    the reference schema, the layout schema (the layout block's only
     validation authority — the canonical manifest validator is
-    extension-blind)."""
+    extension-blind) and the composed-class schema (the composed walk's
+    validation authority, joined at the family's 0.4.0 — already
+    vendored and manifest-pinned; zero standards bytes move)."""
     corpus = Path(corpus_text)
     version = active_version_from_corpus(corpus, _FAMILY)
     pins = _corpus_pin_rows(corpus)
@@ -242,6 +244,9 @@ def _family_documents_cached(
         ),
         "layout_schema": _read_corpus_json(
             corpus, f"{_FAMILY}/{version}/layout.schema.json", pins
+        ),
+        "composed_schema": _read_corpus_json(
+            corpus, f"{_FAMILY}/{version}/composed-action-class.schema.json", pins
         ),
     }
 
@@ -1571,30 +1576,129 @@ class DerivedAttachment:
     #: when the row resolved layer 2 (provenance is data, not a log;
     #: the SDK's plan rows carry the same fields).
     resolutions: tuple[tuple[str, str, str | None], ...] = ()
+    #: Pins whose documents matched neither shape discriminator
+    #: (digest-verified, contributed nothing) — disclosed, never silently
+    #: dropped (the SDK's B7 row).
+    ignored_pins: tuple[str, ...] = ()
+    #: Pin-declared composed classes that applied nowhere (their claims
+    #: name no action this descriptor declares), as (class urn, pin
+    #: path) pairs keyed to the APPLIED rule — a sanctioned
+    #: claims-nowhere class discloses, never drifts.
+    unapplied_classes: tuple[tuple[str, str], ...] = ()
+    #: Pins whose vendor-catalog documents declare an empty actions map
+    #: — shape-valid, contributed nothing, disclosed beside the unapplied
+    #: classes.
+    empty_action_pins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ComposedClass:
+    """One pinned, digest-verified composed action-class declaration
+    (issue #556 Track A, design §3.2): the document that supplies the
+    catalogue side of the derivation for the URNs it claims. Mirrors the
+    SDK dataclass at the v0.21.0 pin."""
+
+    urn: str
+    side_effect: str
+    input_schema: dict[str, Any]
+    claims: tuple[str, ...]
+    pin_path: str
+
+
+def _validate_composed_class(
+    document: Any, pin_path: Any, *, corpus: Path
+) -> dict[str, Any]:
+    """One pinned document against the digest-verified corpus composed
+    schema (the mirror of the SDK's ``_validate_composed_class``): the
+    claims items $ref resolves through the family's reference schema, so
+    both documents ride one registry — the same cross-file $ref style
+    ``validate_reference_document`` uses for the layout schema."""
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    family = _family_documents(corpus)
+    registry = Registry().with_resource(
+        str(family["reference_schema"].get("$id")),
+        Resource.from_contents(family["reference_schema"]),
+    )
+    findings = sorted(
+        Draft202012Validator(
+            family["composed_schema"], registry=registry
+        ).iter_errors(document),
+        key=lambda error: list(error.path),
+    )
+    if findings:
+        first = findings[0]
+        where = "/".join(str(part) for part in first.path) or "(root)"
+        raise _refuse(
+            "classref_invalid_composed_class",
+            f"pinned document {pin_path}: {where}: {first.message}",
+        )
+    return document  # type: ignore[no-any-return]
 
 
 def _vendor_catalog_documents(
     descriptor: Mapping[str, Any],
     vendor_catalogs: Mapping[str, bytes] | None,
-) -> dict[str, Any]:
-    """Action schemas from the descriptor's pinned vendor catalogs,
-    resolved from ADMISSION bytes (the composition supplies them from the
-    content store by digest — the gateway has no plugin package dir; the
-    SDK resolves descriptor-relative files, the admission store is the
-    gateway's equivalent). Missing or digest-divergent pinned bytes
-    refuse typed, never silent.
+    served_actions: Mapping[str, Any],
+    corpus: Path,
+) -> tuple[
+    dict[str, Any],
+    dict[str, ComposedClass],
+    tuple[str, ...],
+    tuple[tuple[str, str], ...],
+    tuple[str, ...],
+]:
+    """Action rows, composed classes, ignored pins, unapplied classes and
+    empty-catalog pins from the descriptor's pinned documents — the
+    mirror of the SDK expander's ``_vendor_documents`` walk (issue #556
+    Track A, design §3.2), resolved from ADMISSION bytes (the
+    composition supplies them from the content store by digest — the
+    gateway has no plugin package dir; the SDK resolves
+    descriptor-relative files, the admission store is the gateway's
+    equivalent).
 
-    The refusal split (issue #556 Track A; the SDK expander at the
-    v0.21.0 pin): a pin the admission store cannot serve refuses under
-    the SDK's ``classref_vendor_catalog_unreadable`` — the ONE deliberate
+    The walk discriminates by shape: a document carrying ``urn`` AND
+    ``claims`` is a composed action class, validated against the corpus
+    composed schema; a document carrying ``actions`` together with
+    ``urn`` OR ``claims`` is an AMBIGUOUS pin and refuses the same code
+    naming the carried keys; a document carrying neither shape is
+    IGNORED (disclosed, never silently dropped); a vendor catalog whose
+    ``actions`` map is empty contributed nothing (disclosed); a
+    vendor-catalog action row carrying a stray ``composed_class`` key is
+    stripped — composed provenance has exactly one writer, this walk.
+
+    Integrity arms fire before any discrimination (a pinned file's bytes
+    are verified whatever shape they turn out to carry) and keep the
+    refusal split's codes: a pin the admission store cannot serve
+    refuses ``classref_vendor_catalog_unreadable`` — the ONE deliberate
     code-vocabulary divergence of detail, disclosed here as the
     ``_resolve_parameters`` divergence is disclosed beside its own
-    mechanism: the SDK's arm names an unreadable file, the gateway's
-    names a pin the admission store does not carry, and one code across
-    both derivations is what the mirror discipline (CON-12 at test
-    level) wants. Digest-divergent bytes and non-object shapes keep
-    their own codes, exactly the SDK's."""
+    mechanism — and digest-divergent or non-object pins keep their own
+    codes.
+
+    Conflicts refuse, never merge: a claim against a served or pinned
+    catalogue row, a claim another class already holds, a second
+    document carrying one class urn (all ``classref_composed_claim_conflict``,
+    naming WHICH side the claim collided with), and a class
+    ``side_effect`` of ``none`` under a descriptor action declaring
+    ``state_change`` (``classref_composed_side_effect_under`` — the S20
+    direction at the class layer; over-classification stays legal).
+
+    Survivors' claimed URNs join the catalogue side as
+    ``{input_schema, side_effect, composed_class}`` — including claims
+    the descriptor does not declare (DS3: a named reference slot may
+    bind a composed-claimed URN; the slot check runs against the merged
+    map, exactly the SDK's order). D13 narrowing runs on them
+    unchanged. A class none of whose claims the descriptor declares
+    applied NOWHERE — it rides back as (class urn, pin path) pairs in
+    ``unapplied`` for the disclosure channel (the applied rule, not the
+    pin-declared rule)."""
     actions: dict[str, Any] = {}
+    classes: dict[str, ComposedClass] = {}
+    ignored: list[str] = []
+    empty_pins: list[str] = []
+    pinned_sources: dict[str, str] = {}
     for row in descriptor.get("contracts", []):
         identifier = str(row.get("id", ""))
         if identifier.startswith("urn:otdp:"):
@@ -1621,17 +1725,137 @@ def _vendor_catalog_documents(
                 "classref_vendor_catalog_invalid",
                 f"pinned vendor catalog {row.get('path')} is not a JSON object",
             )
-        if "actions" in document and not isinstance(document["actions"], dict):
-            # The SDK's R4 row: a digest-valid object whose ``actions``
-            # map is not an object refuses typed (``{"actions": 5}``
-            # crashed the walk at the merge).
-            raise _refuse(
-                "classref_vendor_catalog_invalid",
-                f"pinned vendor catalog {row.get('path')} 'actions' is not a "
-                f"JSON object (got {type(document['actions']).__name__})",
+        composed_keys = "urn" in document and "claims" in document
+        if "actions" in document and ("urn" in document or "claims" in document):
+            # The R2 row: "is this a composed class?" and "is this pin
+            # ambiguous?" are different questions — naming the carried
+            # keys says WHY the pin is ambiguous, not just that it is.
+            carried = sorted(
+                key for key in ("actions", "urn", "claims") if key in document
             )
-        actions.update(document.get("actions", {}))
-    return actions
+            raise _refuse(
+                "classref_invalid_composed_class",
+                f"pinned document {row.get('path')} carries both vendor-catalog "
+                f"and composed-class keys ({', '.join(carried)}) — an "
+                "ambiguous pin",
+            )
+        if composed_keys:
+            _validate_composed_class(document, row.get("path"), corpus=corpus)
+            cls = ComposedClass(
+                urn=str(document["urn"]),
+                side_effect=str(document["side_effect"]),
+                input_schema=document["input_schema"],
+                claims=tuple(str(claim) for claim in document["claims"]),
+                pin_path=str(row.get("path", "")),
+            )
+            existing = classes.get(cls.urn)
+            if existing is not None:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class urn {cls.urn} is declared by two pinned "
+                    f"documents ({existing.pin_path} and {cls.pin_path})",
+                )
+            classes[cls.urn] = cls
+        else:
+            if "actions" not in document:
+                # Neither shape discriminator: digest-verified, then
+                # dropped — returned in ``ignored`` so the derivation
+                # can disclose it (never silently).
+                ignored.append(str(row.get("path", "")))
+                continue
+            if not isinstance(document["actions"], dict):
+                # The SDK's R4 row: a digest-valid object whose
+                # ``actions`` map is not an object refuses typed.
+                raise _refuse(
+                    "classref_vendor_catalog_invalid",
+                    f"pinned vendor catalog {row.get('path')} 'actions' is "
+                    "not a JSON object (got "
+                    f"{type(document['actions']).__name__})",
+                )
+            if not document["actions"]:
+                # The R5 row: a shape-valid catalog that declares NO
+                # actions contributed nothing — disclosed, never blamed
+                # on the descriptor alone.
+                empty_pins.append(str(row.get("path", "")))
+                continue
+            for action_urn, action_row in document["actions"].items():
+                if isinstance(action_row, dict) and "composed_class" in action_row:
+                    # N2: composed provenance is written only by the
+                    # composed walk above — a vendor-catalog row carrying
+                    # a stray ``composed_class`` key is not composed and
+                    # must not launder the label.
+                    action_row = {
+                        key: value
+                        for key, value in action_row.items()
+                        if key != "composed_class"
+                    }
+                actions[action_urn] = action_row
+                pinned_sources[action_urn] = str(row.get("path", ""))
+    descriptor_actions = descriptor.get("actions") or {}
+    claimant: dict[str, str] = {}
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in cls.claims:
+            if claim in served_actions:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class {cls_urn} claims {claim}, which the served "
+                    "OTDP catalog describes",
+                )
+            if claim in actions:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class {cls_urn} claims {claim}, which pinned "
+                    f"document {pinned_sources.get(claim, 'unknown')} "
+                    "describes",
+                )
+            holder = claimant.get(claim)
+            if holder is not None:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"{claim} is claimed by both class {holder} and class "
+                    f"{cls_urn}",
+                )
+            claimant[claim] = cls_urn
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in sorted(cls.claims):
+            declared = descriptor_actions.get(claim)
+            if (
+                isinstance(declared, dict)
+                and declared.get("side_effect") == "state_change"
+                and cls.side_effect == "none"
+            ):
+                raise _refuse(
+                    "classref_composed_side_effect_under",
+                    f"class {cls_urn} declares side_effect 'none' for "
+                    f"{claim}, whose descriptor action declares "
+                    "'state_change' (the S20 direction at the class layer: "
+                    "over-classification is legal, under-classification "
+                    "refuses)",
+                )
+    # Claimed URNs join the catalogue side of the derivation (D13 runs
+    # unchanged on them), marked so the plan row can name the layer and
+    # the class. A claim the descriptor does not declare simply does not
+    # apply (a corpus-promoted class legitimately claims URNs across many
+    # plugins).
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in cls.claims:
+            actions[claim] = {
+                "input_schema": cls.input_schema,
+                "side_effect": cls.side_effect,
+                "composed_class": cls_urn,
+            }
+    # The classes that applied nowhere — every claim names an action
+    # this descriptor does not declare — ride back as (class urn, pin
+    # path) pairs for the disclosure channel.
+    unapplied = tuple(
+        (urn, classes[urn].pin_path)
+        for urn in sorted(classes)
+        if not any(claim in descriptor_actions for claim in classes[urn].claims)
+    )
+    return actions, classes, tuple(ignored), unapplied, tuple(empty_pins)
 
 
 def _catalog_document(
@@ -1663,6 +1887,10 @@ def _assemble_triple(
     catalog_actions: Mapping[str, Any],
     corpus: Path,
     decoder_docs: Mapping[str, bytes] | None,
+    *,
+    ignored_pins: tuple[str, ...] = (),
+    unapplied_classes: tuple[tuple[str, str], ...] = (),
+    empty_action_pins: tuple[str, ...] = (),
 ) -> DerivedAttachment:
     """The derived triple (the SDK expander's ``_finish`` assembly, minus
     the SDK-side surfaces the gateway does not consume — the expectation
@@ -1719,6 +1947,9 @@ def _assemble_triple(
         plan,
         corpus,
         decoder_docs,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 
@@ -1733,6 +1964,10 @@ def _assemble_documents(
     plan: dict[str, dict[str, Any]],
     corpus: Path,
     decoder_docs: Mapping[str, bytes] | None,
+    *,
+    ignored_pins: tuple[str, ...] = (),
+    unapplied_classes: tuple[tuple[str, str], ...] = (),
+    empty_action_pins: tuple[str, ...] = (),
 ) -> DerivedAttachment:
     """The document assembly (the SDK expander's ``_finish`` port):
     bindings, targets, pages, assets, the layout block and the triple,
@@ -2234,6 +2469,9 @@ def _assemble_documents(
         resources=resources,
         profile_ids=profile_ids,
         resolutions=resolutions,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 
@@ -2295,7 +2533,16 @@ def derive_attachment(
     pins = _corpus_pin_rows(corpus)
     catalog = _catalog_document(corpus, pins, descriptor)
     catalog_actions: dict[str, Any] = dict(catalog.get("actions", {}))
-    catalog_actions.update(_vendor_catalog_documents(descriptor, vendor_catalogs))
+    (
+        vendor_actions,
+        _composed_classes,
+        ignored_pins,
+        unapplied_classes,
+        empty_action_pins,
+    ) = _vendor_catalog_documents(
+        descriptor, vendor_catalogs, catalog_actions, corpus
+    )
+    catalog_actions.update(vendor_actions)
     actions = descriptor.get("actions") or {}
     # A descriptor-declared action no served catalog describes is a
     # residual member, not a refusal (issue #556 Track A, design §3.3) —
@@ -2354,6 +2601,9 @@ def derive_attachment(
         catalog_actions,
         corpus,
         decoder_docs,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 
