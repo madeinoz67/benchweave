@@ -75,6 +75,7 @@ All notable changes to this project will be documented in this file.
 - Teach the describe-in-words discipline on home-shape blocks (#527)
 - Close the 0.4.0 sweep's missed test surfaces
 - Admit the measured public-bot mailboxes (#553)
+- The bound tie keeps the exclusive end on both sides (#556 Track A)
 
 ### Documentation
 
@@ -187,10 +188,11 @@ All notable changes to this project will be documented in this file.
 - Composition diagrams — resolution, render path, promotion
 - The composition architecture note and the 0.4.0 ledger-contract prose
 - The 0.4.0 resolver paragraph states the split that ships
+- Record the §5 addendum — the envelope digest re-pin is entailed (issue #556 Track A)
+- Record the dispatch-gating risk bound and the pointer-PR detection gap
 
 ### Features
 
-- The gateway mirror resolves composed and residual actions (#556 Track A) — the three-layer resolution (catalog / composed / custom), the refusal split, the custom section, the disclosure list on the derived device page, and the parity fixtures regenerated from the pinned v0.21.0 expander
 - Shared TypeSafe System One client with designed fallbacks (#420)
 - Outbound privacy screen for measurement reports (#420)
 - Advisory noise-bar scoring for memory proposals (#420)
@@ -240,6 +242,11 @@ All notable changes to this project will be documented in this file.
 - OTDP 0.2.4 — the readings-class examples declare their readable parameters (issue #525)
 - Plugin-ui-class-reference 0.4.0 — composed action classes
 - Widen the composed claims vocabulary to any versioned action key
+- Split the vendor-catalog refusal codes (issue #556 Track A, design §3.1)
+- Align emission with the released expander (W1/W8) and regenerate the parity fixtures (issue #556 Track A, design §3.4/§5)
+- Residual resolution, the custom section, shared-path fold hardening (issue #556 Track A, design §3.3/§3.5)
+- The composed resolution walk (issue #556 Track A, design §3.2)
+- The disclosure surface, the m400 acceptance tag, serve-path arms, docs (issue #556 Track A, design §3.4)
 
 ### Miscellaneous
 
@@ -350,6 +357,7 @@ All notable changes to this project will be documented in this file.
 - Flip the gate for #525 — clean validation, page-kind-aware plot
 - Window-immune active-row derivation in the gateway sync arm (#543)
 - The served-set total is 19 in the #525+#541 merge result
+- Refresh the win-core manifest totals for the #556 Track A arms
 
 ### Build
 
