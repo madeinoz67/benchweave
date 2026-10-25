@@ -243,6 +243,19 @@ def _family_documents_cached(
     corpus = Path(corpus_text)
     version = active_version_from_corpus(corpus, _FAMILY)
     pins = _corpus_pin_rows(corpus)
+    # The member-declaration schema joins the family at 0.5.0 (#556 Track
+    # B); a tree serving an older family carries no such file, and the
+    # member walk's validation arm reads ``None`` for it — a member PIN on
+    # such a tree refuses loudly there (the lazy-loader rule), while a
+    # member-pin-free derivation is unaffected.
+    try:
+        member_schema: dict[str, Any] | None = _read_corpus_json(
+            corpus,
+            f"{_FAMILY}/{version}/composed-member-declaration.schema.json",
+            pins,
+        )
+    except FileNotFoundError:
+        member_schema = None
     return {
         "version": version,
         "reference_schema": _read_corpus_json(
@@ -254,6 +267,7 @@ def _family_documents_cached(
         "composed_schema": _read_corpus_json(
             corpus, f"{_FAMILY}/{version}/composed-action-class.schema.json", pins
         ),
+        "member_schema": member_schema,
     }
 
 
@@ -1634,6 +1648,10 @@ class DerivedAttachment:
     #: — shape-valid, contributed nothing, disclosed beside the unapplied
     #: classes.
     empty_action_pins: tuple[str, ...] = ()
+    #: The walk's accepted composed-member declarations (issue #556 Track
+    #: B, record §3) — schema-validated, conflict-free, carried for the
+    #: injection seam and the disclosure channel.
+    member_declarations: tuple[ComposedMemberDeclaration, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1647,6 +1665,25 @@ class ComposedClass:
     side_effect: str
     input_schema: dict[str, Any]
     claims: tuple[str, ...]
+    pin_path: str
+
+
+@dataclass(frozen=True)
+class ComposedMemberDeclaration:
+    """One pinned, digest-verified composed-member declaration (issue
+    #556 Track B, record §3): the vendor-authored document that supplies
+    the reference side — one slot per member, its page placement,
+    optionally one vendor profile row — the served corpus does not carry.
+    Mirrors the SDK dataclass at the composed-member tips.
+
+    ``profile`` is the declaration's one vendor profile row (the
+    device-profile-catalog row shape, carried under the plural
+    ``profiles`` key the canonical validator's map reads) or ``None``;
+    ``members`` are the raw schema-validated member rows; ``pin_path``
+    names the pinned file."""
+
+    profile: dict[str, Any] | None
+    members: tuple[dict[str, Any], ...]
     pin_path: str
 
 
@@ -1682,6 +1719,70 @@ def _validate_composed_class(
     return document  # type: ignore[no-any-return]
 
 
+def _validate_member_declaration(
+    document: Any, pin_path: Any, *, corpus: Path
+) -> dict[str, Any]:
+    """One pinned document against the corpus's served member-declaration
+    schema (the mirror of the SDK's ``_validate_member_declaration``;
+    every closed set in that schema is an owner's own — the reference
+    schema's slot vocabulary, the page id shape, the plot block verbatim,
+    the profile-catalog row shape). The schema joins the family at 0.5.0;
+    on a corpus whose active family serves none, a member pin is a
+    PLATFORM FAULT that refuses loudly here — the SDK's lazy-loader rule
+    in the gateway's typed face — never a silently-empty read and never
+    the ignored-pin disclosure."""
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    family = _family_documents(corpus)
+    schema = family["member_schema"]
+    if not isinstance(schema, dict):
+        raise _refuse(
+            "classref_invalid_member_declaration",
+            f"pinned document {pin_path}: the active family "
+            f"{family['version']} serves no composed-member-declaration "
+            "schema (the member vocabulary joins the family at 0.5.0) — "
+            "a platform fault, never a silent read",
+        )
+    registry = Registry().with_resource(
+        str(family["reference_schema"].get("$id")),
+        Resource.from_contents(family["reference_schema"]),
+    )
+    findings = sorted(
+        Draft202012Validator(schema, registry=registry).iter_errors(document),
+        key=lambda error: list(error.path),
+    )
+    if findings:
+        first = findings[0]
+        where = "/".join(str(part) for part in first.path) or "(root)"
+        raise _refuse(
+            "classref_invalid_member_declaration",
+            f"pinned document {pin_path}: {where}: {first.message}",
+        )
+    return document  # type: ignore[no-any-return]
+
+
+def _pin_shape_groups(document: dict[str, Any]) -> list[str]:
+    """The pin-shape key sets a document carries (#556 Track B, the B4
+    fold's F4): the member keys, the composed-class keys and the catalog
+    keys are three disjoint vocabularies, and the groups a document
+    carries decide what the walk does with it — one group is that shape,
+    more than one refuses as ambiguous, none is IGNORED (disclosed,
+    contributing nothing). ONE definition serves the walk's
+    discrimination AND the presentation-side pin reader's filter, so the
+    derive and the canonical validation agree on which documents are
+    accepted by construction — a second copy of the key sets is how the
+    two halves would drift."""
+    shape_groups: list[str] = []
+    if "members" in document:
+        shape_groups.append("members")
+    if "urn" in document or "claims" in document:
+        shape_groups.append("composed-class")
+    if "actions" in document:
+        shape_groups.append("actions")
+    return shape_groups
+
+
 def _vendor_catalog_documents(
     descriptor: Mapping[str, Any],
     vendor_catalogs: Mapping[str, bytes] | None,
@@ -1693,25 +1794,37 @@ def _vendor_catalog_documents(
     tuple[str, ...],
     tuple[tuple[str, str], ...],
     tuple[str, ...],
+    tuple[ComposedMemberDeclaration, ...],
 ]:
-    """Action rows, composed classes, ignored pins, unapplied classes and
-    empty-catalog pins from the descriptor's pinned documents — the
-    mirror of the SDK expander's ``_vendor_documents`` walk (issue #556
-    Track A, design §3.2), resolved from ADMISSION bytes (the
-    composition supplies them from the content store by digest — the
-    gateway has no plugin package dir; the SDK resolves
-    descriptor-relative files, the admission store is the gateway's
-    equivalent).
+    """Action rows, composed classes, member declarations, ignored pins,
+    unapplied classes and empty-catalog pins from the descriptor's pinned
+    documents — the mirror of the SDK expander's ``_vendor_documents``
+    walk (issue #556 Track A design §3.2; Track B record §3 for the
+    member half), resolved from ADMISSION bytes (the composition supplies
+    them from the content store by digest — the gateway has no plugin
+    package dir; the SDK resolves descriptor-relative files, the
+    admission store is the gateway's equivalent).
 
-    The walk discriminates by shape: a document carrying ``urn`` AND
-    ``claims`` is a composed action class, validated against the corpus
-    composed schema; a document carrying ``actions`` together with
-    ``urn`` OR ``claims`` is an AMBIGUOUS pin and refuses the same code
-    naming the carried keys; a document carrying neither shape is
-    IGNORED (disclosed, never silently dropped); a vendor catalog whose
-    ``actions`` map is empty contributed nothing (disclosed); a
-    vendor-catalog action row carrying a stray ``composed_class`` key is
-    stripped — composed provenance has exactly one writer, this walk.
+    The walk discriminates by shape through ONE definition
+    (``_pin_shape_groups``): the member keys, the composed-class keys and
+    the catalog keys are three disjoint vocabularies, and a document
+    carrying keys from more than one refuses as an AMBIGUOUS pin naming
+    the carried shape groups and keys (the R2 question generalized — a
+    key set is not a shape claim); a document carrying exactly the
+    class shape (``urn`` AND ``claims``) is a composed action class,
+    validated against the corpus composed schema; a document carrying
+    the member shape (``members``) is a composed-member declaration,
+    validated against the corpus member schema with the over-slot
+    self-reference refusal (``classref_composed_plot_slot_mismatch``);
+    a document carrying none of the three is IGNORED (disclosed, never
+    silently dropped); a vendor catalog whose ``actions`` map is empty
+    contributed nothing (disclosed); a vendor-catalog action row
+    carrying a stray ``composed_class`` key is stripped — composed
+    provenance has exactly one writer, this walk. Every ACCEPTED
+    document rides the shared ``pinned_id_shadow`` guard
+    (``merge_pinned_documents`` over exactly the accepted set) so the
+    derive and the canonical validation refuse the same shape under the
+    same code — the B4 fold's F3, one shared enforcement point.
 
     Integrity arms fire before any discrimination (a pinned file's bytes
     are verified whatever shape they turn out to carry) and keep the
@@ -1720,15 +1833,24 @@ def _vendor_catalog_documents(
     code-vocabulary divergence of detail, disclosed here as the
     ``_resolve_parameters`` divergence is disclosed beside its own
     mechanism — and digest-divergent or non-object pins keep their own
-    codes.
+    codes (the digest detail names the pin neutrally: the walk verifies
+    member declarations and vendor catalogs through one seam, and a
+    members document is not a vendor catalog — the code keeps its
+    historical name, the prose does not).
 
     Conflicts refuse, never merge: a claim against a served or pinned
     catalogue row, a claim another class already holds, a second
     document carrying one class urn (all ``classref_composed_claim_conflict``,
-    naming WHICH side the claim collided with), and a class
+    naming WHICH side the claim collided with), a class
     ``side_effect`` of ``none`` under a descriptor action declaring
     ``state_change`` (``classref_composed_side_effect_under`` — the S20
-    direction at the class layer; over-classification stays legal).
+    direction at the class layer; over-classification stays legal), and
+    the member family under ``classref_composed_slot_conflict`` — a slot
+    key two members declare (whatever pin each rode, with the
+    same-document form naming the document once), a claim held by
+    another member, and a claim a composed action class holds (the
+    class owns the catalogue side, the member the placement; one claim,
+    one owner).
 
     Survivors' claimed URNs join the catalogue side as
     ``{input_schema, side_effect, composed_class}`` — including claims
@@ -1739,11 +1861,15 @@ def _vendor_catalog_documents(
     applied NOWHERE — it rides back as (class urn, pin path) pairs in
     ``unapplied`` for the disclosure channel (the applied rule, not the
     pin-declared rule)."""
+    from benchweave.presentation.contracts import DocumentError, merge_pinned_documents
+
     actions: dict[str, Any] = {}
     classes: dict[str, ComposedClass] = {}
     ignored: list[str] = []
     empty_pins: list[str] = []
+    member_declarations: list[ComposedMemberDeclaration] = []
     pinned_sources: dict[str, str] = {}
+    accepted_documents: dict[str, dict[str, Any]] = {}
     for row in descriptor.get("contracts", []):
         identifier = str(row.get("id", ""))
         if identifier.startswith("urn:otdp:"):
@@ -1759,7 +1885,7 @@ def _vendor_catalog_documents(
         if hashlib.sha256(raw).hexdigest() != pin:
             raise _refuse(
                 "classref_vendor_catalog_digest_mismatch",
-                f"pinned vendor catalog {row.get('path')} digest mismatch",
+                f"pinned document {row.get('path')} digest mismatch",
             )
         document = json.loads(raw)
         if not isinstance(document, dict):
@@ -1770,20 +1896,54 @@ def _vendor_catalog_documents(
                 "classref_vendor_catalog_invalid",
                 f"pinned vendor catalog {row.get('path')} is not a JSON object",
             )
-        composed_keys = "urn" in document and "claims" in document
-        if "actions" in document and ("urn" in document or "claims" in document):
-            # The R2 row: "is this a composed class?" and "is this pin
-            # ambiguous?" are different questions — naming the carried
-            # keys says WHY the pin is ambiguous, not just that it is.
+        # R2 generalized (#556 §3): the ambiguity question is KEY-SET
+        # overlap, decided by the one shared definition.
+        shape_groups = _pin_shape_groups(document)
+        if len(shape_groups) > 1:
             carried = sorted(
-                key for key in ("actions", "urn", "claims") if key in document
+                key for key in ("members", "urn", "claims", "actions") if key in document
             )
             raise _refuse(
                 "classref_invalid_composed_class",
-                f"pinned document {row.get('path')} carries both vendor-catalog "
-                f"and composed-class keys ({', '.join(carried)}) — an "
-                "ambiguous pin",
+                f"pinned document {row.get('path')} carries keys of more "
+                f"than one pin shape ({', '.join(shape_groups)}: "
+                f"{', '.join(carried)}) — an ambiguous pin",
             )
+        if shape_groups:
+            accepted_documents[str(row.get("path", ""))] = document
+        if "members" in document:
+            _validate_member_declaration(document, row.get("path"), corpus=corpus)
+            # The self-reference rule (README rule 2): ``plot.over_slot``
+            # names the member's own slot or the document contradicts
+            # itself — refused here, before any member can inject.
+            for member in document["members"]:
+                slot = str(member.get("slot", ""))
+                plot = member.get("plot")
+                if (
+                    isinstance(plot, dict)
+                    and str(plot.get("over_slot", "")) != slot
+                ):
+                    raise _refuse(
+                        "classref_composed_plot_slot_mismatch",
+                        f"member {slot} carries plot.over_slot "
+                        f"{plot.get('over_slot')!r}, which is not the "
+                        "member's own slot (a document referring to itself "
+                        "inconsistently)",
+                    )
+            member_declarations.append(
+                ComposedMemberDeclaration(
+                    profile=(
+                        document["profiles"][0]
+                        if isinstance(document.get("profiles"), list)
+                        and document["profiles"]
+                        else None
+                    ),
+                    members=tuple(document["members"]),
+                    pin_path=str(row.get("path", "")),
+                )
+            )
+            continue
+        composed_keys = "urn" in document and "claims" in document
         if composed_keys:
             _validate_composed_class(document, row.get("path"), corpus=corpus)
             cls = ComposedClass(
@@ -1836,6 +1996,18 @@ def _vendor_catalog_documents(
                     }
                 actions[action_urn] = action_row
                 pinned_sources[action_urn] = str(row.get("path", ""))
+    # The walk-side half of the shared ``pinned_id_shadow`` guard (the B4
+    # fold's F3): check-ui's merge has refused colliding embedded $ids
+    # since #446 slice 2, but the derive keyed actions by URN and never
+    # read $ids — two pinned catalogs sharing an input-schema $id derived
+    # green and the author learned only at validation. The SAME guard
+    # runs here, over exactly the accepted set, so both surfaces refuse
+    # the same shape under the same code (the guard's own code, not a
+    # ``classref_*`` name — one shared enforcement point by construction).
+    try:
+        merge_pinned_documents({}, accepted_documents)
+    except DocumentError as exc:
+        raise ClassRefusal(f"pinned_id_shadow: {exc}") from exc
     descriptor_actions = descriptor.get("actions") or {}
     claimant: dict[str, str] = {}
     for cls_urn in sorted(classes):
@@ -1900,7 +2072,63 @@ def _vendor_catalog_documents(
         for urn in sorted(classes)
         if not any(claim in descriptor_actions for claim in classes[urn].claims)
     )
-    return actions, classes, tuple(ignored), unapplied, tuple(empty_pins)
+    # #556 §3 rule 4: member conflicts across the whole pin set — a slot
+    # key two members declare (whatever pin each rode), and a claim held
+    # by another member or by a composed action class (the class owns the
+    # catalogue side, the member the placement; one claim, one owner).
+    # One slot per member, one claim per owner — refuse, never merge.
+    member_slot_owner: dict[str, str] = {}
+    member_claim_owner: dict[str, str] = {}
+    class_claims = {
+        claim: cls_urn
+        for cls_urn, cls in classes.items()
+        for claim in cls.claims
+    }
+    for declaration in member_declarations:
+        for member in declaration.members:
+            slot = str(member.get("slot", ""))
+            holder_pin = member_slot_owner.get(slot)
+            if holder_pin is not None:
+                # The B3 fold's NIT: two members of ONE document naming the
+                # same slot printed the pin twice ("x and x"); the message
+                # names the document once and says the pair is internal.
+                if holder_pin == declaration.pin_path:
+                    raise _refuse(
+                        "classref_composed_slot_conflict",
+                        f"member slot {slot} is declared by two members in "
+                        f"the same pinned document ({holder_pin})",
+                    )
+                raise _refuse(
+                    "classref_composed_slot_conflict",
+                    f"member slot {slot} is declared by two members "
+                    f"({holder_pin} and {declaration.pin_path})",
+                )
+            member_slot_owner[slot] = declaration.pin_path
+            for claim in member.get("claims") or ():
+                claim = str(claim)
+                member_holder = member_claim_owner.get(claim)
+                if member_holder is not None:
+                    raise _refuse(
+                        "classref_composed_slot_conflict",
+                        f"{claim} is claimed by both member {member_holder} "
+                        f"and member {slot}",
+                    )
+                class_holder = class_claims.get(claim)
+                if class_holder is not None:
+                    raise _refuse(
+                        "classref_composed_slot_conflict",
+                        f"member {slot} claims {claim}, which composed class "
+                        f"{class_holder} claims",
+                    )
+                member_claim_owner[claim] = slot
+    return (
+        actions,
+        classes,
+        tuple(ignored),
+        unapplied,
+        tuple(empty_pins),
+        tuple(member_declarations),
+    )
 
 
 def _catalog_document(
@@ -1936,6 +2164,7 @@ def _assemble_triple(
     ignored_pins: tuple[str, ...] = (),
     unapplied_classes: tuple[tuple[str, str], ...] = (),
     empty_action_pins: tuple[str, ...] = (),
+    member_declarations: tuple[ComposedMemberDeclaration, ...] = (),
 ) -> DerivedAttachment:
     """The derived triple (the SDK expander's ``_finish`` assembly, minus
     the SDK-side surfaces the gateway does not consume — the expectation
@@ -1995,6 +2224,7 @@ def _assemble_triple(
         ignored_pins=ignored_pins,
         unapplied_classes=unapplied_classes,
         empty_action_pins=empty_action_pins,
+        member_declarations=member_declarations,
     )
 
 
@@ -2013,6 +2243,7 @@ def _assemble_documents(
     ignored_pins: tuple[str, ...] = (),
     unapplied_classes: tuple[tuple[str, str], ...] = (),
     empty_action_pins: tuple[str, ...] = (),
+    member_declarations: tuple[ComposedMemberDeclaration, ...] = (),
 ) -> DerivedAttachment:
     """The document assembly (the SDK expander's ``_finish`` port):
     bindings, targets, pages, assets, the layout block and the triple,
@@ -2517,6 +2748,7 @@ def _assemble_documents(
         ignored_pins=ignored_pins,
         unapplied_classes=unapplied_classes,
         empty_action_pins=empty_action_pins,
+        member_declarations=member_declarations,
     )
 
 
@@ -2584,6 +2816,7 @@ def derive_attachment(
         ignored_pins,
         unapplied_classes,
         empty_action_pins,
+        member_declarations,
     ) = _vendor_catalog_documents(
         descriptor, vendor_catalogs, catalog_actions, corpus
     )
@@ -2649,6 +2882,7 @@ def derive_attachment(
         ignored_pins=ignored_pins,
         unapplied_classes=unapplied_classes,
         empty_action_pins=empty_action_pins,
+        member_declarations=member_declarations,
     )
 
 
