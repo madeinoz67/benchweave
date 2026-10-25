@@ -42,7 +42,7 @@ the optional vendor profile row is
 version (`contract_version` const `0.1.0`), decoupled from this directory's
 version on the composed-action-class precedent: a declaration is pinned by
 digest in a descriptor's `contracts[]`, and a family bump must not invalidate
-pinned bytes. The nine class files and the three family schemas re-stamp with
+pinned bytes. The eight class files and the three family schemas re-stamp with
 zero content change (exactly the `contract_version` line for a class file and
 the version-bearing lines for a schema — the L5 shape).
 
