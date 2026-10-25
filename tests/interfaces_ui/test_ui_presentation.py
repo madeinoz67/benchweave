@@ -958,8 +958,11 @@ class TestM400ServePath:
         for line in (
             "custom: com.meridian.m400.self_cal/1.0.0",
             "custom, renders nothing: com.meridian.m400.noinput/1.0.0",
+            # The walk's shape vocabulary gained the member declaration
+            # (#556 Track B); the ignored-pin row names all three.
             "ignored pin: extra-1.json contributed nothing (shape matched "
-            "neither a vendor catalog nor a composed class)",
+            "neither a vendor catalog, a composed class nor a member "
+            "declaration)",
             "composed class otdp.action.meridian_unapplied/1.0.0 pinned at "
             "extra-0.json applied to no declared action",
             "pinned vendor catalog extra-2.json declares no actions",
