@@ -981,9 +981,9 @@ def test_r3_a_malformed_requirement_interval_refuses_at_load(tmp_path: Path) -> 
 
 def test_r3_a_wellformed_requirement_still_loads(tmp_path: Path) -> None:
     root = _copy_standards(tmp_path)
-    # Four rows: execution 0.2.0 plus the family's 0.2.0, 0.3.0 and 0.4.0
-    # constraints (a bump ADDS its row; the predecessors stay).
-    assert len(load_cross_constraints(root)) == 4
+    # Five rows: execution 0.2.0 plus the family's 0.2.0, 0.3.0, 0.4.0 and
+    # 0.5.0 constraints (a bump ADDS its row; the predecessors stay).
+    assert len(load_cross_constraints(root)) == 5
 
 
 # --- fold wave 2, R5: no leading zeros in the stored interval grammar --------------

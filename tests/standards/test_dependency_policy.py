@@ -108,15 +108,17 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
     {0.1.0, 0.2.0}, interface {0.1.0, 0.1.1} (the #450 revision rides the
     fold's reverted >=0.1.0 range — multi-serving like the design's own
     carried-set rule), plugin-ui {0.4.0} (F1 narrow range),
-    plugin-ui-class-reference {0.1.0, 0.2.0, 0.3.0, 0.4.0} (multi-serving:
-    the L5 widening, L11's 0.3.0 and the 0.4.0 composed-action class),
+    plugin-ui-class-reference {0.1.0, 0.2.0, 0.3.0, 0.4.0, 0.5.0}
+    (multi-serving: the L5 widening, L11's 0.3.0, the 0.4.0 composed
+    action class and the 0.5.0 composed member declaration),
     plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
     versions" but its own enumeration sums to 10 — the per-id sets are the
     load-bearing rules (each traced to retained directories and declared
-    ranges); the total is their consequence (19 at the 0.4.0 family bump
-    re-arced onto the #525 train — both parents counted 18 in their own
-    trees: the 0.4.0 side lacked otdp 0.2.4, the #525 side lacked 0.4.0).
-    Recorded as a design arithmetic slip in the slice measurement record."""
+    ranges); the total is their consequence (20 at the 0.5.0 family bump
+    re-arced onto the #525 train — the 0.4.0 re-arc counted 19, both of its
+    parents 18 in their own trees: the 0.4.0 side lacked otdp 0.2.4, the
+    #525 side lacked 0.4.0). Recorded as a design arithmetic slip in the
+    slice measurement record."""
     policy = load_dependency_policy(ROOT)
     manifest = load_manifest(ROOT)
     validate_dependency_policy(policy, manifest, ROOT)
@@ -129,10 +131,10 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0", "0.1.1"),
         "plugin-ui": ("0.4.0",),
-        "plugin-ui-class-reference": ("0.1.0", "0.2.0", "0.3.0", "0.4.0"),
+        "plugin-ui-class-reference": ("0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"),
         "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
-    assert sum(len(versions) for versions in served.values()) == 19
+    assert sum(len(versions) for versions in served.values()) == 20
 
 
 def test_missing_policy_block_refuses(tmp_path: Path) -> None:

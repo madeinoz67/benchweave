@@ -4,18 +4,19 @@ Landing 1 of the class-reference program (design record
 ``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``); the
 L5 widening rides design record
 ``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
-The family's ACTIVE version ``plugin-ui-class-reference/0.4.0`` ships two
-machine schemas and THREE class references — the founding
-``class-logic_analyser.json`` (re-stamped, zero content change), the L11
-``class-dc_psu.json`` (the first scalar/readings-shaped class; design record
-``.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md``) and the
-L12 ``class-dmm.json`` (the observation-pure class; design record
+The family's ACTIVE version ``plugin-ui-class-reference/0.5.0`` ships four
+machine schemas (``class-reference``, ``layout``, ``composed-action-class``
+and the 0.5.0 ``composed-member-declaration``, which this module's own arms
+load) and EIGHT class references — the founding ``class-logic_analyser.json``
+(re-stamped, zero content change), the L11 ``class-dc_psu.json`` (the first
+scalar/readings-shaped class; design record
+``.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md``), the L12
+``class-dmm.json`` (the observation-pure class; design record
 ``.claude/deep-review/2026-10-19-classref-l12-dmm-design.md`` — the F4
 settlement rides the same record: ``series`` is REQUIRED on ``time_series``
-plots). The 0.1.0
-and 0.2.0 predecessors stay digest-frozen — the retained-freeze arms below
-assert them. Every schema rule carries a
-valid and an invalid case; the reference-content tests pin the D2
+plots), and the L13-L17 classes. The 0.1.0, 0.2.0 and 0.4.0 predecessors stay
+digest-frozen — the retained-freeze arms below assert them. Every schema rule
+carries a valid and an invalid case; the reference-content tests pin the D2
 structure-not-data discipline and the D12a extension-seam namespace at the
 corpus level (the expansion-side A-rules are Landing 2).
 """
@@ -31,17 +32,17 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.4.0"
+DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.5.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
 REFERENCE_PSU = DIRECTORY / "class-dc_psu.json"
 REFERENCE_DMM = DIRECTORY / "class-dmm.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.4.0/class-reference.schema.json"
+    "/0.5.0/class-reference.schema.json"
 )
 LAYOUT_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.4.0/layout.schema.json"
+    "/0.5.0/layout.schema.json"
 )
 LAYOUT_REF = f"{LAYOUT_ID}#/$defs/layout_page"
 # The plugin-ui manifest schema whose extensions seam carries the layout
@@ -92,7 +93,7 @@ def minimal_layout_page() -> dict[str, Any]:
 
 def minimal_reference(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "profile_id": "otdp.logic_analyser/1.0.0",
         "title": "Class reference",
         "targets": {"plugin_ui": ">=0.3.1"},
@@ -126,7 +127,7 @@ def test_all_family_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = (
             "https://benchweave.dev/contracts/plugin-ui-class-reference"
-            f"/0.4.0/{name}.schema.json"
+            f"/0.5.0/{name}.schema.json"
         )
         assert schema["$id"] == expected
 
@@ -582,7 +583,7 @@ def test_controls_levels_match_the_class_ladder() -> None:
 
 def test_minimal_layout_document_validates() -> None:
     layout = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [minimal_layout_page()],
     }
     assert layout_validator().is_valid(layout)
@@ -600,7 +601,7 @@ def test_minimal_layout_document_validates() -> None:
 )
 def test_layout_document_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout)
@@ -618,7 +619,7 @@ def test_layout_document_rules_refuse(mutate: Any) -> None:
 )
 def test_section_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout["pages"][0]["sections"][0])
@@ -627,7 +628,7 @@ def test_section_rules_refuse(mutate: Any) -> None:
 
 def test_control_kinds_are_closed() -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -649,7 +650,7 @@ def test_control_kinds_are_closed() -> None:
 def test_text_body_is_bounded() -> None:
     body = "x" * 512
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -676,7 +677,7 @@ def test_text_body_is_bounded() -> None:
 )
 def test_layout_nodes_are_closed_world(node: dict[str, Any]) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -695,7 +696,7 @@ def test_depth_is_bounded_at_three() -> None:
 
     leaf = node("inner", [{"binding_id": "arm", "kind": "button"}])
     three_deep: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [leaf])])]}
         ],
@@ -703,7 +704,7 @@ def test_depth_is_bounded_at_three() -> None:
     assert layout_validator().is_valid(three_deep)
     beyond = node("inner", [node("beyond", [{"body": "x"}])])
     four_deep: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [beyond])])]}
         ],
@@ -782,7 +783,7 @@ def test_seventeen_layout_pages_refuse_both_ways() -> None:
     as a standalone block AND as reference layouts."""
     pages = [minimal_layout_page() for _ in range(17)]
     assert not layout_validator().is_valid(
-        {"contract_version": "0.4.0", "pages": pages}
+        {"contract_version": "0.5.0", "pages": pages}
     )
     assert not reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -792,7 +793,7 @@ def test_sixteen_layout_pages_admit_both_ways() -> None:
     sixteen pages admit on both writers."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
-        {"contract_version": "0.4.0", "pages": pages}
+        {"contract_version": "0.5.0", "pages": pages}
     )
     assert reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -817,7 +818,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
     kinds; the trio admit as control nodes (RED against the 0.1.0 schema,
     which refuses them — the widening is what admits)."""
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -837,7 +838,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
 def test_control_kinds_still_admit_the_founding_kinds() -> None:
     """The widening is additive: the founding kinds keep admitting."""
     layout: dict[str, Any] = {
-        "contract_version": "0.4.0",
+        "contract_version": "0.5.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -859,11 +860,12 @@ def test_control_kinds_still_admit_the_founding_kinds() -> None:
 
 
 def test_retained_freeze_predecessor_dirs_still_exist() -> None:
-    """Copy-never-move: the 0.1.0 family dir and the 0.3.1 plugin-ui dir
-    stay in the tree, digest-frozen by their corpus rows."""
+    """Copy-never-move: the 0.1.0, 0.2.0 and 0.4.0 family dirs and the 0.3.1
+    plugin-ui dir stay in the tree, digest-frozen by their corpus rows."""
     for relpath in (
         "standards/plugin-ui-class-reference/0.1.0",
         "standards/plugin-ui-class-reference/0.2.0",
+        "standards/plugin-ui-class-reference/0.4.0",
         "standards/plugin-ui/0.3.1",
     ):
         assert (ROOT / relpath).is_dir(), f"predecessor dir removed: {relpath}"
@@ -882,6 +884,8 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
         ("plugin-ui-class-reference/0.2.0",
          ("class-reference.schema.json", "layout.schema.json",
           "class-logic_analyser.json")),
+        ("plugin-ui-class-reference/0.4.0",
+         ("class-reference.schema.json", "composed-action-class.schema.json")),
         ("plugin-ui/0.3.1",
          ("ui-manifest.schema.json", "binding-catalogue.schema.json",
           "configuration-preset.schema.json", "presentation-envelope.schema.json")),
@@ -894,7 +898,7 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
                 f"retained row diverges from its frozen bytes: {relpath}"
             )
             checked += 1
-    assert checked == 10, f"expected 10 predecessor rows, checked {checked}"
+    assert checked == 12, f"expected 12 predecessor rows, checked {checked}"
 
 
 def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
@@ -910,6 +914,11 @@ def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
         .read_bytes()
     )
     assert layout["properties"]["contract_version"]["const"] == "0.1.0"
+    family_040 = json.loads(
+        (ROOT / "standards/plugin-ui-class-reference/0.4.0/class-reference.schema.json")
+        .read_bytes()
+    )
+    assert family_040["properties"]["contract_version"]["const"] == "0.4.0"
     assert layout["$defs"]["control"]["properties"]["kind"]["enum"] == [
         "button", "numeric", "rotary",
     ]
@@ -1251,3 +1260,226 @@ class TestDmmReference:
             "presets",
             "channel-names",
         }
+
+
+# --- the 0.5.0 composed-member declaration (gateway #556 track B) ---------------
+#
+# The layer-2 declaration document of the composed-member mechanism
+# (`.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md` §3). Every
+# closed set below is lifted from an owner that already ships it: the slot
+# vocabulary from ``class-reference.schema.json`` ``$defs.slot`` and its
+# ``page_template`` block, the claim pattern from
+# ``composed-action-class.schema.json`` ``$defs.claimed_action_urn``, and the
+# vendor profile row from
+# ``standards/otdp/0.2.4/device-profile-catalog.schema.json``
+# ``properties.profiles.items``. The arms below prove the lifts held: each
+# refusal here names a value the owner's own vocabulary does not admit.
+
+MEMBER_DECLARATION = (
+    ROOT
+    / "standards/plugin-ui-class-reference/0.5.0"
+    / "composed-member-declaration.schema.json"
+)
+
+
+def member_declaration_validator() -> Draft202012Validator:
+    assert MEMBER_DECLARATION.is_file(), (
+        f"Missing {MEMBER_DECLARATION.name}: the 0.5.0 composed-member "
+        "declaration schema (issue #556 track B, slice B2)"
+    )
+    schema = json.loads(MEMBER_DECLARATION.read_bytes())
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def minimal_member_declaration(**overrides: Any) -> dict[str, Any]:
+    document: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "members": [
+            {
+                "slot": "lanes",
+                "kind": "channels",
+                "where_role": "digital_input",
+                "page": "capture",
+            },
+            {
+                "slot": "arm",
+                "kind": "procedure",
+                "claims": ["com.meridian.m400.arm/1.0.0"],
+                "page": "capture",
+            },
+        ],
+    }
+    document.update(overrides)
+    return document
+
+
+def test_member_declaration_minimal_document_validates() -> None:
+    assert member_declaration_validator().is_valid(minimal_member_declaration())
+
+
+def test_member_declaration_carries_its_own_dialect_version() -> None:
+    """The dialect is decoupled from the family directory version (the
+    composed-action-class precedent): a pinned document stays valid across
+    family bumps, so the family version is never a valid dialect value."""
+    validator = member_declaration_validator()
+    assert validator.is_valid(minimal_member_declaration(contract_version="0.1.0"))
+    assert not validator.is_valid(minimal_member_declaration(contract_version="0.5.0"))
+    document = minimal_member_declaration()
+    del document["contract_version"]
+    assert not validator.is_valid(document)
+
+
+def test_member_declaration_kind_set_is_closed() -> None:
+    """The four kinds are the reference's own slot vocabulary: the channels
+    branch's const plus the action branch's enum, verbatim. The reference's
+    fourth branch (vendor_actions) is a coverage hook with no member surface,
+    so it is not a member kind."""
+    validator = member_declaration_validator()
+    for kind, extra in (
+        ("channels", {"where_role": "digital_input"}),
+        ("dataset", {"claims": ["com.meridian.m400.capture/1.0.0"]}),
+        ("configuration", {"claims": ["com.meridian.m400.configure/1.0.0"]}),
+        ("procedure", {"claims": ["com.meridian.m400.arm/1.0.0"]}),
+    ):
+        document = minimal_member_declaration(
+            members=[{"slot": "s", "kind": kind, "page": "capture", **extra}]
+        )
+        assert validator.is_valid(document), kind
+    document = minimal_member_declaration(
+        members=[{"slot": "s", "kind": "envelope", "page": "capture"}]
+    )
+    assert not validator.is_valid(document)
+
+
+@pytest.mark.parametrize("field", ["slot", "kind", "page"])
+def test_member_declaration_rejects_missing_member_field(field: str) -> None:
+    document = minimal_member_declaration()
+    del document["members"][0][field]
+    assert not member_declaration_validator().is_valid(document)
+
+
+def test_member_declaration_requires_claims_on_action_members() -> None:
+    """An action member with no claim names no action, so it composes
+    nothing: the minimum is one claim, exactly as the composed action class
+    requires one."""
+    document = minimal_member_declaration()
+    del document["members"][1]["claims"]
+    assert not member_declaration_validator().is_valid(document)
+    document = minimal_member_declaration()
+    document["members"][1]["claims"] = []
+    assert not member_declaration_validator().is_valid(document)
+
+
+def test_member_declaration_refuses_the_reference_singular_action_field() -> None:
+    """A member claims URNs; it does not inherit the reference slot's
+    singular ``action`` field. A document carrying ``action`` is refused
+    rather than silently carrying a field no consumer reads."""
+    document = minimal_member_declaration()
+    document["members"][1]["action"] = "otdp.logic_analyser.arm/1.0.0"
+    assert not member_declaration_validator().is_valid(document)
+
+
+def test_member_declaration_channels_member_refuses_action_fields() -> None:
+    """The channels branch carries the reference's channels fields only;
+    a claim on it would name an action the lane derivation never reads."""
+    document = minimal_member_declaration()
+    document["members"][0]["claims"] = ["com.meridian.m400.arm/1.0.0"]
+    assert not member_declaration_validator().is_valid(document)
+
+
+def test_member_declaration_plot_belongs_to_dataset_members() -> None:
+    """V5: the plot field is the dataset member's — a vendor chooses among
+    the existing three kinds for a page that hosts no plot template. The
+    plot spec is the family schema's own ``page_template.plot`` block, so
+    its per-kind conditionals apply unchanged."""
+    validator = member_declaration_validator()
+    dataset = {
+        "slot": "capture",
+        "kind": "dataset",
+        "claims": ["com.meridian.m400.capture/1.0.0"],
+        "page": "capture",
+    }
+    plot = {"kind": "time_series", "over_slot": "capture", "series": "numeric_variables"}
+    assert validator.is_valid(
+        minimal_member_declaration(members=[{**dataset, "plot": plot}])
+    )
+    # The plot vocabulary is the existing three kinds: a fourth kind is a
+    # dual-family standards motion, never a member field.
+    assert not validator.is_valid(
+        minimal_member_declaration(
+            members=[{**dataset, "plot": {**plot, "kind": "spectrum"}}]
+        )
+    )
+    # time_series requires the closed series rule (the 0.3.0 conditional).
+    assert not validator.is_valid(
+        minimal_member_declaration(
+            members=[
+                {**dataset, "plot": {"kind": "time_series", "over_slot": "capture"}}
+            ]
+        )
+    )
+    # digital_lanes may not carry the series rule.
+    assert not validator.is_valid(
+        minimal_member_declaration(
+            members=[
+                {
+                    **dataset,
+                    "plot": {
+                        "kind": "digital_lanes",
+                        "over_slot": "capture",
+                        "series": "numeric_variables",
+                    },
+                }
+            ]
+        )
+    )
+    # A non-dataset member hosts no plot of its own.
+    procedure = {
+        "slot": "arm",
+        "kind": "procedure",
+        "claims": ["com.meridian.m400.arm/1.0.0"],
+        "page": "capture",
+    }
+    assert not validator.is_valid(
+        minimal_member_declaration(members=[{**procedure, "plot": plot}])
+    )
+
+
+def test_member_declaration_profile_row_is_the_catalog_shape_verbatim() -> None:
+    """The optional vendor profile row is the device-profile-catalog's own
+    row shape: five required keys, no others. Its ``id`` carries no pattern
+    in the owner either, which is what lets a vendor profile id (outside the
+    corpus ``otdp.*`` namespace) validate here."""
+    validator = member_declaration_validator()
+    profile = {
+        "id": "com.meridian.m400/1.0.0",
+        "title": "Meridian M-400",
+        "channel_roles": ["digital_input"],
+        "required_actions": ["com.meridian.m400.arm/1.0.0"],
+        "optional_actions": [],
+    }
+    assert validator.is_valid(minimal_member_declaration(profile=profile))
+    for field in ("id", "title", "channel_roles", "required_actions", "optional_actions"):
+        incomplete = {key: value for key, value in profile.items() if key != field}
+        assert not validator.is_valid(
+            minimal_member_declaration(profile=incomplete)
+        ), field
+    assert not validator.is_valid(
+        minimal_member_declaration(profile={**profile, "extra": True})
+    )
+
+
+def test_member_declaration_refuses_unknown_top_level_keys() -> None:
+    """The document states members (and at most one profile row); a catalog
+    or action-class key set on the same pin is the ambiguity the derivation
+    refuses, and the schema refuses it too rather than carrying a field no
+    reader owns."""
+    validator = member_declaration_validator()
+    extras: tuple[dict[str, Any], ...] = (
+        {"actions": {}},
+        {"urn": "otdp.action.m400/1.0.0"},
+        {"claims": []},
+    )
+    for extra in extras:
+        assert not validator.is_valid(minimal_member_declaration(**extra)), extra

@@ -138,7 +138,7 @@ _FAMILY = "plugin-ui-class-reference"
 #: the registry's corpus pin (design record §3; R4's mitigation) cites the
 #: served family version, derived from the corpus manifest, never a
 #: literal in the render path (the constant documents the founding pin).
-FOUNDING_FAMILY_VERSION = "0.4.0"
+FOUNDING_FAMILY_VERSION = "0.5.0"
 
 
 class ClassRefusal(ValueError):
