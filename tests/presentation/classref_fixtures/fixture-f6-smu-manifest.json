@@ -192,11 +192,6 @@
                 },
                 {
                   "binding_id": "arm",
-                  "kind": "numeric",
-                  "field": "max_duration_ms"
-                },
-                {
-                  "binding_id": "arm",
                   "kind": "button"
                 },
                 {
@@ -213,11 +208,6 @@
                   "binding_id": "fetch",
                   "kind": "boolean",
                   "field": "allow_partial"
-                },
-                {
-                  "binding_id": "fetch",
-                  "kind": "numeric",
-                  "field": "max_bytes"
                 },
                 {
                   "binding_id": "fetch",

@@ -509,6 +509,22 @@ content. A change to the file is a new descriptor version — use the normal
 reviewed release path. The reference example `reference-analyzer-config.json`
 in the corpus shows the full declaration.
 
+### How the gateway resolves your actions at serving time
+
+A device with a class reference and no admitted UI attachment still gets a
+device page: the gateway derives the default presentation at serving time.
+Every declared action resolves in one of three layers. An action the served
+catalog describes resolves from that catalog row. An action a pinned composed
+class (a `contracts[]` pin whose document carries `urn` and `claims`) claims
+resolves from the class document, and the page names the class. An action no
+catalog or class describes still derives: the gateway renders the descriptor's
+own declared `input_constraints` under a visible "Custom device actions"
+label. Nothing resolves silently — the derived page carries a disclosure list
+stating what is custom, what a composed class supplied, and which pinned
+documents contributed nothing. The authoring contract for composed classes
+and vendor catalogs lives in the SDK user guide; the gateway only reads what
+the descriptor pins.
+
 ## 5. Implement the adapter lifecycle
 
 The normative factory and methods are in [core specification §8](../standards/otdp/0.2.4/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
