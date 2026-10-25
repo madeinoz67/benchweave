@@ -530,7 +530,7 @@
     },
     "tests/presentation/test_classref_derive.py": {
       "core": 0,
-      "total": 66
+      "total": 68
     },
     "tests/sdk/test_adapter_agreement.py": {
       "core": 0,

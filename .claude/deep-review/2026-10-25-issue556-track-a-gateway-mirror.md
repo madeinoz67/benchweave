@@ -571,3 +571,63 @@ never a filtered summary line, mypy always fresh-cache. RED-sanity
 neutralizations use `cp` backups, never `git checkout` (shared stash stack
 across worktrees). Worktree: `.wt/556-lane-a-m4t7` only; fold only this
 lane's worktree.
+
+## 13. Addendum (2026-10-25, refute fold) — the bound-tie widening on the shared intersection
+
+**The defect.** `_intersect_property`'s high-bound selection compared the
+catalogue row's and the constraint's `(value, exclusive)` pairs with
+`min()`. On an EQUAL value with mixed exclusivity the tuple comparison
+returns the INCLUSIVE pair: a catalogue `maximum: 5` meeting a constraint
+`exclusiveMaximum: 5` derived `maximum: 5`, which admits 5 — the exact
+value the plugin's own declaration refuses. That is an admittance
+widening, the one direction this project does not tolerate (A02). The low
+side was already correct: `max((5, False), (5, True))` returns
+`(5, True)`, the exclusive end. The docstring's "the tighter end of each
+side wins" was therefore false on high-bound ties, and `_check_admittance`
+catches only the case where both ends tie (an empty admittance), never
+this one.
+
+**The fix.** `_tighter_bound` is now the single comparator both sides
+read: the smaller value is tighter on the high side, the larger on the
+low side, and EQUAL values take the exclusive spelling on both sides.
+The `min()`/`max()` tuple comparisons are gone, so the two sides no
+longer tie-break in opposite directions. Two arms in
+`tests/presentation/test_classref_derive.py` pin it, each deriving
+through `derive_attachment` over the f1 fixture and judging a candidate
+object with `Draft202012Validator` against the EMITTED settings schema
+(catalogue `sample_count`: integer, `minimum: 1`, `maximum: 1000000`).
+`test_high_bound_tie_prefers_the_exclusive_end` fails against the
+pre-fix production file (`KeyError: 'exclusiveMaximum'`);
+`test_low_bound_tie_prefers_the_exclusive_end` passes pre-fix, because
+its side already tie-broke correctly, and reds only under the comparator
+neutralization. That neutralization — `_tighter_bound` returning the
+catalogue bound unconditionally, both arms red, 2 failed of 2 collected
+in this lane's run — is the low arm's load-bearing proof, not the pre-fix
+run. The docstring claim and the comment above the bounds block now state
+the equal-value rule the mechanism enforces.
+
+**Mirrored in the pin; fixed on both sides in this arc.** The same tuple
+comparison ships in the pinned SDK: `benchweave-sdk` v0.21.0 (`88dcc4d`),
+`src/benchweave_sdk/classref.py:636-645` — `low = max(low_catalogue,
+low_constraint)` at `:640`, `high = min(high_catalogue, high_constraint)`
+at `:645`. The mirrored SDK-side fix is cut in this arc (sibling lane);
+this leg lands the gateway copy at the v0.21.0 pointer, before that
+release. **Once the pointer advances, the gateway derivation must not
+drift from the SDK on this path.** The gateway copy is the mirror, and
+B8's fixture byte-equality (§5, G-M5) catches divergence only where a
+committed fixture exercises the shape: all six committed descriptor
+fixtures (f1, f1-da, f2, f5-trio, f6-smu, m400) carry no bound
+constraint — their `input_constraints` are empty except the m400 tag's
+`channel` string type — so **B8 does not cover this path**, and these two
+arms are its only mechanical pin gateway-side. The SDK's own arms must
+pin its side at the fix; a future fixture carrying a bound tie would
+widen B8's coverage, which this record does not claim today.
+
+**Census.** No committed gateway-versus-SDK equivalence census covers the
+effective-schema intersection.
+`tests/sdk/test_descriptor_equivalence.py` pins descriptor S01/S02
+semantics, `tests/sdk/test_derivation_agreement.py` pins the
+derived-variable grammar census (S19), and
+`tests/ui_html/classref_census.py` counts mockup hooks; none reads
+`_effective_action_schema`. Nothing was silenced — the two arms are the
+pin.

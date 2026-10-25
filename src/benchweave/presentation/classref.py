@@ -396,6 +396,40 @@ def _satisfies_target(active: str, target: str) -> bool:
 # --- the effective schema (parent record §3.7, mirrored) -----------------------
 
 
+def _tighter_bound(
+    catalogue_bound: tuple[Any, bool],
+    constraint_bound: tuple[Any, bool],
+    *,
+    higher_value_is_tighter: bool,
+) -> tuple[Any, bool]:
+    """One side of the bounds intersection: the pair admitting FEWER
+    values (parent record §3.7).
+
+    On the high side the SMALLER value is tighter; on the low side the
+    LARGER one is. On EQUAL values the exclusive spelling is the tighter
+    end on both sides — the effective schema must never admit what the
+    plugin's own declaration refuses. Comparing ``(value, exclusive)``
+    tuples cannot express that: ``min((5, False), (5, True))`` returns the
+    INCLUSIVE pair while ``max()`` returns the exclusive one, so tuple
+    order tie-broke the two sides in opposite directions. Both sides read
+    through this one comparator, so the tie rule is stated once rather
+    than re-derived per side.
+    """
+    if catalogue_bound[0] == constraint_bound[0]:
+        return (catalogue_bound[0], catalogue_bound[1] or constraint_bound[1])
+    if higher_value_is_tighter:
+        return (
+            catalogue_bound
+            if catalogue_bound[0] > constraint_bound[0]
+            else constraint_bound
+        )
+    return (
+        catalogue_bound
+        if catalogue_bound[0] < constraint_bound[0]
+        else constraint_bound
+    )
+
+
 def _intersect_property(
     action_urn: str,
     property_name: str,
@@ -425,8 +459,9 @@ def _intersect_property(
     )
 
     # Bounds INTERSECT: a looser constraint can never widen the catalogue's
-    # admittance — the tighter end of each side wins, the exclusivity flags
-    # carry, and an empty result refuses.
+    # admittance — the tighter end of each side wins (on equal values the
+    # exclusive end, ``_tighter_bound``), the exclusivity flags carry, and an
+    # empty result refuses.
     def _bound(
         source: dict[str, Any], exclusive_key: str, plain_key: str
     ) -> tuple[Any, bool] | None:
@@ -452,7 +487,9 @@ def _intersect_property(
     if low_catalogue is None or low_constraint is None:
         low = low_catalogue if low_constraint is None else low_constraint
     else:
-        low = max(low_catalogue, low_constraint)
+        low = _tighter_bound(
+            low_catalogue, low_constraint, higher_value_is_tighter=True
+        )
     high: tuple[Any, bool] | None
     if high_catalogue is None or high_constraint is None:
         # The high-bound selection reads HIGH_constraint (the mirrored
@@ -461,7 +498,9 @@ def _intersect_property(
         # unbounded catalogue row — an admittance widening).
         high = high_catalogue if high_constraint is None else high_constraint
     else:
-        high = min(high_catalogue, high_constraint)
+        high = _tighter_bound(
+            high_catalogue, high_constraint, higher_value_is_tighter=False
+        )
     for keyword in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         effective.pop(keyword, None)
     if low is not None:

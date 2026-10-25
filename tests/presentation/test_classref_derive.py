@@ -822,6 +822,36 @@ class TestRefusals:
             )
 
 
+def _effective_sample_count(field: dict[str, Any]) -> dict[str, Any]:
+    """The configured action's emitted settings schema with ``sample_count``
+    narrowed by ``field`` — the catalogued intersection's output, read where
+    a dispatch value is judged."""
+    raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+    raw["actions"]["otdp.logic_analyser.configure/1.0.0"]["input_constraints"] = {
+        "properties": {"sample_count": field}
+    }
+    derived = _derive_from_document(raw)
+    settings = next(
+        blob
+        for name, blob in derived.resources.items()
+        if name.startswith("settings/")
+    )
+    schema: dict[str, Any] = json.loads(settings)
+    return {"schema": schema, "field": schema["properties"]["sample_count"]}
+
+
+def _configured_candidate(sample_count: int) -> dict[str, Any]:
+    """The configured action's required fields, so a validator's verdict
+    turns on ``sample_count`` alone."""
+    return {
+        "configuration_id": "cfg-1",
+        "channels": [{"channel": "a", "threshold_v": 1.0}],
+        "sample_rate_hz": 1000.0,
+        "trigger": {"kind": "immediate"},
+        "sample_count": sample_count,
+    }
+
+
 class TestResidualResolution:
     """The residual layer (issue #556 Track A, design §3.3): a declared
     action no served catalog describes derives from the descriptor's own
@@ -1110,6 +1140,41 @@ class TestResidualResolution:
         )
         schema = json.loads(settings)
         assert schema["properties"]["sample_rate_hz"]["maximum"] == 48000000
+
+    def test_high_bound_tie_prefers_the_exclusive_end(self) -> None:
+        """The tighter end of an EQUAL-value HIGH bound is the exclusive
+        one. A catalogue ``maximum: 1000000`` meeting a constraint
+        ``exclusiveMaximum: 1000000`` must derive the exclusive bound: the
+        constraint is the tighter end, and an effective schema keeping the
+        inclusive catalogue end admits the very value the plugin's own
+        declaration refuses — the one direction this project does not
+        tolerate. The selection compared ``(value, exclusive)`` tuples with
+        ``min()``, which returns the INCLUSIVE pair on an equal value.
+        """
+        from jsonschema import Draft202012Validator
+
+        high = _effective_sample_count({"exclusiveMaximum": 1000000})
+        assert high["field"]["exclusiveMaximum"] == 1000000
+        assert "maximum" not in high["field"]
+        validator = Draft202012Validator(high["schema"])
+        assert not validator.is_valid(_configured_candidate(1000000))
+        assert validator.is_valid(_configured_candidate(999999))
+
+    def test_low_bound_tie_prefers_the_exclusive_end(self) -> None:
+        """The mirror arm: the tighter end of an EQUAL-value LOW bound is
+        the exclusive one too. The side's ``max()`` already returned the
+        exclusive pair before the fix, so this arm passes pre-fix; it is
+        pinned here because both sides now read through one comparator,
+        and the comparator neutralization reds it — that neutralization,
+        not the pre-fix run, is what proves it load-bearing."""
+        from jsonschema import Draft202012Validator
+
+        low = _effective_sample_count({"exclusiveMinimum": 1})
+        assert low["field"]["exclusiveMinimum"] == 1
+        assert "minimum" not in low["field"]
+        validator = Draft202012Validator(low["schema"])
+        assert not validator.is_valid(_configured_candidate(1))
+        assert validator.is_valid(_configured_candidate(2))
 
     def test_qualified_field_collision_refuses_classref_duplicate_field(self) -> None:
         """Dotted flattening gives a nested a→b and a literal "a.b" the
