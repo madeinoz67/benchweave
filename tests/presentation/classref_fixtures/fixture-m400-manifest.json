@@ -1,0 +1,197 @@
+{
+  "contract_version": "0.4.0",
+  "plugin_id": "dev.meridian.m400",
+  "descriptor_sha256": "f6bd3f65c386e41962f9339348c0801ed47d56ba190af3d956dd397d55731067",
+  "bindings": [
+    {
+      "id": "capture",
+      "kind": "dataset",
+      "target_id": "capture"
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "target_id": "configure"
+    },
+    {
+      "id": "arm",
+      "kind": "procedure",
+      "target_id": "arm"
+    },
+    {
+      "id": "abort",
+      "kind": "procedure",
+      "target_id": "abort"
+    },
+    {
+      "id": "trigger",
+      "kind": "procedure",
+      "target_id": "trigger"
+    }
+  ],
+  "pages": [
+    {
+      "id": "capture",
+      "title": "Capture",
+      "kind": "dataset",
+      "bindings": [
+        "capture"
+      ],
+      "required": true,
+      "plots": [
+        {
+          "kind": "waveform",
+          "binding_id": "capture",
+          "x": "t",
+          "y": [
+            "ch1-voltage",
+            "ch2-voltage",
+            "ch3-strain"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "title": "Configuration",
+      "kind": "configuration",
+      "bindings": [
+        "configure"
+      ],
+      "required": true
+    },
+    {
+      "id": "device-features",
+      "title": "Device features",
+      "kind": "configuration",
+      "bindings": [],
+      "required": true
+    }
+  ],
+  "assets": [
+    {
+      "id": "settings/configure.schema.json",
+      "path": "settings/configure.schema.json",
+      "sha256": "3f0d0be3db2fe27b3bf173f032a8bac1852ffc284c827ff423ca9ace0d9ff4c6"
+    }
+  ],
+  "extensions": {
+    "plugin-ui-class-reference:layout": {
+      "contract_version": "0.4.0",
+      "pages": [
+        {
+          "page_id": "capture",
+          "sections": [
+            {
+              "id": "traces",
+              "title": "Traces",
+              "surface": "recessed",
+              "span": 12,
+              "children": [
+                {
+                  "plot_index": 0
+                }
+              ]
+            },
+            {
+              "id": "run",
+              "title": "Run",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "arm",
+                  "kind": "numeric",
+                  "field": "max_duration_ms"
+                },
+                {
+                  "binding_id": "arm",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "abort",
+                  "kind": "button"
+                },
+                {
+                  "binding_id": "trigger",
+                  "kind": "button"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "configuration",
+          "sections": [
+            {
+              "id": "configuration-section",
+              "title": "Configuration",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "sample_rate_hz"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "sample_count"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "numeric",
+                  "field": "trigger.level_v"
+                },
+                {
+                  "binding_id": "configure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "device-features",
+          "sections": [
+            {
+              "id": "device-features-section",
+              "title": "Device features",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "burst_mode",
+                  "kind": "numeric",
+                  "field": "burst_count"
+                },
+                {
+                  "binding_id": "burst_mode",
+                  "kind": "button"
+                }
+              ]
+            },
+            {
+              "id": "device-features-custom",
+              "title": "Custom device actions",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "self_cal",
+                  "kind": "text",
+                  "field": "channel"
+                },
+                {
+                  "binding_id": "self_cal",
+                  "kind": "button"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

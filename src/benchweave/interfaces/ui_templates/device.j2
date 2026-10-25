@@ -19,6 +19,13 @@
     {% if presentation.derived %}
     <div class="bw-presentation-derived" data-bw-presentation-derived>
       <p class="bw-presentation-derived__disclosure">Default class presentation — derived, no plugin attachment.</p>
+      {% if presentation.disclosures %}
+      <ul class="bw-presentation-derived__disclosures" data-bw-presentation-disclosures>
+        {% for line in presentation.disclosures %}
+        <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </div>
     {% endif %}
     {% if presentation.findings %}

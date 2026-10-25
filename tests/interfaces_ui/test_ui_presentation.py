@@ -848,6 +848,127 @@ def test_f2_derives_the_full_lane_inventory(gateway: SimpleNamespace) -> None:
     ]
 
 
+def _admit_pinned_document(gateway: SimpleNamespace, raw: bytes) -> None:
+    """Admit one pinned contract document into the composition store by
+    digest (the admission resolution the fallback reads; the vendor
+    catalog helper's shape, generalized for the composed-class pins)."""
+    gateway.content.put_document(
+        raw,
+        hashlib.sha256(raw).hexdigest(),
+        json.loads(raw),
+        "urn:x:classref-vendor-catalog",
+        NOW_ISO,
+    )
+
+
+def _m400_descriptor() -> dict[str, Any]:
+    descriptor: dict[str, Any] = json.loads(
+        (_F1 / "descriptor-m400.json").read_bytes()
+    )
+    return descriptor
+
+
+class TestM400ServePath:
+    """The three-layer acceptance over the REAL serve path (issue #556
+    Track A, design §3.4/§7 G-M2+G-M7): the composition admits the
+    m400-shaped bytes (its composed-class pin), the fallback derives the
+    three resolutions, the custom section composes on the device page,
+    and the rendered page carries the disclosure list with every line
+    its presented shapes owe."""
+
+    def test_gm7_composes_valid_with_the_custom_section_and_disclosures(
+        self, gateway: SimpleNamespace
+    ) -> None:
+        _admit_pinned_document(
+            gateway, (_F1 / "composed-burst.json").read_bytes()
+        )
+        state = compose_device_presentation(
+            gateway.content, (_F1 / "descriptor-m400.json").read_bytes()
+        )
+        assert state.absence is None
+        assert state.derived is True
+        assert state.valid is True, state.findings
+        features = next(
+            page for page in state.pages if page.page_id == "device-features"
+        )
+        assert "device-features-custom" in {
+            section.section_id for section in features.sections
+        }
+        html = _render_device_page(state)
+        assert "data-bw-presentation-disclosures" in html
+        assert "custom: com.meridian.m400.self_cal/1.0.0" in html
+        assert (
+            "composed: otdp.action.meridian_burst/1.0.0 (validated "
+            "against 0.4.0) supplies 1 declared action(s)" in html
+        )
+
+    def test_gm2_every_presented_shape_produces_its_line(
+        self, gateway: SimpleNamespace
+    ) -> None:
+        """G-M2's denominator arm: every custom member renders a
+        disclosure line chosen by the per-action minted discriminator,
+        and each of ignored pin / unapplied class / empty pin produces
+        its line when its shape is presented — a presented shape with no
+        line fails."""
+        import hashlib as _hashlib
+
+        _admit_pinned_document(
+            gateway, (_F1 / "composed-burst.json").read_bytes()
+        )
+        descriptor = _m400_descriptor()
+        # A second custom member that derives nothing (W7's shape: no
+        # properties key at all) — the renders-nothing line.
+        descriptor["actions"]["com.meridian.m400.noinput/1.0.0"] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        # A claims-nowhere composed class (unapplied), a shapeless pin
+        # (ignored) and an empty-actions pin — every disclosure shape in
+        # one derivation.
+        unapplied_doc = {
+            "contract_version": "0.1.0",
+            "urn": "otdp.action.meridian_unapplied/1.0.0",
+            "title": "Meridian unapplied",
+            "claims": ["com.meridian.m400.elsewhere/1.0.0"],
+            "input_schema": {"type": "object", "properties": {}},
+            "side_effect": "none",
+        }
+        shapeless = {"catalog_version": "1.0.0", "vendor": "com.meridian"}
+        empty: dict[str, Any] = {"actions": {}}
+        pins: list[dict[str, Any]] = []
+        for document in (unapplied_doc, shapeless, empty):
+            raw = (json.dumps(document, indent=2) + "\n").encode()
+            _admit_pinned_document(gateway, raw)
+            pins.append(
+                {
+                    "id": f"urn:meridian:extra:{len(pins)}",
+                    "path": f"extra-{len(pins)}.json",
+                    "sha256": _hashlib.sha256(raw).hexdigest(),
+                }
+            )
+        descriptor["contracts"].extend(pins)
+        state = compose_device_presentation(
+            gateway.content, json.dumps(descriptor).encode()
+        )
+        assert state.valid is True, state.findings
+        html = _render_device_page(state)
+        for line in (
+            "custom: com.meridian.m400.self_cal/1.0.0",
+            "custom, renders nothing: com.meridian.m400.noinput/1.0.0",
+            "ignored pin: extra-1.json contributed nothing (shape matched "
+            "neither a vendor catalog nor a composed class)",
+            "composed class otdp.action.meridian_unapplied/1.0.0 pinned at "
+            "extra-0.json applied to no declared action",
+            "pinned vendor catalog extra-2.json declares no actions",
+            "composed: otdp.action.meridian_burst/1.0.0 (validated "
+            "against 0.4.0) supplies 1 declared action(s)",
+        ):
+            assert line in html, line
+
+
 def test_derived_pages_render_the_host_derived_marker(
     gateway: SimpleNamespace,
 ) -> None:

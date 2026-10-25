@@ -47,7 +47,13 @@ v0.15.0 at the pointer leg) PLUS the plot-kind mirror at v0.18.0
 (issue #521; design record 2026-10-21-classref-plot-kind-mirror-design):
 the per-slot plot kind, the (channel, quantity) variable ids, the
 readings-page observation expansion and the reading-tile layout strip,
-pinned byte for byte by the f6-smu fixture. A re-pin that moves the SDK
+pinned byte for byte by the f6-smu fixture — PLUS the three-layer
+resolution mirror at v0.21.0 (issue #556 Track A; design record
+2026-10-25-issue556-track-a-gateway-mirror): the refusal split, the
+residual (custom) resolution with its fold hardening (W2/W3/W5/M6/W7/
+W9/G4), the composed walk with its conflict arms and disclosures, the
+W1/W8 emission order, and the m400 acceptance tag pinning all three
+layers in one descriptor. A re-pin that moves the SDK
 derivation moves these functions in the same arc (the design's
 fixture-freeze re-pin rule); B8 reds otherwise.
 

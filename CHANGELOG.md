@@ -190,6 +190,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features
 
+- The gateway mirror resolves composed and residual actions (#556 Track A) — the three-layer resolution (catalog / composed / custom), the refusal split, the custom section, the disclosure list on the derived device page, and the parity fixtures regenerated from the pinned v0.21.0 expander
 - Shared TypeSafe System One client with designed fallbacks (#420)
 - Outbound privacy screen for measurement reports (#420)
 - Advisory noise-bar scoring for memory proposals (#420)

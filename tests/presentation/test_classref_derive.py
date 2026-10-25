@@ -34,9 +34,14 @@ FIXTURES = Path(__file__).parent / "classref_fixtures"
 
 def _vendor_catalogs() -> dict[str, bytes]:
     """Every invented vendor catalog the fixtures pin, keyed by digest —
-    the admission store's resolution shape (L5 adds the trio catalog)."""
+    the admission store's resolution shape (L5 adds the trio catalog;
+    the m400 tag adds its composed-class pin)."""
     catalogs: dict[str, bytes] = {}
-    for name in ("vendor-catalog.json", "vendor-catalog-trio.json"):
+    for name in (
+        "vendor-catalog.json",
+        "vendor-catalog-trio.json",
+        "composed-burst.json",
+    ):
         raw = (FIXTURES / name).read_bytes()
         catalogs[hashlib.sha256(raw).hexdigest()] = raw
     return catalogs
@@ -71,8 +76,12 @@ class TestParityB8:
         (observation bindings and tiles), the slot-aware measure target
         and the time_series plot bound to the page's first observation —
         generated from the widened SDK expander at the v0.18.0 pin (the
-        convention's oracle, design record §5.2)."""
-        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
+        convention's oracle, design record §5.2). The m400 arm is the
+        three-layer acceptance tag (issue #556 Track A): one descriptor
+        carrying catalog, composed and custom resolutions at once,
+        generated from the pinned v0.21.0 expander beside its
+        composed-class pin."""
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -86,12 +95,12 @@ class TestParityB8:
                 # The JSON loads too: bytes equal, documents equal.
                 assert json.loads(produced) == json.loads(committed)
             # The founding tags derive the analyser; the numeric tag the
-            # smu pair (the mirror's own class).
-            expected_profile = (
-                "otdp.smu/1.0.0"
-                if tag == "f6-smu"
-                else "otdp.logic_analyser/1.0.0"
-            )
+            # smu pair (the mirror's own class); the acceptance tag the
+            # daq class.
+            expected_profile = {
+                "f6-smu": "otdp.smu/1.0.0",
+                "m400": "otdp.daq/1.0.0",
+            }.get(tag, "otdp.logic_analyser/1.0.0")
             assert derived.profile_ids == (expected_profile,)
 
     def test_w8_one_field_one_control_on_derived_pages(self) -> None:
@@ -249,7 +258,7 @@ class TestParityB8:
         from benchweave.presentation.admission import validate_attachment
         from benchweave.presentation.panels import SUPPORTED_PANELS
 
-        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400"):
             derived = _derive(tag)
             descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
             report = validate_attachment(
@@ -1495,6 +1504,92 @@ class TestComposedResolution:
             "catalog",
             None,
         )
+
+
+class TestAcceptanceM400:
+    """The three-layer acceptance tag (issue #556 Track A, design §7):
+    the m400-shaped fixture — a mostly-DAQ device with one composed and
+    one residual action, its triple generated from the pinned v0.21.0
+    expander beside its composed-class pin — derives with zero
+    refusals, every declared action resolved, and the three layers
+    distinguishable on the real path."""
+
+    _BURST = "com.meridian.m400.burst_mode/1.0.0"
+    _CLASS = "otdp.action.meridian_burst/1.0.0"
+    _SELF_CAL = "com.meridian.m400.self_cal/1.0.0"
+
+    def test_gm1_every_declared_action_resolves(self) -> None:
+        """G-M1: the acceptance fixture derives with zero refusals AND
+        100% of its declared actions carry a non-null resolution — the
+        denominator derived from the descriptor document, never a
+        literal count."""
+        derived = _derive("m400")
+        descriptor = json.loads((FIXTURES / "descriptor-m400.json").read_bytes())
+        declared = set(descriptor["actions"])
+        assert declared, "the fixture declares actions"
+        assert {urn for urn, _r, _c in derived.resolutions} == declared
+        assert all(
+            resolution in ("catalog", "composed", "custom")
+            for _urn, resolution, _class in derived.resolutions
+        )
+        assert derived.ignored_pins == ()
+        assert derived.unapplied_classes == ()
+        assert derived.empty_action_pins == ()
+
+    def test_gm3_the_layers_are_distinguishable(self) -> None:
+        """G-M3: one burst_mode-shaped URN derives ``custom`` with no
+        pin, ``composed`` with the pin, and a served-namespaced sibling
+        derives ``catalog`` — three derivations over the real path,
+        three asserted resolutions, the composed leg naming its class."""
+        descriptor = json.loads((FIXTURES / "descriptor-m400.json").read_bytes())
+        composed_pin = next(
+            row
+            for row in descriptor["contracts"]
+            if str(row["id"]) == "urn:meridian:composed-burst:1.0.0"
+        )
+        descriptor["contracts"].remove(composed_pin)
+        derived = _derive_from_document(descriptor)
+        assert dict(
+            (urn, (resolution, class_urn))
+            for urn, resolution, class_urn in derived.resolutions
+        )[self._BURST] == ("custom", None)
+        derived = _derive("m400")
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._BURST] == ("composed", self._CLASS)
+        assert resolutions[self._SELF_CAL] == ("custom", None)
+        assert resolutions["otdp.daq.arm/1.0.0"] == ("catalog", None)
+
+    def test_the_custom_section_renders_beside_the_main_section(self) -> None:
+        """The device-features page partitions: the catalogued and
+        composed actions in the main section, the residual member in the
+        custom section — each action's controls carry its own field
+        rows."""
+        derived = _derive("m400")
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        sections = {section["id"]: section for section in features["sections"]}
+        assert set(sections) == {
+            "device-features-section",
+            "device-features-custom",
+        }
+        main_fields = [
+            node.get("field")
+            for node in sections["device-features-section"]["children"]
+        ]
+        assert "burst_count" in main_fields
+        custom_children = sections["device-features-custom"]["children"]
+        assert [
+            (node.get("kind"), node.get("field")) for node in custom_children
+        ] == [("text", "channel"), ("button", None)]
 
 
 class TestRefusalSplit:
