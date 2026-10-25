@@ -813,6 +813,357 @@ class TestRefusals:
             )
 
 
+class TestResidualResolution:
+    """The residual layer (issue #556 Track A, design §3.3): a declared
+    action no served catalog describes derives from the descriptor's own
+    input_constraints — resolution "custom", a visible custom section —
+    never the recoverable ``classref_unknown_action`` refusal. The fold
+    hardening on the shared paths (W5/M6/W9/W3/G4, the released
+    semantics) rides along."""
+
+    _CUSTOM_URN = "com.veridian-labs.self_test/1.0.0"
+
+    def _descriptor_with_custom_action(
+        self, constraints: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        raw: dict[str, Any] = json.loads(
+            (FIXTURES / "descriptor-f1.json").read_bytes()
+        )
+        action: dict[str, Any] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        if constraints is not None:
+            action["input_constraints"] = constraints
+        raw["actions"][self._CUSTOM_URN] = action
+        return raw
+
+    def test_residual_action_derives_labelled_custom(self) -> None:
+        """The recoverable refusal is GONE: a declared action absent from
+        every served catalog derives with resolution "custom", its
+        controls from the descriptor's own input_constraints, rendered in
+        the page's custom section (resolution partitions, never mixes)."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "duration_s": {"type": "number", "minimum": 0.0, "maximum": 60.0}
+                },
+                "required": ["duration_s"],
+            }
+        )
+        derived = _derive_from_document(raw)
+        # The denominator is the descriptor's own declared action set —
+        # every declared URN resolves exactly once, non-null (G-M1's
+        # shape at this layer), and the custom member names no class.
+        assert sorted(urn for urn, _resolution, _class_urn in derived.resolutions) == (
+            sorted(raw["actions"])
+        )
+        assert all(
+            resolution in ("catalog", "composed", "custom")
+            for _urn, resolution, class_urn in derived.resolutions
+        )
+        by_urn = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert by_urn[self._CUSTOM_URN] == ("custom", None)
+        assert by_urn["com.veridian-labs.auto-threshold/1.0.0"] == ("catalog", None)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        section_ids = [section["id"] for section in features["sections"]]
+        assert "device-features-custom" in section_ids, section_ids
+        custom = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-custom"
+        )
+        assert custom["title"] == "Custom device actions"
+        assert [(node.get("kind"), node.get("field")) for node in custom["children"]] == [
+            ("numeric", "duration_s"),
+            ("button", None),
+        ]
+        main = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-section"
+        )
+        assert all(
+            node.get("binding_id") != "self_test" for node in main["children"]
+        )
+
+    def test_residual_undeclared_input_derives_l0_with_the_marker(self) -> None:
+        """W7: "declares nothing" is not "declares no inputs" — a residual
+        action whose input_constraints carries no properties key at all
+        derives L0 with input_undeclared, and silence never becomes a
+        one-click dispatch (no button, no control node)."""
+        raw = self._descriptor_with_custom_action({"required": ["channel"]})
+        derived = _derive_from_document(raw)
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._CUSTOM_URN] == ("custom", None)
+        from benchweave.presentation.classref import _derive_controls
+
+        plan, _divergences = _derive_controls(
+            {self._CUSTOM_URN: {}}, {}, {}, {}, {}
+        )
+        row = plan[self._CUSTOM_URN]
+        assert row["resolution"] == "custom"
+        assert row["level"] == "L0"
+        assert row["input_undeclared"] is True
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        for page in block["pages"]:
+            for section in page["sections"]:
+                for node in section.get("children", []):
+                    assert node.get("binding_id") != "self_test", node
+
+    def test_non_object_catalog_row_refuses_classref_catalog_row_invalid(
+        self,
+    ) -> None:
+        """A served catalog row that is not an object refuses typed —
+        reading it as "no catalog" would mint a false custom provenance
+        (the pre-split code crashed on it downstream)."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        catalog["actions"]["com.veridian-labs.ghost/1.0.0"] = 5
+        raw_bytes = (json.dumps(catalog, indent=2) + "\n").encode()
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        descriptor["actions"]["com.veridian-labs.ghost/1.0.0"] = descriptor[
+            "actions"
+        ]["com.veridian-labs.auto-threshold/1.0.0"]
+        descriptor["contracts"][-1]["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_catalog_row_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={hashlib.sha256(raw_bytes).hexdigest(): raw_bytes},
+            )
+
+    def test_residual_closed_vocabulary_refuses_at_every_depth(self) -> None:
+        """The residual fragment passes the same closed-vocabulary gate
+        the catalogued intersection passes — at every depth (W2)."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {
+                            "token": {"type": "string", "format": "uri"}
+                        },
+                    }
+                }
+            }
+        )
+        with pytest.raises(ClassRefusal, match="^classref_constraint_unsupported:"):
+            _derive_from_document(raw)
+
+    def test_residual_empty_admittance_shapes_refuse(self) -> None:
+        """W5/M6: an empty declared enum and inverted string length
+        bounds admit nothing — residual and catalogued alike."""
+        raw = self._descriptor_with_custom_action(
+            {"properties": {"mode": {"enum": []}}}
+        )
+        with pytest.raises(
+            ClassRefusal, match="enum admits no value"
+        ):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "label": {"type": "string", "minLength": 5, "maxLength": 2}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal,
+            match="string length bounds admit no value",
+        ):
+            _derive_from_document(raw)
+
+    def test_residual_declared_values_narrow_under_bounds(self) -> None:
+        """W3: a declared value set under declared bounds renders exactly
+        the values both admit — narrowed, refused when emptied, conflicted
+        when a const sits outside (kill (d)'s shape at the residual
+        layer). The narrowed set rides the FIELD ROW (the layout node
+        vocabulary carries kind/field only), read here through the
+        derivation's own helpers over the same fragment the plan
+        consumed."""
+        from benchweave.presentation.classref import (
+            _effective_action_schema,
+            _field_rows,
+        )
+
+        fragment = {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "enum": [5, 50],
+        }
+        effective = _effective_action_schema(
+            self._CUSTOM_URN, None, {"properties": {"level": fragment}}
+        )
+        rows = _field_rows(self._CUSTOM_URN, "", effective)
+        assert rows[0]["enum"] == [5]
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "level": {"type": "integer", "maximum": 10, "enum": [50]}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal, match="every declared enum value falls outside"
+        ):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "level": {"type": "integer", "maximum": 10, "const": 50}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal, match="const"
+        ):
+            _derive_from_document(raw)
+
+    def test_ill_typed_control_values_refuse_g4(self) -> None:
+        """G4: a control keyword whose value is ill-typed refuses typed
+        on the residual path (the W9 admission without value typing used
+        to crash the narrowing)."""
+        raw = self._descriptor_with_custom_action(
+            {"properties": {"count": {"type": "integer", "minimum": "0"}}}
+        )
+        with pytest.raises(ClassRefusal, match="^classref_constraint_unsupported:"):
+            _derive_from_document(raw)
+
+    def test_w9_string_length_bounds_join_the_vocabulary(self) -> None:
+        """W9: minLength/maxLength are inside the closed vocabulary — a
+        bounded string on the CONSTRAINT side used to refuse
+        classref_constraint_unsupported; it now derives a bounded text
+        row. A length bound meeting a NON-string catalogue type is the
+        same conflict the numeric bounds raise (the catalog's
+        margin_ppm is an integer)."""
+        raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        raw["actions"]["com.veridian-labs.auto-threshold/1.0.0"][
+            "input_constraints"
+        ] = {"properties": {"margin_ppm": {"maxLength": 8}}}
+        with pytest.raises(ClassRefusal, match="length bound applied to catalogue"):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "label": {"type": "string", "minLength": 2, "maxLength": 8}
+                },
+                "required": ["label"],
+            }
+        )
+        derived = _derive_from_document(raw)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        node = next(
+            node
+            for page in block["pages"]
+            for section in page["sections"]
+            for node in section.get("children", [])
+            if node.get("field") == "label"
+        )
+        assert node["kind"] == "text"
+
+    def test_constraint_only_maximum_survives_the_intersection(self) -> None:
+        """The high-bound selection the gateway transposed (its copy read
+        ``low_constraint`` where the SDK reads ``high_constraint``): a
+        constraint declaring ONLY a maximum against a catalogue row with
+        no upper bound (sample_rate_hz is exclusiveMinimum-only) used to
+        drop the bound silently — an admittance WIDENING. The mirror
+        keeps the declared maximum."""
+        raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        raw["actions"]["otdp.logic_analyser.configure/1.0.0"][
+            "input_constraints"
+        ] = {"properties": {"sample_rate_hz": {"maximum": 48000000}}}
+        derived = _derive_from_document(raw)
+        settings = next(
+            blob
+            for name, blob in derived.resources.items()
+            if name.startswith("settings/")
+        )
+        schema = json.loads(settings)
+        assert schema["properties"]["sample_rate_hz"]["maximum"] == 48000000
+
+    def test_qualified_field_collision_refuses_classref_duplicate_field(self) -> None:
+        """Dotted flattening gives a nested a→b and a literal "a.b" the
+        same qualified name — two rows under one name render two controls
+        for one declared field; the collision refuses typed."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "a.b": {"type": "integer"},
+                    "a": {"type": "object", "properties": {"b": {"type": "integer"}}},
+                }
+            }
+        )
+        with pytest.raises(ClassRefusal, match="^classref_duplicate_field:"):
+            _derive_from_document(raw)
+
+    def test_custom_action_never_welds_into_an_authored_section(self) -> None:
+        """The completion scoping (W1 fold): a residual member never
+        welds its button into the reference's authored sections — the
+        authored page stands as authored and the member surfaces through
+        the plan and the custom channel instead."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["layouts"].append(
+            {
+                "page_id": "device-features",
+                "sections": [
+                    {
+                        "id": "features",
+                        "title": "Device features",
+                        "surface": "raised",
+                        "span": 12,
+                        "children": [{"body": "Vendor features."}],
+                    }
+                ],
+            }
+        )
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {"duration_s": {"type": "number"}},
+                "required": ["duration_s"],
+            }
+        )
+        derived = _derive_from_document(raw, references_override=[reference])
+        features = next(
+            page
+            for page in derived.manifest["extensions"][
+                "plugin-ui-class-reference:layout"
+            ]["pages"]
+            if page["page_id"] == "device-features"
+        )
+        assert [section["id"] for section in features["sections"]] == ["features"]
+        assert all(
+            node.get("binding_id") != "self_test"
+            for section in features["sections"]
+            for node in section.get("children", [])
+        )
+
+
 class TestRefusalSplit:
     """The refusal split (issue #556 Track A, design §3.1): every integrity
     arm fires with its own code, mirroring the SDK expander at the v0.21.0
