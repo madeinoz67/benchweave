@@ -631,3 +631,28 @@ derived-variable grammar census (S19), and
 `tests/ui_html/classref_census.py` counts mockup hooks; none reads
 `_effective_action_schema`. Nothing was silenced — the two arms are the
 pin.
+
+## 14. Addendum (2026-10-25, fold) — the risk bound, and the detection the pointer PR inherits
+
+**The risk bound, verified rather than assumed.** A loose presentation
+cannot produce a loose operation. `src/benchweave/host/otdp_bridge.py`
+`::_invoke_gate` runs the pinned catalogue's `input_validator` and then
+the descriptor action's `input_constraints` validator, and both must pass
+before dispatch. The constraint's `exclusiveMaximum` is therefore
+enforced at dispatch independently of what the derivation renders, so the
+widening section 13 fixes was a presentation-honesty defect and never a
+control-path admittance hole.
+
+**Detection the pointer PR inherits.** The committed fixtures cannot
+surface this fix by themselves: all six descriptor fixtures carry no
+bound constraint, so a differential run over them reads green before and
+after. The pointer PR must add a bound-tie arm, or a fixture carrying the
+shape, in the derivation suite and mirror it SDK-side, so the adoption is
+pinned rather than asserted.
+
+**Sequencing note for the reader.** A stand-down of this lane was issued
+mid-build and retracted after re-reading CON-12; the branch history
+around this point records that exchange. The settled ruling is the one
+section 13 states: the mirror obligation binds the two SOURCES, so both
+halves carry the fix in this arc and only the pinned v0.21.0 artifact
+lags until the pointer PR.
