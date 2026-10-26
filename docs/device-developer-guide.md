@@ -529,24 +529,28 @@ the descriptor pins.
 
 A class reference places most surfaces of a device. It does not place the
 surfaces that a vendor adds. A pinned composed member declaration supplies
-those surfaces. The document carries a `members` key. Each member states a
-slot key, a kind, a page, and the fields for that kind. The four kinds are
-`channels`, `dataset`, `configuration`, and `procedure`. A member places
-channel lanes, a capture dataset, a settings surface, or a procedure
-control. The gateway reads the declaration and derives the surfaces with
-the same steps it uses for a class reference. The declaration can also
-state one vendor profile row. The descriptor can claim that profile, and
-the vendor target then resolves under the existing validator rule.
+those surfaces.
 
-A member never disappears without a statement. The derived page's
-disclosure list states each member that derives no surface. The list also
-states each member that applies to no action or channel in the descriptor.
+The document states its own `contract_version`. It also carries a `members`
+key. Each member states a slot key, a kind, a page, and the fields for that
+kind. The four kinds are `channels`,
+`dataset`, `configuration`, and `procedure`. A member places channel lanes, a
+capture dataset, a settings surface, or a procedure control. The gateway reads
+the declaration and derives the surfaces with the same steps it uses for a
+class reference.
 
-The authoring contract is in the SDK user guide, section "Author a
-composed member declaration". The normative rules are in the active
+The declaration can also state one vendor profile row. The descriptor can
+claim that profile. The vendor target then resolves under the existing
+validator rule.
+
+A member never disappears without a statement. The derived page's disclosure
+list states each member that derives no surface. The list also states each
+member that applies to no action or channel in the descriptor.
+
+The authoring contract is in the SDK user guide, section "Author a composed
+member declaration". The normative rules are in the active
 `plugin-ui-class-reference` family README, section "Composed member
-declarations". The gateway reads only the documents that the descriptor
-pins.
+declarations". The gateway reads only the documents that the descriptor pins.
 
 ## 5. Implement the adapter lifecycle
 
