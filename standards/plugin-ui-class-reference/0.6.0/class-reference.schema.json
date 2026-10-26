@@ -52,14 +52,12 @@
     "pages": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 64,
       "items": {
         "$ref": "#/$defs/page_template"
       }
     },
     "layouts": {
       "type": "array",
-      "maxItems": 16,
       "items": {
         "$ref": "https://benchweave.dev/contracts/plugin-ui-class-reference/0.6.0/layout.schema.json#/$defs/layout_page"
       }
@@ -69,7 +67,6 @@
     },
     "cannot_derive": {
       "type": "array",
-      "maxItems": 64,
       "items": {
         "$ref": "#/$defs/cannot_derive"
       }
@@ -153,7 +150,6 @@
             },
             "host_supplied": {
               "type": "array",
-              "maxItems": 16,
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -206,7 +202,6 @@
         },
         "binding_slots": {
           "type": "array",
-          "maxItems": 256,
           "uniqueItems": true,
           "items": {
             "type": "string",
@@ -378,7 +373,6 @@
         },
         "forbid": {
           "type": "array",
-          "maxItems": 64,
           "items": {
             "type": "string",
             "minLength": 1,
@@ -429,7 +423,6 @@
         },
         "must_not_be_wrapped_by": {
           "type": "array",
-          "maxItems": 16,
           "items": {
             "type": "string",
             "minLength": 1,

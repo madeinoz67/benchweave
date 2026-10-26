@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://benchweave.dev/contracts/plugin-ui-class-reference/0.6.0/layout.schema.json",
   "title": "BenchWeave plugin-ui-class-reference layout vocabulary 0.6.0",
-  "description": "The namespaced layout block. It rides a plugin-ui manifest's extensions seam under the key plugin-ui-class-reference:layout; the canonical manifest validator is extension-blind, so this family schema is the block's only validation authority. Bounds: pages <=16, sections <=16 per page, section nesting depth <=3 by construction, grid span <=12, text bodies <=512 characters. A section's children array carries no ceiling: a vendor feature surface adds children (staging nodes and buttons grow with the action count), never pages or sections, so its density is a renderer concern, not a validation one.",
+  "description": "The namespaced layout block. It rides a plugin-ui manifest's extensions seam under the key plugin-ui-class-reference:layout; the canonical manifest validator is extension-blind, so this family schema is the block's only validation authority. Bounds: section nesting depth <=3 by construction, grid span <=12, text bodies <=512 characters. The schema shape-checks content, it does not count it: no array of pages, sections or children carries a count ceiling — a vendor feature surface grows children (staging nodes and buttons scale with the action count) and a multi-class composition concatenates page templates, so density is a renderer concern, not a validation one.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,7 +16,6 @@
     "pages": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 16,
       "items": {
         "$ref": "#/$defs/layout_page"
       }
@@ -51,7 +50,6 @@
         "sections": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 16,
           "items": {
             "$ref": "#/$defs/section"
           }

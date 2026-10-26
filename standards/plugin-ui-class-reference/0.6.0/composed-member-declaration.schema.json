@@ -24,7 +24,6 @@
     "members": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 64,
       "items": {
         "$ref": "#/$defs/member"
       }
@@ -95,7 +94,6 @@
         "claims": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 64,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/claimed_action_urn"
@@ -112,7 +110,6 @@
         },
         "host_supplied": {
           "type": "array",
-          "maxItems": 16,
           "items": {
             "type": "string",
             "minLength": 1,

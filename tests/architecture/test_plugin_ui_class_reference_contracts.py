@@ -712,27 +712,36 @@ def test_depth_is_bounded_at_three() -> None:
     assert not layout_validator().is_valid(four_deep)
 
 
-# --- the 0.6.0 children-ceiling removal (gateway issue #560) ----------------------
+# --- the 0.6.0 content-count cap removal (gateway issue #560) ---------------------
 #
-# The owner ruling: there is no cap on vendor features. A device with any
-# number of real vendor actions derives a section whose children grow with
-# the action count (staging nodes plus the button), so a per-section
-# children ceiling refuses real devices — measured on a device with 8
-# vendor actions and 2 fields each: 24 children, refused by the 0.5.0
-# schema. The 0.6.0 bump removes ``maxItems`` from exactly the three
-# ``children`` arrays (section, nested_section, deep_section). The page
-# and section ceilings STAY: a vendor feature surface adds children,
-# never pages or sections. Density is a rendering concern, not a
-# validation one.
+# The owner ruling — no cap or limit on vendor features — and the
+# maintainer's widened reading of it: the schema shape-checks content, it
+# does not count it. Every ceiling that counts device content goes in the
+# one bump: the layout grammar's pages/sections/children arrays, the
+# class reference's declaration and inventory arrays (pages, layouts,
+# cannot_derive, slot host_supplied, binding_slots, expect.forbid,
+# must_not_be_wrapped_by), and the composed side's declaration ceilings
+# (members 64, claims 64, host_supplied 16 in composed-member-declaration;
+# claims 64 in composed-action-class). The evidence: a device with 8
+# vendor actions and 2 fields each derives 24 children and was refused;
+# a six-class composition concatenates page templates and refuses the
+# same way with zero vendor features involved. The cap predates the
+# current SDK line (the 0.21.0-era schema refuses identically) — the
+# composed-member injection is what started deriving real features onto
+# the page. What STAYS (the record's §2.4): every minItems, the value
+# bounds (span <=12, plot_index <=15, text <=512), the profiles singleton
+# (exactly one row), and the plugin-ui-anchored lane/plot-series ceilings
+# — data shape, not feature entries, and moving them is a separate
+# plugin-ui train.
 #
 # Both directions read the two trees directly in one run: the ACTIVE tree
-# (DIRECTORY, whatever version it is) must admit 17 children at every
-# section depth, and the digest-frozen 0.5.0 tree must keep refusing them
-# — the retained version's refusal is frozen history (CON-7), never
-# re-stamped. The document versions derive from each schema's own
-# ``contract_version`` const, so these arms are sweep-free at future
-# bumps (obligation 18's closing clause: a new version-bearing literal is
-# a defect — derive it instead).
+# (DIRECTORY, whatever version it is) must admit the over-cap document,
+# and the digest-frozen 0.5.0 tree must keep refusing it — the retained
+# version's refusal is frozen history (CON-7), never re-stamped. The
+# document versions derive from each schema's own ``contract_version``
+# const, so these arms are sweep-free at future bumps (obligation 18's
+# closing clause: a new version-bearing literal is a defect — derive it
+# instead).
 
 FROZEN_050_LAYOUT = (
     ROOT / "standards/plugin-ui-class-reference/0.5.0/layout.schema.json"
@@ -828,25 +837,35 @@ def test_children_ceiling_is_gone_at_every_section_depth(
     )
 
 
-def test_page_and_section_ceilings_stay() -> None:
-    """What the bump does NOT remove: the page ceiling (16) and the
-    section ceiling (16) stay — a vendor feature surface adds children,
-    never pages or sections, so the arrays that bound page count and
-    section count keep their maxItems. Green before and after the bump by
-    construction; this arm pins that the removal did not over-remove."""
+def test_page_and_sections_ceilings_are_gone() -> None:
+    """The maintainer's widened ruling (issue #560): the cap removal
+    reaches every ceiling that counts device content — a six-class
+    composition concatenates page templates (2-3 pages per class across
+    the eight class docs, and class-reference.schema.json allows 64 per
+    class) and refuses at the same classref_layout_invalid site with
+    zero vendor features involved. 17 pages and 17 sections per page
+    validate under the ACTIVE schema and are refused by the frozen
+    0.5.0 schema — both directions, the two trees, one run."""
     active = _layout_validator_for(DIRECTORY / "layout.schema.json")
-    version = _version_of(active)
+    frozen = _layout_validator_for(FROZEN_050_LAYOUT)
     button = {"binding_id": "arm", "kind": "button"}
     section = {"id": "s", "surface": "raised", "children": [button]}
     seventeen_pages: dict[str, Any] = {
-        "contract_version": version,
+        "contract_version": _version_of(active),
         "pages": [
             {"page_id": f"p{i}", "sections": [dict(section)]} for i in range(17)
         ],
     }
-    assert not active.is_valid(seventeen_pages)
+    assert active.is_valid(seventeen_pages), (
+        "the active layout schema still refuses 17 pages — the pages "
+        "ceiling removal (issue #560, the composition case) is not in "
+        "the active tree"
+    )
+    assert not frozen.is_valid(
+        {**seventeen_pages, "contract_version": _version_of(frozen)}
+    ), "the frozen 0.5.0 schema admitted 17 pages its maxItems refuses"
     seventeen_sections: dict[str, Any] = {
-        "contract_version": version,
+        "contract_version": _version_of(active),
         "pages": [
             {
                 "page_id": "p",
@@ -856,31 +875,335 @@ def test_page_and_section_ceilings_stay() -> None:
             }
         ],
     }
-    assert not active.is_valid(seventeen_sections)
-    # The ceilings that stay are exactly 16: 16 pages and 16 sections
-    # admit (17 is one past each bound).
-    assert active.is_valid(
-        {
-            "contract_version": version,
-            "pages": [
-                {"page_id": f"p{i}", "sections": [dict(section)]}
-                for i in range(16)
-            ],
-        }
+    assert active.is_valid(seventeen_sections), (
+        "the active layout schema still refuses 17 sections — the "
+        "sections ceiling removal (issue #560) is not in the active tree"
     )
-    assert active.is_valid(
-        {
-            "contract_version": version,
-            "pages": [
-                {
-                    "page_id": "p",
-                    "sections": [
-                        {**dict(section), "id": f"s{i}"} for i in range(16)
-                    ],
+    assert not frozen.is_valid(
+        {**seventeen_sections, "contract_version": _version_of(frozen)}
+    ), "the frozen 0.5.0 schema admitted 17 sections its maxItems refuses"
+
+
+def _frozen_reference_validator() -> Draft202012Validator:
+    """The class-reference validator over the digest-frozen 0.5.0 tree
+    (the both-directions half of the cap-removal arms)."""
+    old = ROOT / "standards/plugin-ui-class-reference/0.5.0"
+    documents = {
+        name: json.loads((old / f"{name}.schema.json").read_bytes())
+        for name in ("class-reference", "layout")
+    }
+    registry = Registry().with_resources(
+        (schema["$id"], Resource.from_contents(schema))
+        for schema in documents.values()
+    )
+    return Draft202012Validator(documents["class-reference"], registry=registry)
+
+
+def _ref_doc(version: str, **overrides: Any) -> dict[str, Any]:
+    """A minimal reference stamped with the target schema's own const."""
+    document = minimal_reference(**overrides)
+    document["contract_version"] = version
+    return document
+
+
+def _page(i: int) -> dict[str, Any]:
+    return {
+        "id": f"page{i}",
+        "title": f"Page {i}",
+        "kind": "readings",
+        "binding_slots": [],
+    }
+
+
+def _cannot(i: int) -> dict[str, Any]:
+    return {
+        "id": f"cannot-{i}",
+        "aspect": "aspect",
+        "reason": "reason",
+        "author_action": "action",
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate", "size"),
+    [
+        pytest.param(
+            "pages",
+            lambda doc, n: doc.update(pages=[_page(i) for i in range(n)]),
+            65,
+            id="classref-pages",
+        ),
+        pytest.param(
+            "layouts",
+            lambda doc, n: doc.update(
+                layouts=[
+                    {"page_id": f"capture{i}", "sections": [
+                        {"id": "s", "surface": "raised",
+                         "children": [{"binding_id": "arm", "kind": "button"}]}
+                    ]}
+                    for i in range(n)
+                ]
+            ),
+            17,
+            id="classref-layouts",
+        ),
+        pytest.param(
+            "cannot_derive",
+            lambda doc, n: doc.update(cannot_derive=[_cannot(i) for i in range(n)]),
+            65,
+            id="classref-cannot-derive",
+        ),
+        pytest.param(
+            "host_supplied",
+            lambda doc, n: doc.update(
+                slots={
+                    "lanes": {"kind": "channels", "where_role": "digital_input"},
+                    "cfg": {
+                        "kind": "configuration",
+                        "action": "otdp.logic_analyser.configure/1.0.0",
+                        "host_supplied": [f"field{i}" for i in range(n)],
+                    },
                 }
-            ],
-        }
+            ),
+            17,
+            id="classref-host-supplied",
+        ),
+        pytest.param(
+            "binding_slots",
+            lambda doc, n: doc.update(
+                pages=[{
+                    "id": "capture",
+                    "title": "Capture",
+                    "kind": "dataset",
+                    "binding_slots": [f"slot{i}" for i in range(n)],
+                }],
+                slots={
+                    "lanes": {"kind": "channels", "where_role": "digital_input"},
+                },
+            ),
+            257,
+            id="classref-binding-slots",
+        ),
+        pytest.param(
+            "forbid",
+            lambda doc, n: doc.update(
+                expect={
+                    "components": {},
+                    "controls": {},
+                    "forbid": [f"forbid-{i}" for i in range(n)],
+                }
+            ),
+            65,
+            id="classref-forbid",
+        ),
+        pytest.param(
+            "must_not_be_wrapped_by",
+            lambda doc, n: doc.update(
+                expect={
+                    "components": {
+                        "digital-lanes": {
+                            "count": "1",
+                            "must_not_be_wrapped_by": [
+                                f"wrapper-{i}" for i in range(n)
+                            ],
+                        }
+                    },
+                    "controls": {},
+                    "forbid": [],
+                }
+            ),
+            65,
+            id="classref-must-not-be-wrapped",
+        ),
+    ],
+)
+def test_classref_content_count_caps_are_gone(
+    name: str, mutate: Any, size: int
+) -> None:
+    """The declaration/inventory ceilings the widened ruling removes
+    from class-reference.schema.json — 65 where the cap was 64, 257
+    where it was 256, 17 where it was 16. Each site admits under the
+    ACTIVE schema and is refused by the frozen 0.5.0 schema; the
+    schema shape-checks content, it does not count it — a 65-member
+    device must not be refused for arithmetic."""
+    active = reference_validator()
+    frozen = _frozen_reference_validator()
+    document = _ref_doc(_version_of(active))
+    mutate(document, size)
+    assert active.is_valid(document), (
+        f"the active class-reference schema still refuses {size} x "
+        f"{name} — the content-count cap removal (issue #560) is not "
+        "in the active tree"
     )
+    frozen_document = _ref_doc(_version_of(frozen))
+    mutate(frozen_document, size)
+    assert not frozen.is_valid(frozen_document), (
+        f"the frozen 0.5.0 schema admitted {size} x {name} its "
+        "maxItems refuses"
+    )
+
+
+def test_composed_declaration_caps_are_gone() -> None:
+    """The composed side of the same ruling: members 64, claims 64 and
+    host_supplied 16 (composed-member-declaration) plus claims 64
+    (composed-action-class) all refuse a 65-member device at the
+    declaration schema the moment the layout fix lands — so they move
+    in the same bump. Both directions, the two trees."""
+    member_doc: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "members": [
+            {"slot": f"slot{i}", "kind": "channels",
+             "where_role": "digital_input", "page": "capture"}
+            for i in range(65)
+        ],
+    }
+    action_member_doc: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "members": [
+            {"slot": "arm", "kind": "procedure",
+             "claims": [f"com.lodestar.vx480.feature_{i}/1.0.0"
+                        for i in range(65)],
+             "page": "capture"}
+        ],
+    }
+    host_supplied_doc: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "members": [
+            {"slot": "cfg", "kind": "configuration",
+             "claims": ["com.lodestar.vx480.configure/1.0.0"],
+             "host_supplied": [f"field{i}" for i in range(17)],
+             "page": "capture"}
+        ],
+    }
+    action_class_doc: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "urn": "otdp.action.lodestar_burst/1.0.0",
+        "title": "Burst",
+        "claims": [f"com.lodestar.vx480.burst_{i}/1.0.0" for i in range(65)],
+        "input_schema": {"type": "object"},
+        "side_effect": "state_change",
+    }
+    old = ROOT / "standards/plugin-ui-class-reference/0.5.0"
+    for schema_name, document, size, site in (
+        ("composed-member-declaration", member_doc, 65, "members"),
+        ("composed-member-declaration", action_member_doc, 65, "member claims"),
+        ("composed-member-declaration", host_supplied_doc, 17,
+         "member host_supplied"),
+        ("composed-action-class", action_class_doc, 65, "claims"),
+    ):
+        active_schema = json.loads(
+            (DIRECTORY / f"{schema_name}.schema.json").read_bytes()
+        )
+        frozen_schema = json.loads(
+            (old / f"{schema_name}.schema.json").read_bytes()
+        )
+        assert Draft202012Validator(active_schema).is_valid(document), (
+            f"the active {schema_name} schema still refuses {size} x "
+            f"{site} — the declaration ceiling removal (issue #560) is "
+            "not in the active tree"
+        )
+        assert not Draft202012Validator(frozen_schema).is_valid(document), (
+            f"the frozen 0.5.0 {schema_name} schema admitted {size} x "
+            f"{site} its maxItems refuses"
+        )
+
+
+def test_value_bounds_and_minima_stay() -> None:
+    """What the ruling does NOT remove — the pin of the other half:
+    every minItems stays (an empty pages/sections/children/members/
+    claims array still refuses), the value bounds stay (span <=12,
+    plot_index <=15, text bodies <=512), the composed-member profiles
+    singleton stays (exactly one row: never zero, never two — the F1
+    seam), and the plugin-ui-anchored lane/plot-series ceilings stay
+    (data shape, not feature entries; record §2.4)."""
+    active = _layout_validator_for(DIRECTORY / "layout.schema.json")
+    version = _version_of(active)
+    button = {"binding_id": "arm", "kind": "button"}
+    # minItems survives at every removed-cap array.
+    for empty in (
+        {"contract_version": version, "pages": []},
+        {"contract_version": version,
+         "pages": [{"page_id": "p", "sections": []}]},
+        {"contract_version": version,
+         "pages": [{"page_id": "p", "sections": [
+             {"id": "s", "surface": "raised", "children": []}]}]},
+    ):
+        assert not active.is_valid(empty)
+    # Value bounds survive: span 13 refuses (12 admits), text 513
+    # refuses (512 admits), plot_index 16 refuses (15 admits).
+    over_span = {
+        "contract_version": version,
+        "pages": [{"page_id": "p", "sections": [
+            {"id": "s", "surface": "raised", "span": 13,
+             "children": [button]}]}],
+    }
+    assert not active.is_valid(over_span)
+    ok_span = json.loads(json.dumps(over_span).replace("13", "12"))
+    assert active.is_valid(ok_span)
+    over_text = {
+        "contract_version": version,
+        "pages": [{"page_id": "p", "sections": [
+            {"id": "s", "surface": "raised",
+             "children": [{"body": "x" * 513}]}]}],
+    }
+    assert not active.is_valid(over_text)
+    ok_text = json.loads(json.dumps(over_text).replace("x" * 513, "x" * 512))
+    assert active.is_valid(ok_text)
+    over_plot = {
+        "contract_version": version,
+        "pages": [{"page_id": "p", "sections": [
+            {"id": "s", "surface": "raised",
+             "children": [{"plot_index": 16}]}]}],
+    }
+    assert not active.is_valid(over_plot)
+    ok_plot = json.loads(json.dumps(over_plot).replace("16", "15"))
+    assert active.is_valid(ok_plot)
+    # Nesting depth 3 by construction: a fourth level still refuses
+    # (the depth cap is structural — $defs.node_leaf admits no section).
+    deep = {"id": "inner", "surface": "raised", "children": [{"body": "x"}]}
+    four_deep = {
+        "contract_version": version,
+        "pages": [{"page_id": "p", "sections": [
+            {"id": "outer", "surface": "raised", "children": [
+                {"id": "middle", "surface": "raised", "children": [
+                    {"id": "deep", "surface": "raised", "children": [
+                        deep]}]}]}]}],
+    }
+    assert not active.is_valid(four_deep)
+    # The composed-member profiles singleton: zero rows refuse, two
+    # rows refuse, one admits (the F1 seam's closed bound, kept).
+    member_schema = json.loads(
+        (DIRECTORY / "composed-member-declaration.schema.json").read_bytes()
+    )
+    validator = Draft202012Validator(member_schema)
+    profile = {
+        "id": "com.lodestar.vx480/1.0.0",
+        "title": "Lodestar VX-480 (fixture)",
+        "channel_roles": ["digital_input"],
+        "required_actions": ["com.lodestar.vx480.arm/1.0.0"],
+        "optional_actions": [],
+    }
+    base = {
+        "contract_version": "0.1.0",
+        "members": [{"slot": "lanes", "kind": "channels",
+                     "where_role": "digital_input", "page": "capture"}],
+    }
+    assert validator.is_valid({**base, "profiles": [profile]})
+    assert not validator.is_valid({**base, "profiles": []})
+    assert not validator.is_valid({**base, "profiles": [profile, profile]})
+    # Every minItems on the declaration side survives too.
+    assert not validator.is_valid({"contract_version": "0.1.0", "members": []})
+    action_class = json.loads(
+        (DIRECTORY / "composed-action-class.schema.json").read_bytes()
+    )
+    assert not Draft202012Validator(action_class).is_valid({
+        "contract_version": "0.1.0",
+        "urn": "otdp.action.lodestar_burst/1.0.0",
+        "title": "Burst",
+        "claims": [],
+        "input_schema": {"type": "object"},
+        "side_effect": "state_change",
+    })
 
 
 # --- the admission fold: adversary lanes 1 and 2 (RED-first batch) ---------------
@@ -948,20 +1271,31 @@ def test_target_grammar_is_exact(target: str) -> None:
     assert not reference_validator().is_valid(document), target
 
 
-def test_seventeen_layout_pages_refuse_both_ways() -> None:
-    """Lane 1 F7: the seam block's page cap (16) is the binding one - the
-    reference-side layouts bound must match it, so seventeen pages refuse
-    as a standalone block AND as reference layouts."""
+def test_seventeen_layout_pages_admit_both_ways_frozen_050_refused() -> None:
+    """Lane 1 F7's alignment, carried across the 0.6.0 cap removal
+    (issue #560): the block and the reference-side layouts stay ONE
+    vocabulary with two writers — in 0.5.0 both refused seventeen pages
+    at the seam cap (16); in 0.6.0 both admit it, the cap gone from
+    each side by the same ruling. The writers agreeing is the invariant;
+    the cap was 0.5.0's frozen spelling of it."""
     pages = [minimal_layout_page() for _ in range(17)]
-    assert not layout_validator().is_valid(
+    assert layout_validator().is_valid(
         {"contract_version": "0.6.0", "pages": pages}
     )
-    assert not reference_validator().is_valid(minimal_reference(layouts=pages))
+    assert reference_validator().is_valid(minimal_reference(layouts=pages))
+    frozen_layout = _layout_validator_for(FROZEN_050_LAYOUT)
+    frozen_reference = _frozen_reference_validator()
+    assert not frozen_layout.is_valid(
+        {"contract_version": "0.5.0", "pages": pages}
+    )
+    frozen_document = minimal_reference(layouts=pages)
+    frozen_document["contract_version"] = "0.5.0"
+    assert not frozen_reference.is_valid(frozen_document)
 
 
 def test_sixteen_layout_pages_admit_both_ways() -> None:
-    """The F7 alignment is a tightening to the seam cap, not a new ceiling:
-    sixteen pages admit on both writers."""
+    """The count that 0.5.0's seam cap admitted still admits — the
+    removal widens, never narrows."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
         {"contract_version": "0.6.0", "pages": pages}
@@ -1123,10 +1457,15 @@ def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
 # edit applied identically to BOTH sides of a lift keeps every one of them
 # green (the refute's equal-pair sabotage). This arm anchors each
 # re-stamped 0.6.0 machine file to the digest-frozen 0.5.0 bytes instead.
-# The 0.6.0 delta class is WIDER than a re-stamp: layout.schema.json also
-# removes exactly the three per-section ``children`` ``maxItems`` and
-# states the honest bounds in its description (issue #560) — both declared
-# below, so anything beyond re-stamp plus the declared edits is caught.
+# The 0.6.0 delta class is WIDER than a re-stamp: beside the version
+# lines, the bump removes exactly sixteen ``maxItems`` count caps (five in
+# layout — pages, sections and the three children depths; seven in
+# class-reference — pages, layouts, cannot_derive, the slot branch's
+# host_supplied, binding_slots, expect.forbid and
+# must_not_be_wrapped_by; three in composed-member-declaration — members,
+# claims, host_supplied; one in composed-action-class — claims) and
+# states the honest bounds in layout's description. Both declared below,
+# so anything beyond re-stamp plus the declared edits is caught.
 # The previous predecessor's equality (0.5.0 == 0.4.0 modulo its re-stamp)
 # is frozen history: both trees are digest-pinned by their corpus rows and
 # verified by the retained-freeze arms, so it needs no live comparison.
@@ -1142,62 +1481,95 @@ CLASS_FILES = (
     "class-oscilloscope.json",
     "class-smu.json",
 )
-STAMP_ONLY_SCHEMAS = (
-    "class-reference.schema.json",
-    "composed-action-class.schema.json",
-    "composed-member-declaration.schema.json",
-)
+
+#: The declared cap-removal sites per schema, as JSON-pointer-ish paths
+#: resolved against the parsed document (the ruled list, issue #560).
+CAP_REMOVALS: dict[str, tuple[tuple[Any, ...], ...]] = {
+    "layout.schema.json": (
+        ("properties", "pages"),
+        ("$defs", "layout_page", "properties", "sections"),
+        ("$defs", "section", "properties", "children"),
+        ("$defs", "nested_section", "properties", "children"),
+        ("$defs", "deep_section", "properties", "children"),
+    ),
+    "class-reference.schema.json": (
+        ("properties", "pages"),
+        ("properties", "layouts"),
+        ("properties", "cannot_derive"),
+        ("$defs", "slot", "oneOf", 1, "properties", "host_supplied"),
+        ("$defs", "page_template", "properties", "binding_slots"),
+        ("$defs", "expect", "properties", "forbid"),
+        ("$defs", "component_expect", "properties", "must_not_be_wrapped_by"),
+    ),
+    "composed-member-declaration.schema.json": (
+        ("properties", "members"),
+        ("$defs", "action_member", "properties", "claims"),
+        ("$defs", "action_member", "properties", "host_supplied"),
+    ),
+    "composed-action-class.schema.json": (
+        ("properties", "claims"),
+    ),
+}
+
+
+def _resolve(document: dict[str, Any], path: tuple[Any, ...]) -> dict[str, Any]:
+    node: Any = document
+    for key in path:
+        node = node[key]
+    assert isinstance(node, dict)
+    return node
 
 
 def test_restamp_fidelity_every_060_machine_file_equals_050_modulo_the_declared_edits() -> None:
     """Copy fidelity against the frozen predecessor: every re-stamped
     machine file in 0.6.0 equals its 0.5.0 counterpart modulo the declared
-    version-line re-stamp and NOTHING else — the eight class files change
-    exactly their one ``contract_version`` line, the three stamp-only
-    schemas change exactly their version-bearing lines (every occurrence
-    of the literal 0.5.0, and only that: $id, title, the version const and
-    the cross-file $ref), and layout.schema.json carries the bump's one
-    declared machine change beside its re-stamp: the three ``children``
-    ``maxItems`` removals and the honest-bounds description. What this arm
-    does NOT catch: an edit applied identically to BOTH version trees
+    version-line re-stamp, the sixteen declared ``maxItems`` removals and
+    layout's honest-bounds description, and NOTHING else — the eight class
+    files change exactly their one ``contract_version`` line, and each
+    family schema's parsed document equals its predecessor's parsed
+    document after applying exactly those named edits. What this arm does
+    NOT catch: an edit applied identically to BOTH version trees
     preserves the modulo equality and stays green here — that shape is
     caught by the retained-freeze digest arms over the 0.5.0 rows and by
     ``test_manifest_hashes_match_contract_files`` over every row; and a
     hand-forged predecessor corpus row defeats those too, which is the
     repin-only discipline (CON-7), outside what any in-tree comparison arm
     can catch."""
+    import copy
+
     for name in CLASS_FILES:
         old = (PREDECESSOR / name).read_bytes()
         new = (DIRECTORY / name).read_bytes()
         stamp = b'"contract_version": "0.5.0"'
         assert old.count(stamp) == 1, name
         assert new == old.replace(stamp, b'"contract_version": "0.6.0"'), name
-    for name in STAMP_ONLY_SCHEMAS:
-        old = (PREDECESSOR / name).read_bytes()
-        new = (DIRECTORY / name).read_bytes()
-        assert old.count(b"0.5.0") == new.count(b"0.6.0"), name
-        assert new == old.replace(b"0.5.0", b"0.6.0"), name
-    # layout.schema.json: the re-stamp plus the declared cap removals,
-    # compared structurally (the description edit makes replace-all the
-    # wrong instrument here) — every other node must be identical.
-    import copy
-
-    old_layout = json.loads((PREDECESSOR / "layout.schema.json").read_bytes())
-    new_layout = json.loads((DIRECTORY / "layout.schema.json").read_bytes())
-    expected = copy.deepcopy(old_layout)
-    expected["$id"] = old_layout["$id"].replace("0.5.0", "0.6.0")
-    expected["title"] = old_layout["title"].replace("0.5.0", "0.6.0")
-    expected["properties"]["contract_version"]["const"] = "0.6.0"
-    for defs in ("section", "nested_section", "deep_section"):
-        del expected["$defs"][defs]["properties"]["children"]["maxItems"]
-    expected["description"] = new_layout["description"]
-    assert expected == new_layout, "layout drifted beyond the declared 0.6.0 edits"
+    for name, sites in CAP_REMOVALS.items():
+        old = json.loads((PREDECESSOR / name).read_bytes())
+        new = json.loads((DIRECTORY / name).read_bytes())
+        expected = copy.deepcopy(old)
+        expected["$id"] = old["$id"].replace("0.5.0", "0.6.0")
+        if "title" in old:
+            expected["title"] = old["title"].replace("0.5.0", "0.6.0")
+        if name == "class-reference.schema.json":
+            expected["properties"]["contract_version"]["const"] = "0.6.0"
+            expected["properties"]["layouts"]["items"]["$ref"] = old[
+                "properties"
+            ]["layouts"]["items"]["$ref"].replace("0.5.0", "0.6.0")
+        if name == "layout.schema.json":
+            expected["properties"]["contract_version"]["const"] = "0.6.0"
+            expected["description"] = new["description"]
+        for site in sites:
+            del _resolve(expected, site)["maxItems"]
+        assert expected == new, f"{name} drifted beyond the declared 0.6.0 edits"
     # The description delta is pinned by name: the false census claim is
-    # gone, the no-ceiling bound is stated.
-    assert "gate-time census" not in new_layout["description"]
-    assert "children <=16 per section" not in new_layout["description"]
-    assert "carries no ceiling" in new_layout["description"]
-    assert "renderer concern, not a validation one" in new_layout["description"]
+    # gone, the count-free bound is stated.
+    description = json.loads(
+        (DIRECTORY / "layout.schema.json").read_bytes()
+    )["description"]
+    assert "gate-time census" not in description
+    assert "pages <=16" not in description
+    assert "shape-checks content, it does not count it" in description
+    assert "renderer concern, not a validation one" in description
 
 
 # --- the L11 widening and the dc_psu reference (issue #463 slot L11) ------------

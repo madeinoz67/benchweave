@@ -48,9 +48,8 @@ def test_the_retrofit_row_is_exactly_the_evidenced_set() -> None:
     design record) retained beside the 0.3.0 row (the 2026-10-18 L11
     record), the 0.4.0 row (the 2026-10-22 composed-action-class
     record), the 0.5.0 row (the 2026-10-25 composed-member record) and
-    the 0.6.0 row (issue #560's owner ruling: no cap or limit on vendor
-    features — the PR-prose citation precedent, a locatable ruling
-    rather than a design record);
+    the 0.6.0 row (the 2026-10-26 no-cap record — the cap-census and
+    mechanism sections; the owner ruling is quoted at its top);
     the refute fold's F3 ruling: a served pin never loses its
     constraint, so a bump ADDS its row instead of amending the
     predecessor's away — the loader admits all, each firing for its own
@@ -74,7 +73,7 @@ def test_the_retrofit_row_is_exactly_the_evidenced_set() -> None:
         ("0.3.0", "2026-10-18-classref-l11-dc-psu-design.md"),
         ("0.4.0", "2026-10-22-issue541-s2-standards-design.md"),
         ("0.5.0", "2026-10-25-issue556-track-b-vocabularies.md"),
-        ("0.6.0", "issue #560"),
+        ("0.6.0", "2026-10-26-issue560-no-cap-vendor-features-design.md"),
     ):
         assert by_version[version].requires == {"plugin-ui": ">=0.4.0,<0.5.0"}
         assert record in by_version[version].evidence

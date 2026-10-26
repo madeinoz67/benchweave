@@ -1810,17 +1810,17 @@
     {
       "path": "plugin-ui-class-reference/0.6.0/class-reference.schema.json",
       "source": "standards/plugin-ui-class-reference/0.5.0/class-reference.schema.json",
-      "sha256": "2f02a52dbe52af372e9a9b80841c0c94a60ff09b5e2dd6aa3b3d51951090af99"
+      "sha256": "7ec6b3bd4a6b0ea982dfe380589f5aaa1b97a3849cfa848566fe5ad32579f126"
     },
     {
       "path": "plugin-ui-class-reference/0.6.0/layout.schema.json",
       "source": "standards/plugin-ui-class-reference/0.5.0/layout.schema.json",
-      "sha256": "030e6fc68727d674c5371ad24ed845ffddc75ecfc566752c30254300f876f14d"
+      "sha256": "b7dc6df7bd93bc7dd8155dfcab0b920e8266416bbbd672916bd405ec19cef6a9"
     },
     {
       "path": "plugin-ui-class-reference/0.6.0/composed-action-class.schema.json",
       "source": "standards/plugin-ui-class-reference/0.5.0/composed-action-class.schema.json",
-      "sha256": "ab9fed1dd7655b9d5fcb1684a1b9efcaf514186ed54d6f7bf739361e5389eff5"
+      "sha256": "e927187aa90a670570cfa7b58832d86e9e9b7e705af5c3d705e5267ce3056b58"
     },
     {
       "path": "plugin-ui-class-reference/0.6.0/class-logic_analyser.json",
@@ -1865,7 +1865,7 @@
     {
       "path": "plugin-ui-class-reference/0.6.0/composed-member-declaration.schema.json",
       "source": "standards/plugin-ui-class-reference/0.5.0/composed-member-declaration.schema.json",
-      "sha256": "802f2068519afc3f04c27bdb2ee821c233609db628d53140cd3bae0d8ec3350d"
+      "sha256": "769c6e065c151611d59dd5e5d462ae0e492634bd8ba0cc4562ca8459fcc61840"
     }
   ]
 }

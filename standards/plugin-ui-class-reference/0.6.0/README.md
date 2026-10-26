@@ -1,4 +1,4 @@
-# plugin-ui-class-reference 0.5.0
+# plugin-ui-class-reference 0.6.0
 
 One reference presentation per device class, written as **data** in this
 standards family. One class reference is the single source for three
@@ -12,17 +12,45 @@ Design records: `.claude/deep-review/2026-10-14-classref-logic-analyser-design.m
 (the founding program),
 `.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md` (the
 0.2.0 MINOR),
-`.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md` (this bump —
-the L11 `dc_psu` class, gateway issue #463) and
+`.claude/deep-review/2026-10-18-classref-l11-dc-psu-design.md` (the L11
+`dc_psu` class, gateway issue #463) and
 `.claude/deep-review/2026-10-20-classref-composition-gate-design.md` (the
 cross-class composition gate, gateway issue #500).
 `.claude/deep-review/2026-10-22-issue541-classref-composition.md` (the
 three-layer action resolution — the 0.4.0 program),
 `.claude/deep-review/2026-10-22-issue541-s2-standards-design.md` (the 0.4.0
-bump) and `.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md`
-(the composed-member mechanism — this bump).
+bump), `.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md`
+(the composed-member mechanism, the 0.5.0 bump) and
+`.claude/deep-review/2026-10-26-issue560-no-cap-vendor-features-design.md`
+(the content-count cap removal — this bump).
 
-## From-predecessor note (0.4.0 → 0.5.0, MINOR)
+## From-predecessor note (0.5.0 → 0.6.0, MINOR)
+
+No new vocabulary, no new file: the bump REMOVES count caps. Under the
+owner's ruling that there is no cap or limit on vendor features
+(gateway issue #560), every ceiling that counts device content leaves the
+schemas in one motion — the layout grammar's `pages`, `sections` and the
+three `children` depths; the class reference's `pages`, `layouts`,
+`cannot_derive`, the slot branch's `host_supplied`, `binding_slots`,
+`expect.forbid` and `must_not_be_wrapped_by`; and the composed side's
+`members`, `claims` and `host_supplied` (composed-member-declaration)
+plus `claims` (composed-action-class). Sixteen `maxItems` keywords in
+all; nothing else in the bytes moves but the version line. The rule the
+schemas now state: they shape-check content, they do not count it — a
+65-member device or a six-class composition must not be refused for
+arithmetic. What STAYS (the record's section 2.4): every `minItems`, the
+value bounds (span at most 12, `plot_index` at most 15, text bodies at
+most 512 characters), the composed-member `profiles` singleton (exactly
+one row), and the plugin-ui-anchored lane and plot-series ceilings —
+those bound data shape, not feature entries, and moving them is a
+separate plugin-ui train. The cap predates the current SDK line; the
+composed-member injection (0.5.0, gateway #556 track B) is what started
+deriving real features onto the page and made the caps refuse real
+devices. Design record:
+`.claude/deep-review/2026-10-26-issue560-no-cap-vendor-features-design.md`.
+
+## The 0.4.0 → 0.5.0 note (frozen history, kept from that bump)
+
 
 One new schema plus the re-stamp; nothing existing widens. The new
 `composed-member-declaration.schema.json` defines the layer-2 document of the
@@ -353,7 +381,9 @@ name is globally unique by convention (a vendor prefixes its namespace, for
 example `otdp.action.<namespace>_<name>`), and corpus promotion refuses a
 class urn a served class already carries. `claims` names the action URNs the
 class presents — explicit binding, never a name-derivation guess; one class
-may claim many actions (that is what "composed" buys), at most 64, unique. A
+may claim many actions (that is what "composed" buys), unique — with no
+count ceiling (the 0.6.0 cap removal; the schema shape-checks claims, it
+does not count them). A
 claim naming an URN a served catalog row (OTDP or a pinned vendor catalog)
 already describes, an URN another composed class claims, or a second pinned
 document carrying one class urn refuses typed
@@ -434,9 +464,10 @@ component inventory is the existing one, applied by the existing rule.
 **What the document states — two things.** `contract_version` is the document's
 dialect version (`0.1.0`), decoupled from this directory's version so a pinned,
 digest-verified document survives family bumps (the composed-action-class
-precedent). `members` is the declaration proper: at least one, at most 64 —
-the reference's own `slots` ceiling (`maxProperties: 64`), since every member
-injects one slot.
+precedent). `members` is the declaration proper: at least one, no count ceiling —
+the 0.6.0 cap removal (issue #560); every member still injects exactly one
+slot, and the reference's own `slots` map keeps its `maxProperties` shape
+bound (an authoring-side inventory ceiling, not a device-content one).
 Optionally, `profiles` states ONE vendor profile row — an array of exactly
 one row (`minItems: 1`, `maxItems: 1`), each row `id`, `title`,
 `channel_roles`, `required_actions`, `optional_actions` — in the
@@ -581,12 +612,14 @@ sections (panel composition), controls (`button`, `numeric`, `rotary`,
 tables, text bodies (author capability only — the class reference authors
 no text nodes), and plot references that place a page's declared plot.
 
-Bounds: at most 16 pages, 16 sections per page, section nesting depth at
-most 3 (by construction), grid span at most 12, text bodies at most 512
-characters. A section's children carry no ceiling: a vendor feature
-surface adds children (staging nodes and buttons grow with the action
-count), never pages or sections, so its density is a renderer concern,
-not a validation one. One vocabulary,
+Bounds: section nesting depth at most 3 (by construction), grid span at
+most 12, text bodies at most 512 characters. No array of pages, sections,
+children or declared features carries a count ceiling (the 0.6.0 cap
+removal, issue #560): the schema shape-checks content, it does not count
+it — a vendor feature surface grows children (staging nodes and buttons
+scale with the action count) and a multi-class composition concatenates
+page templates, so density is a renderer concern, not a validation one.
+One vocabulary,
 two writers: a class reference may author structure-only layouts (its
 `layouts` entries ride the same `layout.schema.json` through the family
 schema's cross-file `$ref`), and an author may hand-write the same block
