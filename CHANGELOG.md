@@ -198,6 +198,7 @@ All notable changes to this project will be documented in this file.
 - Record the ruled over-ceiling divergence — the push note for the B7 branch (#556 Track B B7)
 - Close D1 — the member layer in the note, the guide, and the record (#556 Track B B8)
 - STE register pass on the member-surfaces passage, and the dialect key
+- Fold the refute finding — record addendum, number corrections
 
 ### Features
 
@@ -259,6 +260,8 @@ All notable changes to this project will be documented in this file.
 - The member-declaration walk — shape discrimination, conflicts, the shared id-shadow guard (#556 Track B B7)
 - The injection seam and the composed derivation arms (#556 Track B B7)
 - The fold dispositions, the disclosure channel and the profile seam (#556 Track B B7)
+- Plugin-ui-class-reference 0.6.0 — no children ceiling
+- Widen the cap removal to every content-count ceiling
 
 ### Miscellaneous
 
@@ -312,6 +315,8 @@ All notable changes to this project will be documented in this file.
 - Refresh the win-core manifest for the new schema arms
 - Advance the pointer to v0.22.0 — the #556 0.5.0 pairing
 - Refresh the win-core manifest for the member-mirror arms (#556 Track B B7)
+- Advance the pointer to v0.23.0 — the #560 0.6.0 pairing
+- Refresh the manifest for the widened class-reference arms
 
 ### Refactoring
 
@@ -381,6 +386,11 @@ All notable changes to this project will be documented in this file.
 
 - Bump fastmcp from 4.0.10 to 4.0.11
 - Regenerate uv.lock for fastmcp 4.0.11 (dependabot lock-companion)
+
+### Changelog
+
+- Regenerate the compatibility matrix; sweep the train-window sequence
+- Regenerate the compatibility matrix for the v0.23.0 pointer
 
 ### Design
 
