@@ -11,4 +11,4 @@
 	# composed action classes and the widened claims, cut at 88dcc4d.
 	# v0.22.0 = the #556 pairing: the classref 0.5.0 family with
 	# composed member declarations, cut at 0d4b44d.
-	pin = v0.22.0
+	pin = v0.23.0
