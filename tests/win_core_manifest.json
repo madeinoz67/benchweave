@@ -6,7 +6,7 @@
     },
     "tests/architecture/test_plugin_ui_class_reference_contracts.py": {
       "core": 0,
-      "total": 122
+      "total": 135
     },
     "tests/architecture/test_plugin_ui_contracts.py": {
       "core": 0,
@@ -530,7 +530,7 @@
     },
     "tests/presentation/test_classref_derive.py": {
       "core": 0,
-      "total": 69
+      "total": 70
     },
     "tests/presentation/test_classref_member_disclosures.py": {
       "core": 0,
