@@ -899,7 +899,7 @@ class TestM400ServePath:
         assert "custom: com.meridian.m400.self_cal/1.0.0" in html
         assert (
             "composed: otdp.action.meridian_burst/1.0.0 (validated "
-            "against 0.4.0) supplies 1 declared action(s)" in html
+            "against 0.5.0) supplies 1 declared action(s)" in html
         )
 
     def test_gm2_every_presented_shape_produces_its_line(
@@ -964,7 +964,7 @@ class TestM400ServePath:
             "extra-0.json applied to no declared action",
             "pinned vendor catalog extra-2.json declares no actions",
             "composed: otdp.action.meridian_burst/1.0.0 (validated "
-            "against 0.4.0) supplies 1 declared action(s)",
+            "against 0.5.0) supplies 1 declared action(s)",
         ):
             assert line in html, line
 
