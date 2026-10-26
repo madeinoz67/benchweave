@@ -29,7 +29,15 @@ the same way over the new corpus, a 10-line stamp-only delta (each layout
 block's ``contract_version`` and each envelope's derived manifest pin:
 five pairs); every pre-edit manifest digest equaled its envelope's recorded
 pin, so the delta is the version line and its digest only. The SDK's own
-vendored corpus carries 0.3.0 until the SDK leg re-stamps its side.
+vendored corpus carries 0.3.0 until the SDK leg re-stamps its side. At
+issue #556 Track A the five triples were REGENERATED from the pinned
+v0.21.0 expander (``88dcc4d``, materialized through ``git archive`` —
+the submodule working tree stays pristine), a 44-line delta in exactly
+the design record §5's stated class: the W8 fold collapses each doubled
+staging numeric to one occurrence (f1/f2/f1-da's ``margin_ppm``/
+``hysteresis_mv``, f6-smu's ``max_duration_ms``/``max_bytes``) and the
+envelope's manifest pin follows; f5-trio moved zero bytes and no
+completion-appended pair appeared (the W1 prediction held).
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -39,7 +47,13 @@ v0.15.0 at the pointer leg) PLUS the plot-kind mirror at v0.18.0
 (issue #521; design record 2026-10-21-classref-plot-kind-mirror-design):
 the per-slot plot kind, the (channel, quantity) variable ids, the
 readings-page observation expansion and the reading-tile layout strip,
-pinned byte for byte by the f6-smu fixture. A re-pin that moves the SDK
+pinned byte for byte by the f6-smu fixture — PLUS the three-layer
+resolution mirror at v0.21.0 (issue #556 Track A; design record
+2026-10-25-issue556-track-a-gateway-mirror): the refusal split, the
+residual (custom) resolution with its fold hardening (W2/W3/W5/M6/W7/
+W9/G4), the composed walk with its conflict arms and disclosures, the
+W1/W8 emission order, and the m400 acceptance tag pinning all three
+layers in one descriptor. A re-pin that moves the SDK
 derivation moves these functions in the same arc (the design's
 fixture-freeze re-pin rule); B8 reds otherwise.
 
@@ -114,7 +128,10 @@ _MODE_KIND: dict[str, str] = {
 #: The closed constraint vocabulary (parent record §3.7): the first group
 #: narrows a rendered control; the riders (required/properties/items/
 #: min/max/unique) ride the conjunctive validation lanes untouched and
-#: derive no controls.
+#: derive no controls. #541 W9 fold (mirrored, issue #556 Track A):
+#: minLength/maxLength join the control group — a vendor action declaring
+#: a string length bound used to refuse classref_constraint_unsupported,
+#: so "never refuses" was false for that input class.
 _CONSTRAINT_CONTROL_KEYWORDS = frozenset(
     {
         "type",
@@ -126,6 +143,8 @@ _CONSTRAINT_CONTROL_KEYWORDS = frozenset(
         "exclusiveMaximum",
         "multipleOf",
         "pattern",
+        "minLength",
+        "maxLength",
     }
 )
 _CONSTRAINT_RIDER_KEYWORDS = frozenset(
@@ -216,9 +235,11 @@ def _family_documents_cached(
     corpus_text: str, state: tuple[str, str]
 ) -> dict[str, Any]:
     """The family's machine files, digest-verified, for one corpus state:
-    the reference schema and the layout schema (the layout block's only
+    the reference schema, the layout schema (the layout block's only
     validation authority — the canonical manifest validator is
-    extension-blind)."""
+    extension-blind) and the composed-class schema (the composed walk's
+    validation authority, joined at the family's 0.4.0 — already
+    vendored and manifest-pinned; zero standards bytes move)."""
     corpus = Path(corpus_text)
     version = active_version_from_corpus(corpus, _FAMILY)
     pins = _corpus_pin_rows(corpus)
@@ -229,6 +250,9 @@ def _family_documents_cached(
         ),
         "layout_schema": _read_corpus_json(
             corpus, f"{_FAMILY}/{version}/layout.schema.json", pins
+        ),
+        "composed_schema": _read_corpus_json(
+            corpus, f"{_FAMILY}/{version}/composed-action-class.schema.json", pins
         ),
     }
 
@@ -372,6 +396,40 @@ def _satisfies_target(active: str, target: str) -> bool:
 # --- the effective schema (parent record §3.7, mirrored) -----------------------
 
 
+def _tighter_bound(
+    catalogue_bound: tuple[Any, bool],
+    constraint_bound: tuple[Any, bool],
+    *,
+    higher_value_is_tighter: bool,
+) -> tuple[Any, bool]:
+    """One side of the bounds intersection: the pair admitting FEWER
+    values (parent record §3.7).
+
+    On the high side the SMALLER value is tighter; on the low side the
+    LARGER one is. On EQUAL values the exclusive spelling is the tighter
+    end on both sides — the effective schema must never admit what the
+    plugin's own declaration refuses. Comparing ``(value, exclusive)``
+    tuples cannot express that: ``min((5, False), (5, True))`` returns the
+    INCLUSIVE pair while ``max()`` returns the exclusive one, so tuple
+    order tie-broke the two sides in opposite directions. Both sides read
+    through this one comparator, so the tie rule is stated once rather
+    than re-derived per side.
+    """
+    if catalogue_bound[0] == constraint_bound[0]:
+        return (catalogue_bound[0], catalogue_bound[1] or constraint_bound[1])
+    if higher_value_is_tighter:
+        return (
+            catalogue_bound
+            if catalogue_bound[0] > constraint_bound[0]
+            else constraint_bound
+        )
+    return (
+        catalogue_bound
+        if catalogue_bound[0] < constraint_bound[0]
+        else constraint_bound
+    )
+
+
 def _intersect_property(
     action_urn: str,
     property_name: str,
@@ -389,14 +447,21 @@ def _intersect_property(
             f"action {action_urn} field {property_name}: keyword {keyword!r} "
             "is outside the closed intersection vocabulary",
         )
+    # G4 fold (mirrored): both SIDES of the intersection are value-typed
+    # before any comparison — an ill-typed catalogue or constraint bound
+    # used to crash the max()/min() intersection arithmetic, and an
+    # ill-typed length bound rode silently into the row.
+    _check_value_types(action_urn, property_name, constraint)
+    _check_value_types(action_urn, property_name, catalogue_schema)
     effective = dict(catalogue_schema)
     declared_type = (
         catalogue_schema.get("type") if isinstance(catalogue_schema, dict) else None
     )
 
     # Bounds INTERSECT: a looser constraint can never widen the catalogue's
-    # admittance — the tighter end of each side wins, the exclusivity flags
-    # carry, and an empty result refuses.
+    # admittance — the tighter end of each side wins (on equal values the
+    # exclusive end, ``_tighter_bound``), the exclusivity flags carry, and an
+    # empty result refuses.
     def _bound(
         source: dict[str, Any], exclusive_key: str, plain_key: str
     ) -> tuple[Any, bool] | None:
@@ -422,12 +487,20 @@ def _intersect_property(
     if low_catalogue is None or low_constraint is None:
         low = low_catalogue if low_constraint is None else low_constraint
     else:
-        low = max(low_catalogue, low_constraint)
+        low = _tighter_bound(
+            low_catalogue, low_constraint, higher_value_is_tighter=True
+        )
     high: tuple[Any, bool] | None
     if high_catalogue is None or high_constraint is None:
-        high = high_catalogue if low_constraint is None else high_constraint
+        # The high-bound selection reads HIGH_constraint (the mirrored
+        # body; the gateway copy transposed it to low_constraint, which
+        # silently DROPPED a constraint-only maximum against an
+        # unbounded catalogue row — an admittance widening).
+        high = high_catalogue if high_constraint is None else high_constraint
     else:
-        high = min(high_catalogue, high_constraint)
+        high = _tighter_bound(
+            high_catalogue, high_constraint, higher_value_is_tighter=False
+        )
     for keyword in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
         effective.pop(keyword, None)
     if low is not None:
@@ -486,6 +559,33 @@ def _intersect_property(
             effective.pop(keyword, None)
     if "pattern" in constraint:
         effective["pattern"] = constraint["pattern"]
+    # W9 fold (mirrored): string length bounds are inside the closed
+    # vocabulary and INTERSECT like the numeric ones — the tighter end of
+    # each side wins. An accepted keyword the intersection silently
+    # dropped would be a narrowing the rendered control never sees; a
+    # length bound on a non-string catalogue type is the same conflict
+    # the numeric bounds raise.
+    if "minLength" in constraint or "maxLength" in constraint:
+        if declared_type != "string":
+            raise _refuse(
+                "classref_effective_schema_conflict",
+                f"action {action_urn} field {property_name}: length bound "
+                f"applied to catalogue type {declared_type!r}",
+            )
+        if "minLength" in constraint:
+            current = effective.get("minLength")
+            effective["minLength"] = (
+                max(current, constraint["minLength"])
+                if current is not None
+                else constraint["minLength"]
+            )
+        if "maxLength" in constraint:
+            current = effective.get("maxLength")
+            effective["maxLength"] = (
+                min(current, constraint["maxLength"])
+                if current is not None
+                else constraint["maxLength"]
+            )
     if "type" in constraint:
         declared = catalogue_schema.get("type")
         wanted = constraint["type"]
@@ -505,12 +605,35 @@ def _intersect_property(
 def _check_admittance(
     action_urn: str, property_name: str, effective: dict[str, Any]
 ) -> None:
-    """A required field narrowed to an empty admittance set refuses
-    (parent record §3.7); exclusivity is part of emptiness — a closed
+    """A field narrowed to an empty admittance set refuses (parent record
+    §3.7). M6 (mirrored): exclusivity is part of emptiness — a closed
     bound meeting an open bound at the same value admits nothing, in
-    both crossing directions."""
+    both crossing directions. W5 fold (mirrored): an empty declared enum
+    is the same emptiness — a select that admits no value never derives,
+    residual or catalogued alike; and inverted string length bounds
+    (W9) admit no string either."""
     if effective.get("const") is not None:
         return
+    enum_values = effective.get("enum")
+    if isinstance(enum_values, list) and not enum_values:
+        raise _refuse(
+            "classref_effective_schema_empty",
+            f"action {action_urn} field {property_name}: enum admits no value",
+        )
+    min_length = effective.get("minLength")
+    max_length = effective.get("maxLength")
+    if (
+        isinstance(min_length, (int, float))
+        and not isinstance(min_length, bool)
+        and isinstance(max_length, (int, float))
+        and not isinstance(max_length, bool)
+        and min_length > max_length
+    ):
+        raise _refuse(
+            "classref_effective_schema_empty",
+            f"action {action_urn} field {property_name}: string length "
+            "bounds admit no value",
+        )
     if "minimum" in effective:
         low: tuple[float, bool] | None = (float(effective["minimum"]), False)
     elif "exclusiveMinimum" in effective:
@@ -535,26 +658,249 @@ def _check_admittance(
         )
 
 
+def _bounds_of(
+    fragment: dict[str, Any],
+) -> tuple[tuple[float, bool] | None, tuple[float, bool] | None]:
+    """The fragment's declared numeric bounds as (value, exclusive)
+    pairs, the exclusive spelling winning when both appear (mirrored
+    from the SDK expander at the v0.21.0 pin)."""
+    def _one(exclusive_key: str, plain_key: str) -> tuple[float, bool] | None:
+        if exclusive_key in fragment:
+            return float(fragment[exclusive_key]), True
+        if plain_key in fragment:
+            return float(fragment[plain_key]), False
+        return None
+    return _one("exclusiveMinimum", "minimum"), _one("exclusiveMaximum", "maximum")
+
+
+def _check_value_types(
+    action_urn: str, property_name: str, fragment: dict[str, Any]
+) -> None:
+    """A CONTROL keyword whose value is ill-typed refuses
+    ``classref_constraint_unsupported`` (the G4 fold, mirrored): W9
+    admitted keywords to the closed vocabulary without validating their
+    values, and `enum` under `minLength: "3"` crashed the narrowing
+    with a bare TypeError. The rider covers every control keyword's
+    value type — on the constraint side, the catalogue side and the
+    row-descent side alike, wherever a fragment enters. `const` admits
+    any JSON value: nothing orders or lens it before the row is
+    minted."""
+    def _refuse_value(keyword: str, wanted: str, value: Any) -> ClassRefusal:
+        return _refuse(
+            "classref_constraint_unsupported",
+            f"action {action_urn} field {property_name}: {keyword} "
+            f"must be {wanted}, got {value!r}",
+        )
+
+    for keyword in (
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+    ):
+        if keyword in fragment:
+            value = fragment[keyword]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise _refuse_value(keyword, "a number", value)
+    for keyword in ("minLength", "maxLength"):
+        if keyword in fragment:
+            value = fragment[keyword]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise _refuse_value(keyword, "a non-negative integer", value)
+    if "pattern" in fragment and not isinstance(fragment["pattern"], str):
+        raise _refuse_value("pattern", "a string", fragment["pattern"])
+    if "enum" in fragment and not isinstance(fragment["enum"], list):
+        raise _refuse_value("enum", "a list", fragment["enum"])
+    if "type" in fragment:
+        # The committed corpus's own nullable spelling is a type ARRAY
+        # (JSON Schema's `type` array — `['number', 'null']` on the
+        # function-generator class's load_ohm): admitted, consumed
+        # inexpressible exactly as before this rider. A value that is
+        # neither a string nor a non-empty list of strings keys no
+        # consumer comparison anywhere in the module.
+        value = fragment["type"]
+        if not (
+            isinstance(value, str)
+            or (
+                isinstance(value, list)
+                and value
+                and all(isinstance(item, str) for item in value)
+            )
+        ):
+            raise _refuse_value("type", "a string or a list of strings", value)
+
+
+def _check_residual_fragment(
+    action_urn: str, name: str, fragment: dict[str, Any]
+) -> None:
+    """The residual mode's gates, applied at EVERY depth (the W2 fold,
+    mirrored): the closed keyword vocabulary, the empty-admittance
+    refusal, and the bound/type conflicts the catalogued intersection
+    raises — a fragment under ``properties``/``items`` is as much a
+    declared constraint as a top-level one, and its catalogued twin
+    refuses the same shape through ``_merge_deep``'s recursion."""
+    for keyword in fragment:
+        if (
+            keyword in _CONSTRAINT_CONTROL_KEYWORDS
+            or keyword in _CONSTRAINT_RIDER_KEYWORDS
+        ):
+            continue
+        raise _refuse(
+            "classref_constraint_unsupported",
+            f"action {action_urn} field {name}: keyword {keyword!r} "
+            "is outside the closed intersection vocabulary",
+        )
+    # G4 fold: value-typed before the admittance and bound checks.
+    _check_value_types(action_urn, name, fragment)
+    _check_admittance(action_urn, name, fragment)
+    declared_type = fragment.get("type")
+    value_typed = "enum" in fragment or "const" in fragment
+    low, high = _bounds_of(fragment)
+    if (
+        (low is not None or high is not None)
+        and declared_type is not None
+        and declared_type not in _NUMERIC_TYPES
+        and not value_typed
+    ):
+        # W3 fold (mirrored): numeric bounds on a declared non-numeric
+        # type are a self-contradiction — the catalogued twin refuses
+        # the same shape when a constraint's bounds meet a non-numeric
+        # catalogue type. A fragment carrying enum/const is handled at
+        # row time, where the declared values intersect the bounds.
+        raise _refuse(
+            "classref_effective_schema_conflict",
+            f"action {action_urn} field {name}: numeric bound "
+            f"applied to declared type {declared_type!r}",
+        )
+    if (
+        ("minLength" in fragment or "maxLength" in fragment)
+        and declared_type is not None
+        and declared_type != "string"
+        and not value_typed
+    ):
+        raise _refuse(
+            "classref_effective_schema_conflict",
+            f"action {action_urn} field {name}: length bound "
+            f"applied to declared type {declared_type!r}",
+        )
+    for sub_name, sub in (fragment.get("properties") or {}).items():
+        if not isinstance(sub, dict):
+            raise _refuse(
+                "classref_constraint_unsupported",
+                f"action {action_urn} field {name}.{sub_name}: constraint "
+                "fragment must be an object",
+            )
+        _check_residual_fragment(action_urn, f"{name}.{sub_name}", sub)
+    items = fragment.get("items")
+    if isinstance(items, dict):
+        _check_residual_fragment(action_urn, f"{name}[]", items)
+
+
+def _intersect_declared_values(
+    action_urn: str, property_name: str, fragment: dict[str, Any]
+) -> None:
+    """A fragment declaring a value set (enum/const) under declared
+    bounds renders exactly the values both admit (the W3 fold,
+    mirrored — the generic surface admits what the declaration admits,
+    no more). A non-empty enum NARROWS to the admitted subset; an
+    emptied one refuses under the empty-admittance survivor; a const
+    outside the bounds is a conflict, never a silently dropped bound.
+    Applied where rows are minted, so every path (catalogue row,
+    intersection, residual) gets it at every depth; the conjunctive
+    validation schemas keep both keywords untouched."""
+    low, high = _bounds_of(fragment)
+    min_length = fragment.get("minLength")
+    max_length = fragment.get("maxLength")
+    if (
+        low is None and high is None
+        and min_length is None and max_length is None
+    ):
+        return
+
+    def _admitted(value: Any) -> bool:
+        numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if low is not None or high is not None:
+            if not numeric:
+                return False
+            if low is not None:
+                edge, exclusive = low
+                if value < edge or (exclusive and value == edge):
+                    return False
+            if high is not None:
+                edge, exclusive = high
+                if value > edge or (exclusive and value == edge):
+                    return False
+        if min_length is not None or max_length is not None:
+            if not isinstance(value, str):
+                return False
+            if min_length is not None and len(value) < min_length:
+                return False
+            if max_length is not None and len(value) > max_length:
+                return False
+        return True
+
+    if "const" in fragment:
+        if not _admitted(fragment["const"]):
+            raise _refuse(
+                "classref_effective_schema_conflict",
+                f"action {action_urn} field {property_name}: const "
+                f"{fragment['const']!r} outside the declared bounds",
+            )
+        return
+    enum_values = fragment.get("enum")
+    if isinstance(enum_values, list) and enum_values:
+        allowed = [value for value in enum_values if _admitted(value)]
+        if not allowed:
+            raise _refuse(
+                "classref_effective_schema_empty",
+                f"action {action_urn} field {property_name}: every declared "
+                "enum value falls outside the declared bounds",
+            )
+        if allowed != enum_values:
+            fragment["enum"] = allowed
+
+
 def _effective_action_schema(
     action_urn: str,
-    catalogue_action: dict[str, Any],
+    catalogue_action: dict[str, Any] | None,
     constraints: dict[str, Any],
 ) -> dict[str, Any]:
     """The action's effective input schema: catalogue AND descriptor
     constraints, per property (parent record §3.7). Validation lanes stay
     conjunctive and untouched; this derives per-field admittance for the
-    derived manifest's settings-schema asset."""
-    catalogue_input = catalogue_action.get("input_schema", {}) or {}
-    # Deep copy: the served catalog document may be cached module state
-    # shared across derivations; the intersection must never narrow the
-    # served bytes in place.
-    catalogue_input = json.loads(json.dumps(catalogue_input))
-    properties = {
-        name: dict(schema)
-        for name, schema in (catalogue_input.get("properties") or {}).items()
-        if isinstance(schema, dict)
-    }
-    required = set(catalogue_input.get("required") or ())
+    derived manifest's settings-schema asset.
+
+    A ``None`` catalogue row is the residual mode (issue #556 Track A,
+    design §3.3): no served catalog describes the action, so the
+    effective schema is the descriptor's own constraints, still gated
+    by the same closed keyword vocabulary and the same empty-admittance
+    refusal — the gateway invents no admittance a catalogue granted; it
+    renders the plugin's own declared constraints and the plan row
+    carries resolution "custom"."""
+    properties: dict[str, Any] = {}
+    required: set[str] = set()
+    if catalogue_action is not None:
+        catalogue_input = catalogue_action.get("input_schema", {}) or {}
+        # Deep copy: the served catalog document may be cached module state
+        # shared across derivations; the intersection must never narrow the
+        # served bytes in place.
+        catalogue_input = json.loads(json.dumps(catalogue_input))
+        properties = {
+            name: dict(schema)
+            for name, schema in (catalogue_input.get("properties") or {}).items()
+            if isinstance(schema, dict)
+        }
+        required = set(catalogue_input.get("required") or ())
+        # G4 fold (mirrored): the catalogue side validates too — a served
+        # or vendor-pinned row with an ill-typed control value refuses
+        # typed where it enters, never at the row descent's crash.
+        for name, schema in properties.items():
+            _check_value_types(action_urn, name, schema)
     constraint_properties = constraints.get("properties") or {}
     for keyword in constraints:
         if (
@@ -575,6 +921,16 @@ def _effective_action_schema(
                 "an object",
             )
         base = properties.get(name)
+        if base is None and catalogue_action is None:
+            # Residual: no catalogue side exists to intersect — the
+            # declared fragment IS the effective schema, verbatim, after
+            # the same closed-vocabulary and admittance gates — applied
+            # at EVERY depth (the W2 fold): a nested fragment under
+            # properties/items is as much a declared constraint as a
+            # top-level one.
+            _check_residual_fragment(action_urn, name, fragment)
+            properties[name] = json.loads(json.dumps(fragment))
+            continue
         if base is None:
             base = {"type": fragment.get("type", "object")}
             properties[name] = base
@@ -639,16 +995,39 @@ def _row_mode(fragment: dict[str, Any]) -> str | None:
 
 
 def _field_rows(
-    action_urn: str, prefix: str, schema: dict[str, Any]
+    action_urn: str,
+    prefix: str,
+    schema: dict[str, Any],
+    _seen: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """The renderable field rows (numeric bounds / const / enum / text /
     boolean) of one effective schema, descending array items and object
-    properties. A pattern-narrowed string emits no row (inexpressible)."""
+    properties. A pattern-narrowed string emits no row (inexpressible).
+
+    Fully-qualified field names are REFUSED on collision (mirrored from
+    the SDK expander): dotted flattening gives a nested ``a``→``b`` and
+    a flat property literally named ``a.b`` the same name, and two rows
+    under one name render two controls for one declared field. The
+    collision refuses typed, naming the field. A declared value set
+    under declared bounds narrows here (the W3 fold) — one mechanism
+    for every path a fragment arrives by, at every depth this descent
+    visits; the value types check first (the G4 fold)."""
     rows: list[dict[str, Any]] = []
+    seen = _seen if _seen is not None else set()
     for name, sub in (schema.get("properties") or {}).items():
         full = f"{prefix}{name}"
+        _check_value_types(action_urn, full, sub)
+        _intersect_declared_values(action_urn, full, sub)
         mode = _row_mode(sub)
         if mode is not None:
+            if full in seen:
+                raise _refuse(
+                    "classref_duplicate_field",
+                    f"{action_urn} mints field {full!r} from two schema paths "
+                    "(a nested object/array descent and a literal property "
+                    "name collide after qualification)",
+                )
+            seen.add(full)
             row: dict[str, Any] = {"field": full, "mode": mode}
             if mode == "const":
                 row["const"] = sub["const"]
@@ -670,11 +1049,11 @@ def _field_rows(
                         row[keyword] = sub[keyword]
             rows.append(row)
         if isinstance(sub.get("properties"), dict):
-            rows.extend(_field_rows(action_urn, f"{full}.", sub))
+            rows.extend(_field_rows(action_urn, f"{full}.", sub, seen))
         if isinstance(sub.get("items"), dict) and isinstance(
             sub["items"].get("properties"), dict
         ):
-            rows.extend(_field_rows(action_urn, f"{full}[].", sub["items"]))
+            rows.extend(_field_rows(action_urn, f"{full}[].", sub["items"], seen))
     return rows
 
 
@@ -704,6 +1083,28 @@ def _ladder_level(
     return "L0"
 
 
+def _catalogue_row(
+    action_urn: str, catalog_actions: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """One action's served catalogue row, or ``None`` (the W4 fold,
+    mirrored): a key ABSENT from the map is the residual mode — no
+    served catalog describes the action. A key PRESENT with a
+    non-object row is a malformed catalog entry and refuses typed:
+    reading it as "no catalog" would mint a false ``custom`` provenance
+    (and the pre-split code crashed on it with a bare AttributeError
+    downstream)."""
+    if action_urn not in catalog_actions:
+        return None
+    row = catalog_actions[action_urn]
+    if not isinstance(row, dict):
+        raise _refuse(
+            "classref_catalog_row_invalid",
+            f"the served catalog describes {action_urn} with a "
+            f"{type(row).__name__} row, not an object",
+        )
+    return row
+
+
 def _derive_controls(
     actions: Mapping[str, Any],
     catalog_actions: Mapping[str, Any],
@@ -711,12 +1112,19 @@ def _derive_controls(
     page_for_slot: dict[str, str],
     intended_controls: dict[str, str],
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]]]:
-    """Per-action ladder level + renderable fields (the SDK expander's
-    ``_derive_controls`` shape; the plan the layout block builds from)."""
+    """Per-action ladder level + renderable fields + resolution (the SDK
+    expander's ``_derive_controls`` shape, mirrored at the v0.21.0 pin).
+    A catalogue row (served OTDP or pinned vendor) resolves layer 1; no
+    row at all resolves layer 3 — the residual member derives from the
+    descriptor's own constraints, never refuses for being unknown. The
+    composed layer (a row the composed walk injected) resolves layer 2
+    and names its class — the value names the layer that produced the
+    row (provenance is data, not a log)."""
     plan: dict[str, dict[str, Any]] = {}
     divergences: list[dict[str, str]] = []
     for urn in sorted(actions):
-        constraints = actions[urn].get("input_constraints") or {}
+        raw_constraints = actions[urn].get("input_constraints")
+        constraints = raw_constraints or {}
         slot_kind = None
         host_supplied = frozenset(_HOST_SUPPLIED_UNIVERSAL)
         _slot_name, slot = slot_for_urn.get(urn, ("", {}))
@@ -724,21 +1132,61 @@ def _derive_controls(
             slot_kind = str(slot.get("kind"))
             if slot_kind != "vendor_actions":
                 host_supplied = frozenset(slot.get("host_supplied") or ())
-        effective = _effective_action_schema(urn, catalog_actions[urn], constraints)
+        catalogue_row = _catalogue_row(urn, catalog_actions)
+        composed_of = (
+            catalogue_row.get("composed_class")
+            if catalogue_row is not None
+            else None
+        )
+        composed_side_effect = (
+            catalogue_row.get("side_effect")
+            if catalogue_row is not None
+            else None
+        )
+        if composed_of is not None:
+            resolution = "composed"
+        elif catalogue_row is not None:
+            resolution = "catalog"
+        else:
+            resolution = "custom"
+        effective = _effective_action_schema(urn, catalogue_row, constraints)
         level = _ladder_level(effective, host_supplied, slot_kind)
+        # W7 (mirrored): "declares nothing" and "declares no inputs" are
+        # different states. A residual action whose input_constraints
+        # carries no properties key at all declared NOTHING — silence
+        # must not become a one-click dispatch (an L1 button), so it
+        # derives L0 with the marker naming the absence. An explicit
+        # properties (even {}) declared no inputs, and the ladder reads
+        # it as before.
+        declared_no_input = not (
+            isinstance(raw_constraints, dict) and "properties" in raw_constraints
+        )
+        if catalogue_row is None and declared_no_input:
+            level = "L0"
         fields = _field_rows(urn, "", effective)
         slot_key = _slot_name if slot else ""
         page = page_for_slot.get(slot_key, "device-features")
-        plan[urn] = {
+        row: dict[str, Any] = {
             "level": level,
             "page": page,
             "fields": fields,
-            "declared_deviation": (
-                bool(intended_controls.get(urn) == "deviation")
-                or level == "L0"
-                or slot_kind == "configuration"
-            ),
+            "resolution": resolution,
         }
+        if composed_of is not None:
+            # The class's declared side_effect rides the plan row as
+            # data, mirroring the SDK; the gateway's consumers of it are
+            # SDK surfaces and are not mirrored (the gateway has no
+            # authored deviation ledger to feed).
+            row["class"] = composed_of
+            row["side_effect"] = composed_side_effect
+        if catalogue_row is None and declared_no_input:
+            row["input_undeclared"] = True
+        row["declared_deviation"] = (
+            bool(intended_controls.get(urn) == "deviation")
+            or level == "L0"
+            or slot_kind == "configuration"
+        )
+        plan[urn] = row
     return plan, divergences
 
 
@@ -923,23 +1371,39 @@ def _insert_ladder_numerics(
     sections: list[dict[str, Any]], plan: Mapping[str, Mapping[str, Any]]
 ) -> None:
     """Authored button nodes for an L2 action gain the action's numeric
-    field nodes immediately before the button (the staging-pair order)."""
+    field nodes immediately before the button (the staging-pair order).
+
+    W8 (issue #556 Track A; the SDK expander's fold, mirrored): a
+    numeric node the section already carries — a derived page's staging
+    emission, or a layout that authored its own numerics — is not
+    re-emitted: one field, one control (the pair used to render twice on
+    every derived page, catalogued pairs included)."""
     for section in sections:
         children = section.get("children", [])
+        present = {
+            (str(node.get("binding_id")), node.get("field"))
+            for node in children
+            if node.get("kind") == "numeric"
+        }
         out: list[dict[str, Any]] = []
         for node in children:
             if node.get("kind") == "button" and isinstance(node.get("binding_id"), str):
                 urn = _urn_for_binding(plan, str(node["binding_id"]))
                 row = plan.get(urn or "", {}) if urn else {}
                 for field_row in row.get("fields", []):
-                    if field_row["mode"] == "numeric":
-                        out.append(
-                            {
-                                "binding_id": node["binding_id"],
-                                "kind": "numeric",
-                                "field": field_row["field"],
-                            }
-                        )
+                    if field_row["mode"] != "numeric":
+                        continue
+                    key = (str(node["binding_id"]), field_row["field"])
+                    if key in present:
+                        continue
+                    present.add(key)
+                    out.append(
+                        {
+                            "binding_id": node["binding_id"],
+                            "kind": "numeric",
+                            "field": field_row["field"],
+                        }
+                    )
             out.append(node)
         section["children"] = out
 
@@ -951,23 +1415,41 @@ def _complete_authored_buttons(
 ) -> None:
     """A when-declared action that derives onto this page owes its button
     node too, or the census and the coverage arm both miss it (the SDK
-    expander's ``_complete_authored_buttons`` shape)."""
+    expander's ``_complete_authored_buttons`` shape).
+
+    The scoping rules (the W1 fold, mirrored): a residual member never
+    welds into the reference's authored sections (an authored page
+    stands as authored — parent record §11 risk 4; the member surfaces
+    through the plan and the disclosure channel), and the append
+    targets the page's MAIN derived section when one exists — the last
+    section may be the custom one, and a catalogued action's button
+    must never land there."""
+    if not sections:
+        return
     present: set[str] = set()
     for section in sections:
         for node in section.get("children", []):
             if node.get("kind") == "button":
                 present.add(str(node.get("binding_id", "")))
-    if not sections:
-        return
+    target = next(
+        (
+            section
+            for section in sections
+            if section.get("id") == f"{page_id}-section"
+        ),
+        sections[-1],
+    )
     for urn, row in sorted(plan.items()):
         if str(row.get("page", "")) != page_id:
             continue
         if row.get("level") not in ("L1", "L2"):
             continue
+        if row.get("resolution") == "custom":
+            continue
         slug = urn.split("/")[0].rsplit(".", 1)[-1]
         if slug in present:
             continue
-        sections[-1].setdefault("children", []).append(
+        target.setdefault("children", []).append(
             {"binding_id": slug, "kind": "button"}
         )
 
@@ -1008,6 +1490,7 @@ def _build_layout(
                     sections.append({**section, "children": kept})
         else:
             children: list[dict[str, Any]] = []
+            custom_children: list[dict[str, Any]] = []
             if page.get("plots") and not plot_done and plots:
                 children.append({"plot_index": 0})
                 plot_done = True
@@ -1035,7 +1518,12 @@ def _build_layout(
                         {"binding_id": binding_id, "kind": "data-table"}
                     )
             # Actions whose bindings carry no page (vendor actions) still
-            # derive their controls on their plan page.
+            # derive their controls on their plan page. A residual
+            # member's controls derive into the page's CUSTOM section —
+            # the visible label for uncatalogued actions, minted the way
+            # the derivation mints every other derived id. Catalogued
+            # vendor actions keep the main section, so resolution
+            # partitions the two, never mixes them.
             bound = {
                 str(row if isinstance(row, str) else row.get("id"))
                 for row in page.get("bindings", [])
@@ -1047,18 +1535,24 @@ def _build_layout(
                 if slug in bound or plan_row["level"] == "L4":
                     continue
                 if plan_row["level"] in ("L1", "L2", "L3"):
+                    target = (
+                        custom_children
+                        if plan_row.get("resolution") == "custom"
+                        else children
+                    )
                     if plan_row["level"] == "L3":
                         # L3 is preset-mediated; its numeric admittance
                         # renders beside the preset surface and data-table
                         # (the pinned family shape — no per-mode widening
                         # on this arm).
-                        children.extend(_numeric_nodes(slug, plan_row["fields"]))
+                        target.extend(_numeric_nodes(slug, plan_row["fields"]))
                     else:
-                        children.extend(_staging_nodes(slug, plan_row["fields"]))
+                        target.extend(_staging_nodes(slug, plan_row["fields"]))
                     if plan_row["level"] in ("L1", "L2"):
-                        children.append({"binding_id": slug, "kind": "button"})
-            sections = (
-                [
+                        target.append({"binding_id": slug, "kind": "button"})
+            sections = []
+            if children:
+                sections.append(
                     {
                         "id": f"{page_id}-section",
                         "title": str(page.get("title", page_id)),
@@ -1066,12 +1560,30 @@ def _build_layout(
                         "span": 12,
                         "children": children,
                     }
-                ]
-                if children
-                else []
-            )
-        _insert_ladder_numerics(sections, plan)
+                )
+            if custom_children:
+                # The custom section exists exactly when residual members
+                # rendered on this page. It never appends into an authored
+                # page: this whole branch is the no-authored-layout path
+                # (parent record §11 risk 4 — an authored device-features
+                # layout stands as authored, and the residual member
+                # surfaces through the plan and the disclosure channel
+                # instead).
+                sections.append(
+                    {
+                        "id": f"{page_id}-custom",
+                        "title": "Custom device actions",
+                        "surface": "raised",
+                        "span": 12,
+                        "children": custom_children,
+                    }
+                )
         _complete_authored_buttons(sections, plan, page_id)
+        # W1 (issue #556 Track A; the SDK expander's fold, mirrored):
+        # completion runs BEFORE the ladder-numeric insert — a button the
+        # completion pass appends must arrive in time for the insert to
+        # give it its numeric staging pair.
+        _insert_ladder_numerics(sections, plan)
         if sections:
             block_pages.append({"page_id": page_id, "sections": sections})
     block: dict[str, Any] = {
@@ -1101,19 +1613,137 @@ class DerivedAttachment:
     #: asset's exact bytes; ``validate_attachment`` digest-verifies each.
     resources: dict[str, bytes]
     profile_ids: tuple[str, ...]
+    #: The per-action resolution surface (issue #556 Track A, design
+    #: §3.4): one ``(urn, resolution, class_urn | None)`` row per
+    #: declared action, sorted by urn — ``resolution`` is one of
+    #: ``catalog``/``composed``/``custom`` naming the layer that
+    #: produced the row, and ``class_urn`` names the composed class
+    #: when the row resolved layer 2 (provenance is data, not a log;
+    #: the SDK's plan rows carry the same fields).
+    resolutions: tuple[tuple[str, str, str | None], ...] = ()
+    #: Pins whose documents matched neither shape discriminator
+    #: (digest-verified, contributed nothing) — disclosed, never silently
+    #: dropped (the SDK's B7 row).
+    ignored_pins: tuple[str, ...] = ()
+    #: Pin-declared composed classes that applied nowhere (their claims
+    #: name no action this descriptor declares), as (class urn, pin
+    #: path) pairs keyed to the APPLIED rule — a sanctioned
+    #: claims-nowhere class discloses, never drifts.
+    unapplied_classes: tuple[tuple[str, str], ...] = ()
+    #: Pins whose vendor-catalog documents declare an empty actions map
+    #: — shape-valid, contributed nothing, disclosed beside the unapplied
+    #: classes.
+    empty_action_pins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ComposedClass:
+    """One pinned, digest-verified composed action-class declaration
+    (issue #556 Track A, design §3.2): the document that supplies the
+    catalogue side of the derivation for the URNs it claims. Mirrors the
+    SDK dataclass at the v0.21.0 pin."""
+
+    urn: str
+    side_effect: str
+    input_schema: dict[str, Any]
+    claims: tuple[str, ...]
+    pin_path: str
+
+
+def _validate_composed_class(
+    document: Any, pin_path: Any, *, corpus: Path
+) -> dict[str, Any]:
+    """One pinned document against the digest-verified corpus composed
+    schema (the mirror of the SDK's ``_validate_composed_class``): the
+    claims items $ref resolves through the family's reference schema, so
+    both documents ride one registry — the same cross-file $ref style
+    ``validate_reference_document`` uses for the layout schema."""
+    from jsonschema import Draft202012Validator
+    from referencing import Registry, Resource
+
+    family = _family_documents(corpus)
+    registry = Registry().with_resource(
+        str(family["reference_schema"].get("$id")),
+        Resource.from_contents(family["reference_schema"]),
+    )
+    findings = sorted(
+        Draft202012Validator(
+            family["composed_schema"], registry=registry
+        ).iter_errors(document),
+        key=lambda error: list(error.path),
+    )
+    if findings:
+        first = findings[0]
+        where = "/".join(str(part) for part in first.path) or "(root)"
+        raise _refuse(
+            "classref_invalid_composed_class",
+            f"pinned document {pin_path}: {where}: {first.message}",
+        )
+    return document  # type: ignore[no-any-return]
 
 
 def _vendor_catalog_documents(
     descriptor: Mapping[str, Any],
     vendor_catalogs: Mapping[str, bytes] | None,
-) -> dict[str, Any]:
-    """Action schemas from the descriptor's pinned vendor catalogs,
-    resolved from ADMISSION bytes (the composition supplies them from the
-    content store by digest — the gateway has no plugin package dir; the
-    SDK resolves descriptor-relative files, the admission store is the
-    gateway's equivalent). Missing or digest-divergent pinned bytes
-    refuse typed, never silent."""
+    served_actions: Mapping[str, Any],
+    corpus: Path,
+) -> tuple[
+    dict[str, Any],
+    dict[str, ComposedClass],
+    tuple[str, ...],
+    tuple[tuple[str, str], ...],
+    tuple[str, ...],
+]:
+    """Action rows, composed classes, ignored pins, unapplied classes and
+    empty-catalog pins from the descriptor's pinned documents — the
+    mirror of the SDK expander's ``_vendor_documents`` walk (issue #556
+    Track A, design §3.2), resolved from ADMISSION bytes (the
+    composition supplies them from the content store by digest — the
+    gateway has no plugin package dir; the SDK resolves
+    descriptor-relative files, the admission store is the gateway's
+    equivalent).
+
+    The walk discriminates by shape: a document carrying ``urn`` AND
+    ``claims`` is a composed action class, validated against the corpus
+    composed schema; a document carrying ``actions`` together with
+    ``urn`` OR ``claims`` is an AMBIGUOUS pin and refuses the same code
+    naming the carried keys; a document carrying neither shape is
+    IGNORED (disclosed, never silently dropped); a vendor catalog whose
+    ``actions`` map is empty contributed nothing (disclosed); a
+    vendor-catalog action row carrying a stray ``composed_class`` key is
+    stripped — composed provenance has exactly one writer, this walk.
+
+    Integrity arms fire before any discrimination (a pinned file's bytes
+    are verified whatever shape they turn out to carry) and keep the
+    refusal split's codes: a pin the admission store cannot serve
+    refuses ``classref_vendor_catalog_unreadable`` — the ONE deliberate
+    code-vocabulary divergence of detail, disclosed here as the
+    ``_resolve_parameters`` divergence is disclosed beside its own
+    mechanism — and digest-divergent or non-object pins keep their own
+    codes.
+
+    Conflicts refuse, never merge: a claim against a served or pinned
+    catalogue row, a claim another class already holds, a second
+    document carrying one class urn (all ``classref_composed_claim_conflict``,
+    naming WHICH side the claim collided with), and a class
+    ``side_effect`` of ``none`` under a descriptor action declaring
+    ``state_change`` (``classref_composed_side_effect_under`` — the S20
+    direction at the class layer; over-classification stays legal).
+
+    Survivors' claimed URNs join the catalogue side as
+    ``{input_schema, side_effect, composed_class}`` — including claims
+    the descriptor does not declare (DS3: a named reference slot may
+    bind a composed-claimed URN; the slot check runs against the merged
+    map, exactly the SDK's order). D13 narrowing runs on them
+    unchanged. A class none of whose claims the descriptor declares
+    applied NOWHERE — it rides back as (class urn, pin path) pairs in
+    ``unapplied`` for the disclosure channel (the applied rule, not the
+    pin-declared rule)."""
     actions: dict[str, Any] = {}
+    classes: dict[str, ComposedClass] = {}
+    ignored: list[str] = []
+    empty_pins: list[str] = []
+    pinned_sources: dict[str, str] = {}
     for row in descriptor.get("contracts", []):
         identifier = str(row.get("id", ""))
         if identifier.startswith("urn:otdp:"):
@@ -1122,18 +1752,155 @@ def _vendor_catalog_documents(
         raw = (vendor_catalogs or {}).get(pin)
         if raw is None:
             raise _refuse(
-                "classref_unknown_action",
+                "classref_vendor_catalog_unreadable",
                 f"pinned vendor catalog {row.get('path')} is not admitted "
                 f"(digest {pin})",
             )
         if hashlib.sha256(raw).hexdigest() != pin:
             raise _refuse(
-                "classref_unknown_action",
+                "classref_vendor_catalog_digest_mismatch",
                 f"pinned vendor catalog {row.get('path')} digest mismatch",
             )
         document = json.loads(raw)
-        actions.update(document.get("actions", {}))
-    return actions
+        if not isinstance(document, dict):
+            # The SDK's B7 row: a non-object pin refuses typed — the
+            # pre-split walk crashed on a bare AttributeError, which is
+            # not a typed refusal face.
+            raise _refuse(
+                "classref_vendor_catalog_invalid",
+                f"pinned vendor catalog {row.get('path')} is not a JSON object",
+            )
+        composed_keys = "urn" in document and "claims" in document
+        if "actions" in document and ("urn" in document or "claims" in document):
+            # The R2 row: "is this a composed class?" and "is this pin
+            # ambiguous?" are different questions — naming the carried
+            # keys says WHY the pin is ambiguous, not just that it is.
+            carried = sorted(
+                key for key in ("actions", "urn", "claims") if key in document
+            )
+            raise _refuse(
+                "classref_invalid_composed_class",
+                f"pinned document {row.get('path')} carries both vendor-catalog "
+                f"and composed-class keys ({', '.join(carried)}) — an "
+                "ambiguous pin",
+            )
+        if composed_keys:
+            _validate_composed_class(document, row.get("path"), corpus=corpus)
+            cls = ComposedClass(
+                urn=str(document["urn"]),
+                side_effect=str(document["side_effect"]),
+                input_schema=document["input_schema"],
+                claims=tuple(str(claim) for claim in document["claims"]),
+                pin_path=str(row.get("path", "")),
+            )
+            existing = classes.get(cls.urn)
+            if existing is not None:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class urn {cls.urn} is declared by two pinned "
+                    f"documents ({existing.pin_path} and {cls.pin_path})",
+                )
+            classes[cls.urn] = cls
+        else:
+            if "actions" not in document:
+                # Neither shape discriminator: digest-verified, then
+                # dropped — returned in ``ignored`` so the derivation
+                # can disclose it (never silently).
+                ignored.append(str(row.get("path", "")))
+                continue
+            if not isinstance(document["actions"], dict):
+                # The SDK's R4 row: a digest-valid object whose
+                # ``actions`` map is not an object refuses typed.
+                raise _refuse(
+                    "classref_vendor_catalog_invalid",
+                    f"pinned vendor catalog {row.get('path')} 'actions' is "
+                    "not a JSON object (got "
+                    f"{type(document['actions']).__name__})",
+                )
+            if not document["actions"]:
+                # The R5 row: a shape-valid catalog that declares NO
+                # actions contributed nothing — disclosed, never blamed
+                # on the descriptor alone.
+                empty_pins.append(str(row.get("path", "")))
+                continue
+            for action_urn, action_row in document["actions"].items():
+                if isinstance(action_row, dict) and "composed_class" in action_row:
+                    # N2: composed provenance is written only by the
+                    # composed walk above — a vendor-catalog row carrying
+                    # a stray ``composed_class`` key is not composed and
+                    # must not launder the label.
+                    action_row = {
+                        key: value
+                        for key, value in action_row.items()
+                        if key != "composed_class"
+                    }
+                actions[action_urn] = action_row
+                pinned_sources[action_urn] = str(row.get("path", ""))
+    descriptor_actions = descriptor.get("actions") or {}
+    claimant: dict[str, str] = {}
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in cls.claims:
+            if claim in served_actions:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class {cls_urn} claims {claim}, which the served "
+                    "OTDP catalog describes",
+                )
+            if claim in actions:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"class {cls_urn} claims {claim}, which pinned "
+                    f"document {pinned_sources.get(claim, 'unknown')} "
+                    "describes",
+                )
+            holder = claimant.get(claim)
+            if holder is not None:
+                raise _refuse(
+                    "classref_composed_claim_conflict",
+                    f"{claim} is claimed by both class {holder} and class "
+                    f"{cls_urn}",
+                )
+            claimant[claim] = cls_urn
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in sorted(cls.claims):
+            declared = descriptor_actions.get(claim)
+            if (
+                isinstance(declared, dict)
+                and declared.get("side_effect") == "state_change"
+                and cls.side_effect == "none"
+            ):
+                raise _refuse(
+                    "classref_composed_side_effect_under",
+                    f"class {cls_urn} declares side_effect 'none' for "
+                    f"{claim}, whose descriptor action declares "
+                    "'state_change' (the S20 direction at the class layer: "
+                    "over-classification is legal, under-classification "
+                    "refuses)",
+                )
+    # Claimed URNs join the catalogue side of the derivation (D13 runs
+    # unchanged on them), marked so the plan row can name the layer and
+    # the class. A claim the descriptor does not declare simply does not
+    # apply (a corpus-promoted class legitimately claims URNs across many
+    # plugins).
+    for cls_urn in sorted(classes):
+        cls = classes[cls_urn]
+        for claim in cls.claims:
+            actions[claim] = {
+                "input_schema": cls.input_schema,
+                "side_effect": cls.side_effect,
+                "composed_class": cls_urn,
+            }
+    # The classes that applied nowhere — every claim names an action
+    # this descriptor does not declare — ride back as (class urn, pin
+    # path) pairs for the disclosure channel.
+    unapplied = tuple(
+        (urn, classes[urn].pin_path)
+        for urn in sorted(classes)
+        if not any(claim in descriptor_actions for claim in classes[urn].claims)
+    )
+    return actions, classes, tuple(ignored), unapplied, tuple(empty_pins)
 
 
 def _catalog_document(
@@ -1149,8 +1916,10 @@ def _catalog_document(
     try:
         return dict(_read_corpus_json(corpus, row_key, pins))
     except FileNotFoundError as exc:
+        # A platform fault (incomplete corpus), never the recoverable
+        # knowledge gap — its own code since the split (the SDK's).
         raise _refuse(
-            "classref_unknown_action",
+            "classref_profile_catalog_unserved",
             f"the descriptor's profile catalog {row_key} is not served",
         ) from exc
 
@@ -1163,6 +1932,10 @@ def _assemble_triple(
     catalog_actions: Mapping[str, Any],
     corpus: Path,
     decoder_docs: Mapping[str, bytes] | None,
+    *,
+    ignored_pins: tuple[str, ...] = (),
+    unapplied_classes: tuple[tuple[str, str], ...] = (),
+    empty_action_pins: tuple[str, ...] = (),
 ) -> DerivedAttachment:
     """The derived triple (the SDK expander's ``_finish`` assembly, minus
     the SDK-side surfaces the gateway does not consume — the expectation
@@ -1198,12 +1971,15 @@ def _assemble_triple(
         if urn.split("/")[0].rsplit(".", 1)[-1] != "decode_annotated":
             continue
         if descriptor.get("decoders") and plot_page:
+            # The SDK's shape: the overlay PRESERVES the plan row's own
+            # provenance (resolution and, when present, the class) — the
+            # row claims a rendering, not a different derivation.
             plan[urn] = {
+                **plan[urn],
                 "level": "L4",
                 "page": plot_page,
                 "fields": [],
                 "declared_deviation": False,
-                "rendered_by": "decoder annotation lanes",
             }
     return _assemble_documents(
         descriptor,
@@ -1216,6 +1992,9 @@ def _assemble_triple(
         plan,
         corpus,
         decoder_docs,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 
@@ -1230,6 +2009,10 @@ def _assemble_documents(
     plan: dict[str, dict[str, Any]],
     corpus: Path,
     decoder_docs: Mapping[str, bytes] | None,
+    *,
+    ignored_pins: tuple[str, ...] = (),
+    unapplied_classes: tuple[tuple[str, str], ...] = (),
+    empty_action_pins: tuple[str, ...] = (),
 ) -> DerivedAttachment:
     """The document assembly (the SDK expander's ``_finish`` port):
     bindings, targets, pages, assets, the layout block and the triple,
@@ -1488,10 +2271,16 @@ def _assemble_documents(
         urn = str(config_slot["action"])
         if urn not in actions:
             continue
+        # The catalogue-row resolution (§3.5, mirrored): a custom or
+        # composed action bound to a configuration slot derives its
+        # settings schema from the effective schema alone — the $id
+        # falls back to the derived action-input urn when the row (or
+        # the class's input_schema) declares none.
+        slot_catalogue_row = _catalogue_row(urn, catalog_actions)
         effective = _effective_action_schema(
-            urn, catalog_actions[urn], actions[urn].get("input_constraints") or {}
+            urn, slot_catalogue_row, actions[urn].get("input_constraints") or {}
         )
-        catalogue_input = catalog_actions[urn].get("input_schema", {}) or {}
+        catalogue_input = (slot_catalogue_row or {}).get("input_schema", {}) or {}
         settings_schema = {
             **effective,
             "$id": catalogue_input.get("$id", f"urn:otdp:action:{urn}:input"),
@@ -1535,7 +2324,10 @@ def _assemble_documents(
                 "kind": "procedure",
                 "action_id": urn,
                 "profile_ids": profile_ids,
-                "input_schema_id": catalog_actions[urn]
+                # The catalogue-row resolution (§3.5, mirrored): a
+                # catalog-less action's target carries no input schema
+                # id (None), never a KeyError.
+                "input_schema_id": (_catalogue_row(urn, catalog_actions) or {})
                 .get("input_schema", {})
                 .get("$id"),
             }
@@ -1666,6 +2458,16 @@ def _assemble_documents(
             }
         )
         page["plots"] = [plots[-1]]
+    # The R9 fold (mirrored): a plan row advertises a rendering only when
+    # that rendering occurs — the decode-annotated row's claim rides the
+    # decoder annotation lanes, and those lanes derive into a
+    # digital-lanes plot's ``decoder_lanes`` key alone, so a descriptor
+    # whose plot is a waveform or time-series never renders them and the
+    # row carries no claim.
+    if any(plot.get("decoder_lanes") for plot in plots):
+        for urn, row in plan.items():
+            if urn.split("/")[0].rsplit(".", 1)[-1] == "decode_annotated":
+                row["rendered_by"] = "decoder annotation lanes"
     layout_block = _build_layout(corpus, pages_out, plots, merged["layouts"], plan)
     manifest = {
         "contract_version": version,
@@ -1694,6 +2496,14 @@ def _assemble_documents(
     }
     catalogue_raw = (json.dumps(catalogue, indent=2) + "\n").encode()
     resources: dict[str, bytes] = {"manifest.json": manifest_raw, **settings_blobs}
+    resolutions = tuple(
+        (
+            str(urn),
+            str(row.get("resolution", "catalog")),
+            str(row["class"]) if row.get("class") is not None else None,
+        )
+        for urn, row in sorted(plan.items())
+    )
     return DerivedAttachment(
         envelope=envelope,
         manifest=manifest,
@@ -1703,6 +2513,10 @@ def _assemble_documents(
         catalogue_raw=catalogue_raw,
         resources=resources,
         profile_ids=profile_ids,
+        resolutions=resolutions,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 
@@ -1742,6 +2556,10 @@ def derive_attachment(
             "classref_invalid_reference",
             "no reference applies to the descriptor's profiles",
         )
+    # The SDK's position (``derive_ui`` runs the slot-conflict check
+    # immediately after reference resolution): a multi-fault descriptor
+    # raises the same code both sides.
+    _check_slot_conflicts(references)
     for item in references:
         profile = str(item["profile_id"])
         if profile not in (descriptor.get("profiles") or []):
@@ -1760,17 +2578,23 @@ def derive_attachment(
     pins = _corpus_pin_rows(corpus)
     catalog = _catalog_document(corpus, pins, descriptor)
     catalog_actions: dict[str, Any] = dict(catalog.get("actions", {}))
-    catalog_actions.update(_vendor_catalog_documents(descriptor, vendor_catalogs))
+    (
+        vendor_actions,
+        _composed_classes,
+        ignored_pins,
+        unapplied_classes,
+        empty_action_pins,
+    ) = _vendor_catalog_documents(
+        descriptor, vendor_catalogs, catalog_actions, corpus
+    )
+    catalog_actions.update(vendor_actions)
     actions = descriptor.get("actions") or {}
-    # A descriptor-declared action absent from every served catalog is a
-    # typed refusal — the ladder cannot derive what the catalogs do not
-    # describe (the SDK expander's F8b arm).
-    for urn in actions:
-        if urn not in catalog_actions:
-            raise _refuse(
-                "classref_unknown_action",
-                f"descriptor declares {urn}, absent from every served catalog",
-            )
+    # A descriptor-declared action no served catalog describes is a
+    # residual member, not a refusal (issue #556 Track A, design §3.3) —
+    # it derives from the descriptor's own input_constraints and its
+    # plan row carries resolution "custom". The recoverable
+    # ``classref_unknown_action`` refusal this loop carried is retired;
+    # the reference-slot site below keeps refusing (D4).
     for item in references:
         slot_keys = set(item.get("slots", {}))
         for page in item.get("pages", []):
@@ -1793,8 +2617,11 @@ def derive_attachment(
     for item in references:
         row = profile_rows.get(str(item["profile_id"]))
         if row is None:
+            # A platform fault — the profile catalog is served but
+            # carries no row for this profile (re-coded since the split,
+            # the SDK's own code; still refusing).
             raise _refuse(
-                "classref_unknown_action",
+                "classref_profile_absent",
                 f"profile {item['profile_id']} absent from the served profile catalog",
             )
         for urn in row.get("required_actions", []):
@@ -1811,7 +2638,6 @@ def derive_attachment(
                     "classref_unknown_action",
                     f"slot {key} names {urn}, absent from the served catalogs",
                 )
-    _check_slot_conflicts(references)
     return _assemble_triple(
         descriptor,
         descriptor_raw,
@@ -1820,6 +2646,9 @@ def derive_attachment(
         catalog_actions,
         corpus,
         decoder_docs,
+        ignored_pins=ignored_pins,
+        unapplied_classes=unapplied_classes,
+        empty_action_pins=empty_action_pins,
     )
 
 

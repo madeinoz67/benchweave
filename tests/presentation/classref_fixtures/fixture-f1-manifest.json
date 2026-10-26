@@ -195,16 +195,6 @@
                 },
                 {
                   "binding_id": "auto-threshold",
-                  "kind": "numeric",
-                  "field": "margin_ppm"
-                },
-                {
-                  "binding_id": "auto-threshold",
-                  "kind": "numeric",
-                  "field": "hysteresis_mv"
-                },
-                {
-                  "binding_id": "auto-threshold",
                   "kind": "button"
                 }
               ]

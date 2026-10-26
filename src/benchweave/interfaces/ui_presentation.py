@@ -67,7 +67,9 @@ from benchweave.presentation.admission import validate_attachment
 from benchweave.presentation.classref import (
     LAYOUT_EXTENSION_KEY,
     ClassRefusal,
+    DerivedAttachment,
     derive_attachment,
+    family_version,
     select_references,
     validate_layout_block,
 )
@@ -440,6 +442,15 @@ class PresentationState:
     #: the rendered page must carry the host-derived marker (R2's
     #: masquerade guard).
     derived: bool = False
+    #: The derivation's disclosure lines (issue #556 Track A, design
+    #: §3.4 — the SDK gate's REPORTED analog): one line per custom
+    #: member (minted or renders-nothing, chosen by the per-action
+    #: minted discriminator), one per ignored pin, unapplied composed
+    #: class and empty-catalog pin, and one per APPLIED composed class.
+    #: Disclosures are never findings — they never fail the page, the
+    #: SDK's REPORTED-never-silent split. Non-empty on the derived arm
+    #: only.
+    disclosures: tuple[str, ...] = ()
 
 
 def _layout_invalid_finding(
@@ -690,6 +701,67 @@ def _page_presets(
     return preset_ids
 
 
+def _classref_disclosures(derived: DerivedAttachment) -> tuple[str, ...]:
+    """The derivation's disclosure lines (issue #556 Track A, design
+    §3.4): the gateway's REPORTED analog — the SDK gate discloses
+    through its REPORTED channel, the gateway's honesty surfaces are the
+    derived marker block and the rendered page. Formats fixed by the
+    design record, mirrored from the SDK's REPORTED rows where the SDK
+    has them: ``custom: {urn}`` when the derived layout block mints
+    control nodes for the action's slug (the per-action discriminator —
+    every node binding id in the derived block), else ``custom, renders
+    nothing: {urn}``; one line per ignored pin, unapplied composed
+    class and empty-catalog pin; and one line per APPLIED composed
+    class naming the family version its document validated against and
+    the declared actions it supplies. Disclosures are never findings —
+    they never fail the page."""
+    block = (derived.manifest.get("extensions") or {}).get(LAYOUT_EXTENSION_KEY)
+    minted: frozenset[str] = frozenset()
+    if isinstance(block, dict):
+        minted = frozenset(
+            str(node.get("binding_id"))
+            for page in block.get("pages", [])
+            for section in page.get("sections", [])
+            for node in section.get("children", [])
+            if isinstance(node, dict) and node.get("binding_id") is not None
+        )
+    lines: list[str] = []
+    for urn, resolution, _class_urn in derived.resolutions:
+        if resolution != "custom":
+            continue
+        slug = urn.split("/")[0].rsplit(".", 1)[-1]
+        lines.append(
+            f"custom: {urn}"
+            if slug in minted
+            else f"custom, renders nothing: {urn}"
+        )
+    lines.extend(
+        f"ignored pin: {path} contributed nothing (shape matched neither "
+        "a vendor catalog nor a composed class)"
+        for path in derived.ignored_pins
+    )
+    lines.extend(
+        f"composed class {class_urn} pinned at {path} applied to no "
+        "declared action"
+        for class_urn, path in derived.unapplied_classes
+    )
+    lines.extend(
+        f"pinned vendor catalog {path} declares no actions"
+        for path in derived.empty_action_pins
+    )
+    supplied: dict[str, int] = {}
+    for _urn, resolution, class_urn in derived.resolutions:
+        if resolution == "composed" and class_urn is not None:
+            supplied[class_urn] = supplied.get(class_urn, 0) + 1
+    family = family_version(corpus_root())
+    lines.extend(
+        f"composed: {class_urn} (validated against {family}) supplies "
+        f"{count} declared action(s)"
+        for class_urn, count in sorted(supplied.items())
+    )
+    return tuple(lines)
+
+
 def _classref_fallback(
     content: ContentStore,
     descriptor_raw: bytes,
@@ -823,6 +895,7 @@ def _classref_fallback(
         ),
         absence=None,
         derived=True,
+        disclosures=_classref_disclosures(derived),
     )
 
 

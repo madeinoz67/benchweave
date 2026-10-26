@@ -34,9 +34,14 @@ FIXTURES = Path(__file__).parent / "classref_fixtures"
 
 def _vendor_catalogs() -> dict[str, bytes]:
     """Every invented vendor catalog the fixtures pin, keyed by digest —
-    the admission store's resolution shape (L5 adds the trio catalog)."""
+    the admission store's resolution shape (L5 adds the trio catalog;
+    the m400 tag adds its composed-class pin)."""
     catalogs: dict[str, bytes] = {}
-    for name in ("vendor-catalog.json", "vendor-catalog-trio.json"):
+    for name in (
+        "vendor-catalog.json",
+        "vendor-catalog-trio.json",
+        "composed-burst.json",
+    ):
         raw = (FIXTURES / name).read_bytes()
         catalogs[hashlib.sha256(raw).hexdigest()] = raw
     return catalogs
@@ -71,8 +76,12 @@ class TestParityB8:
         (observation bindings and tiles), the slot-aware measure target
         and the time_series plot bound to the page's first observation —
         generated from the widened SDK expander at the v0.18.0 pin (the
-        convention's oracle, design record §5.2)."""
-        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
+        convention's oracle, design record §5.2). The m400 arm is the
+        three-layer acceptance tag (issue #556 Track A): one descriptor
+        carrying catalog, composed and custom resolutions at once,
+        generated from the pinned v0.21.0 expander beside its
+        composed-class pin."""
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -86,13 +95,40 @@ class TestParityB8:
                 # The JSON loads too: bytes equal, documents equal.
                 assert json.loads(produced) == json.loads(committed)
             # The founding tags derive the analyser; the numeric tag the
-            # smu pair (the mirror's own class).
-            expected_profile = (
-                "otdp.smu/1.0.0"
-                if tag == "f6-smu"
-                else "otdp.logic_analyser/1.0.0"
-            )
+            # smu pair (the mirror's own class); the acceptance tag the
+            # daq class.
+            expected_profile = {
+                "f6-smu": "otdp.smu/1.0.0",
+                "m400": "otdp.daq/1.0.0",
+            }.get(tag, "otdp.logic_analyser/1.0.0")
             assert derived.profile_ids == (expected_profile,)
+
+    def test_w8_one_field_one_control_on_derived_pages(self) -> None:
+        """W8 (issue #556 Track A; the SDK expander's fold, mirrored): a
+        numeric staging node the section already carries is never
+        re-emitted — the pair used to render twice on every derived page,
+        catalogued pairs included (the pre-fold committed fixtures pinned
+        the doubling; the regeneration at the v0.21.0 expander collapsed
+        it, and this arm holds the mechanism on the derivation's own
+        output, fixture-independent)."""
+        for tag, binding, field in (
+            ("f1", "auto-threshold", "margin_ppm"),
+            ("f1", "auto-threshold", "hysteresis_mv"),
+            ("f6-smu", "arm", "max_duration_ms"),
+            ("f6-smu", "fetch", "max_bytes"),
+        ):
+            derived = _derive(tag)
+            block = derived.manifest["extensions"][
+                "plugin-ui-class-reference:layout"
+            ]
+            pairs = [
+                (node.get("binding_id"), node.get("field"))
+                for page in block["pages"]
+                for section in page["sections"]
+                for node in section.get("children", [])
+                if node.get("kind") == "numeric"
+            ]
+            assert pairs.count((binding, field)) == 1, (tag, binding, field, pairs)
 
     def test_f5_trio_derives_the_staging_section_at_l2(self) -> None:
         """The L5 widening's proof surface (B1 extends to F5): the invented
@@ -222,7 +258,7 @@ class TestParityB8:
         from benchweave.presentation.admission import validate_attachment
         from benchweave.presentation.panels import SUPPORTED_PANELS
 
-        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu"):
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400"):
             derived = _derive(tag)
             descriptor_raw = (FIXTURES / f"descriptor-{tag}.json").read_bytes()
             report = validate_attachment(
@@ -745,30 +781,6 @@ class TestRefusals:
         with pytest.raises(ClassRefusal, match="^classref_required_action_absent:"):
             _derive_from_document(raw)
 
-    def test_unadmitted_vendor_catalog_refuses_classref_unknown_action(
-        self,
-    ) -> None:
-        """The gateway resolution source is the ADMISSION store (design
-        §1: read-time composition over admitted bytes); a pinned vendor
-        catalog that is not admitted refuses typed, never silent."""
-        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
-        with pytest.raises(ClassRefusal, match="^classref_unknown_action:"):
-            derive_attachment(
-                descriptor_raw,
-                corpus=corpus_root(),
-                vendor_catalogs={},
-            )
-
-    def test_tampered_vendor_catalog_bytes_refuse(self) -> None:
-        raw = (FIXTURES / "vendor-catalog.json").read_bytes() + b" "
-        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
-        with pytest.raises(ClassRefusal, match="classref_unknown_action:"):
-            derive_attachment(
-                descriptor_raw,
-                corpus=corpus_root(),
-                vendor_catalogs={hashlib.sha256(raw).hexdigest(): raw},
-            )
-
     def test_satisfies_target_compares_per_parsed_operator(self) -> None:
         """The target grammar's four operators (parent record §2.2
         admission-fold note), tested at the comparator."""
@@ -807,6 +819,1009 @@ class TestRefusals:
             _derive_from_document(
                 json.loads((FIXTURES / "descriptor-f1.json").read_bytes()),
                 references_override=[reference],
+            )
+
+
+def _effective_sample_count(field: dict[str, Any]) -> dict[str, Any]:
+    """The configured action's emitted settings schema with ``sample_count``
+    narrowed by ``field`` — the catalogued intersection's output, read where
+    a dispatch value is judged."""
+    raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+    raw["actions"]["otdp.logic_analyser.configure/1.0.0"]["input_constraints"] = {
+        "properties": {"sample_count": field}
+    }
+    derived = _derive_from_document(raw)
+    settings = next(
+        blob
+        for name, blob in derived.resources.items()
+        if name.startswith("settings/")
+    )
+    schema: dict[str, Any] = json.loads(settings)
+    return {"schema": schema, "field": schema["properties"]["sample_count"]}
+
+
+def _configured_candidate(sample_count: int) -> dict[str, Any]:
+    """The configured action's required fields, so a validator's verdict
+    turns on ``sample_count`` alone."""
+    return {
+        "configuration_id": "cfg-1",
+        "channels": [{"channel": "a", "threshold_v": 1.0}],
+        "sample_rate_hz": 1000.0,
+        "trigger": {"kind": "immediate"},
+        "sample_count": sample_count,
+    }
+
+
+class TestResidualResolution:
+    """The residual layer (issue #556 Track A, design §3.3): a declared
+    action no served catalog describes derives from the descriptor's own
+    input_constraints — resolution "custom", a visible custom section —
+    never the recoverable ``classref_unknown_action`` refusal. The fold
+    hardening on the shared paths (W5/M6/W9/W3/G4, the released
+    semantics) rides along."""
+
+    _CUSTOM_URN = "com.veridian-labs.self_test/1.0.0"
+
+    def _descriptor_with_custom_action(
+        self, constraints: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        raw: dict[str, Any] = json.loads(
+            (FIXTURES / "descriptor-f1.json").read_bytes()
+        )
+        action: dict[str, Any] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        if constraints is not None:
+            action["input_constraints"] = constraints
+        raw["actions"][self._CUSTOM_URN] = action
+        return raw
+
+    def test_residual_action_derives_labelled_custom(self) -> None:
+        """The recoverable refusal is GONE: a declared action absent from
+        every served catalog derives with resolution "custom", its
+        controls from the descriptor's own input_constraints, rendered in
+        the page's custom section (resolution partitions, never mixes)."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "duration_s": {"type": "number", "minimum": 0.0, "maximum": 60.0}
+                },
+                "required": ["duration_s"],
+            }
+        )
+        derived = _derive_from_document(raw)
+        # The denominator is the descriptor's own declared action set —
+        # every declared URN resolves exactly once, non-null (G-M1's
+        # shape at this layer), and the custom member names no class.
+        assert sorted(urn for urn, _resolution, _class_urn in derived.resolutions) == (
+            sorted(raw["actions"])
+        )
+        assert all(
+            resolution in ("catalog", "composed", "custom")
+            for _urn, resolution, class_urn in derived.resolutions
+        )
+        by_urn = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert by_urn[self._CUSTOM_URN] == ("custom", None)
+        assert by_urn["com.veridian-labs.auto-threshold/1.0.0"] == ("catalog", None)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        section_ids = [section["id"] for section in features["sections"]]
+        assert "device-features-custom" in section_ids, section_ids
+        custom = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-custom"
+        )
+        assert custom["title"] == "Custom device actions"
+        assert [(node.get("kind"), node.get("field")) for node in custom["children"]] == [
+            ("numeric", "duration_s"),
+            ("button", None),
+        ]
+        main = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-section"
+        )
+        assert all(
+            node.get("binding_id") != "self_test" for node in main["children"]
+        )
+
+    def test_residual_undeclared_input_derives_l0_with_the_marker(self) -> None:
+        """W7: "declares nothing" is not "declares no inputs" — a residual
+        action whose input_constraints carries no properties key at all
+        derives L0 with input_undeclared, and silence never becomes a
+        one-click dispatch (no button, no control node)."""
+        raw = self._descriptor_with_custom_action({"required": ["channel"]})
+        derived = _derive_from_document(raw)
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._CUSTOM_URN] == ("custom", None)
+        from benchweave.presentation.classref import _derive_controls
+
+        plan, _divergences = _derive_controls(
+            {self._CUSTOM_URN: {}}, {}, {}, {}, {}
+        )
+        row = plan[self._CUSTOM_URN]
+        assert row["resolution"] == "custom"
+        assert row["level"] == "L0"
+        assert row["input_undeclared"] is True
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        for page in block["pages"]:
+            for section in page["sections"]:
+                for node in section.get("children", []):
+                    assert node.get("binding_id") != "self_test", node
+
+    def test_non_object_catalog_row_refuses_classref_catalog_row_invalid(
+        self,
+    ) -> None:
+        """A served catalog row that is not an object refuses typed —
+        reading it as "no catalog" would mint a false custom provenance
+        (the pre-split code crashed on it downstream)."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        catalog["actions"]["com.veridian-labs.ghost/1.0.0"] = 5
+        raw_bytes = (json.dumps(catalog, indent=2) + "\n").encode()
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        descriptor["actions"]["com.veridian-labs.ghost/1.0.0"] = descriptor[
+            "actions"
+        ]["com.veridian-labs.auto-threshold/1.0.0"]
+        descriptor["contracts"][-1]["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_catalog_row_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={hashlib.sha256(raw_bytes).hexdigest(): raw_bytes},
+            )
+
+    def test_residual_closed_vocabulary_refuses_at_every_depth(self) -> None:
+        """The residual fragment passes the same closed-vocabulary gate
+        the catalogued intersection passes — at every depth (W2)."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "payload": {
+                        "type": "object",
+                        "properties": {
+                            "token": {"type": "string", "format": "uri"}
+                        },
+                    }
+                }
+            }
+        )
+        with pytest.raises(ClassRefusal, match="^classref_constraint_unsupported:"):
+            _derive_from_document(raw)
+
+    def test_residual_empty_admittance_shapes_refuse(self) -> None:
+        """W5/M6: an empty declared enum and inverted string length
+        bounds admit nothing — residual and catalogued alike."""
+        raw = self._descriptor_with_custom_action(
+            {"properties": {"mode": {"enum": []}}}
+        )
+        with pytest.raises(
+            ClassRefusal, match="enum admits no value"
+        ):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "label": {"type": "string", "minLength": 5, "maxLength": 2}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal,
+            match="string length bounds admit no value",
+        ):
+            _derive_from_document(raw)
+
+    def test_residual_declared_values_narrow_under_bounds(self) -> None:
+        """W3: a declared value set under declared bounds renders exactly
+        the values both admit — narrowed, refused when emptied, conflicted
+        when a const sits outside (kill (d)'s shape at the residual
+        layer). The narrowed set rides the FIELD ROW (the layout node
+        vocabulary carries kind/field only), read here through the
+        derivation's own helpers over the same fragment the plan
+        consumed."""
+        from benchweave.presentation.classref import (
+            _effective_action_schema,
+            _field_rows,
+        )
+
+        fragment = {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "enum": [5, 50],
+        }
+        effective = _effective_action_schema(
+            self._CUSTOM_URN, None, {"properties": {"level": fragment}}
+        )
+        rows = _field_rows(self._CUSTOM_URN, "", effective)
+        assert rows[0]["enum"] == [5]
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "level": {"type": "integer", "maximum": 10, "enum": [50]}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal, match="every declared enum value falls outside"
+        ):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "level": {"type": "integer", "maximum": 10, "const": 50}
+                }
+            }
+        )
+        with pytest.raises(
+            ClassRefusal, match="const"
+        ):
+            _derive_from_document(raw)
+
+    def test_ill_typed_control_values_refuse_g4(self) -> None:
+        """G4: a control keyword whose value is ill-typed refuses typed
+        on the residual path (the W9 admission without value typing used
+        to crash the narrowing)."""
+        raw = self._descriptor_with_custom_action(
+            {"properties": {"count": {"type": "integer", "minimum": "0"}}}
+        )
+        with pytest.raises(ClassRefusal, match="^classref_constraint_unsupported:"):
+            _derive_from_document(raw)
+
+    def test_w9_string_length_bounds_join_the_vocabulary(self) -> None:
+        """W9: minLength/maxLength are inside the closed vocabulary — a
+        bounded string on the CONSTRAINT side used to refuse
+        classref_constraint_unsupported; it now derives a bounded text
+        row. A length bound meeting a NON-string catalogue type is the
+        same conflict the numeric bounds raise (the catalog's
+        margin_ppm is an integer)."""
+        raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        raw["actions"]["com.veridian-labs.auto-threshold/1.0.0"][
+            "input_constraints"
+        ] = {"properties": {"margin_ppm": {"maxLength": 8}}}
+        with pytest.raises(ClassRefusal, match="length bound applied to catalogue"):
+            _derive_from_document(raw)
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "label": {"type": "string", "minLength": 2, "maxLength": 8}
+                },
+                "required": ["label"],
+            }
+        )
+        derived = _derive_from_document(raw)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        node = next(
+            node
+            for page in block["pages"]
+            for section in page["sections"]
+            for node in section.get("children", [])
+            if node.get("field") == "label"
+        )
+        assert node["kind"] == "text"
+
+    def test_constraint_only_maximum_survives_the_intersection(self) -> None:
+        """The high-bound selection the gateway transposed (its copy read
+        ``low_constraint`` where the SDK reads ``high_constraint``): a
+        constraint declaring ONLY a maximum against a catalogue row with
+        no upper bound (sample_rate_hz is exclusiveMinimum-only) used to
+        drop the bound silently — an admittance WIDENING. The mirror
+        keeps the declared maximum."""
+        raw = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        raw["actions"]["otdp.logic_analyser.configure/1.0.0"][
+            "input_constraints"
+        ] = {"properties": {"sample_rate_hz": {"maximum": 48000000}}}
+        derived = _derive_from_document(raw)
+        settings = next(
+            blob
+            for name, blob in derived.resources.items()
+            if name.startswith("settings/")
+        )
+        schema = json.loads(settings)
+        assert schema["properties"]["sample_rate_hz"]["maximum"] == 48000000
+
+    def test_high_bound_tie_prefers_the_exclusive_end(self) -> None:
+        """The tighter end of an EQUAL-value HIGH bound is the exclusive
+        one. A catalogue ``maximum: 1000000`` meeting a constraint
+        ``exclusiveMaximum: 1000000`` must derive the exclusive bound: the
+        constraint is the tighter end, and an effective schema keeping the
+        inclusive catalogue end admits the very value the plugin's own
+        declaration refuses — the one direction this project does not
+        tolerate. The selection compared ``(value, exclusive)`` tuples with
+        ``min()``, which returns the INCLUSIVE pair on an equal value.
+        """
+        from jsonschema import Draft202012Validator
+
+        high = _effective_sample_count({"exclusiveMaximum": 1000000})
+        assert high["field"]["exclusiveMaximum"] == 1000000
+        assert "maximum" not in high["field"]
+        validator = Draft202012Validator(high["schema"])
+        assert not validator.is_valid(_configured_candidate(1000000))
+        assert validator.is_valid(_configured_candidate(999999))
+
+    def test_low_bound_tie_prefers_the_exclusive_end(self) -> None:
+        """The mirror arm: the tighter end of an EQUAL-value LOW bound is
+        the exclusive one too. The side's ``max()`` already returned the
+        exclusive pair before the fix, so this arm passes pre-fix; it is
+        pinned here because both sides now read through one comparator,
+        and the comparator neutralization reds it — that neutralization,
+        not the pre-fix run, is what proves it load-bearing."""
+        from jsonschema import Draft202012Validator
+
+        low = _effective_sample_count({"exclusiveMinimum": 1})
+        assert low["field"]["exclusiveMinimum"] == 1
+        assert "minimum" not in low["field"]
+        validator = Draft202012Validator(low["schema"])
+        assert not validator.is_valid(_configured_candidate(1))
+        assert validator.is_valid(_configured_candidate(2))
+
+    def test_qualified_field_collision_refuses_classref_duplicate_field(self) -> None:
+        """Dotted flattening gives a nested a→b and a literal "a.b" the
+        same qualified name — two rows under one name render two controls
+        for one declared field; the collision refuses typed."""
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {
+                    "a.b": {"type": "integer"},
+                    "a": {"type": "object", "properties": {"b": {"type": "integer"}}},
+                }
+            }
+        )
+        with pytest.raises(ClassRefusal, match="^classref_duplicate_field:"):
+            _derive_from_document(raw)
+
+    def test_custom_action_never_welds_into_an_authored_section(self) -> None:
+        """The completion scoping (W1 fold): a residual member never
+        welds its button into the reference's authored sections — the
+        authored page stands as authored and the member surfaces through
+        the plan and the custom channel instead."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["layouts"].append(
+            {
+                "page_id": "device-features",
+                "sections": [
+                    {
+                        "id": "features",
+                        "title": "Device features",
+                        "surface": "raised",
+                        "span": 12,
+                        "children": [{"body": "Vendor features."}],
+                    }
+                ],
+            }
+        )
+        raw = self._descriptor_with_custom_action(
+            {
+                "properties": {"duration_s": {"type": "number"}},
+                "required": ["duration_s"],
+            }
+        )
+        derived = _derive_from_document(raw, references_override=[reference])
+        features = next(
+            page
+            for page in derived.manifest["extensions"][
+                "plugin-ui-class-reference:layout"
+            ]["pages"]
+            if page["page_id"] == "device-features"
+        )
+        assert [section["id"] for section in features["sections"]] == ["features"]
+        assert all(
+            node.get("binding_id") != "self_test"
+            for section in features["sections"]
+            for node in section.get("children", [])
+        )
+
+
+class TestComposedResolution:
+    """The composed layer (issue #556 Track A, design §3.2): a pinned,
+    digest-verified composed action-class document supplies the catalogue
+    side for the URNs it claims — layer 2 between the served catalog and
+    the residual derivation. Conflicts refuse, never merge."""
+
+    _BURST_URN = "com.veridian-labs.burst/1.0.0"
+    _CLASS_URN = "otdp.action.veridian_burst/1.0.0"
+
+    @staticmethod
+    def _composed_document(
+        *,
+        urn: str = "otdp.action.veridian_burst/1.0.0",
+        claims: tuple[str, ...] = ("com.veridian-labs.burst/1.0.0",),
+        side_effect: str = "state_change",
+        title: str | None = "Veridian burst mode",
+    ) -> dict[str, Any]:
+        document: dict[str, Any] = {
+            "contract_version": "0.1.0",
+            "urn": urn,
+            "claims": list(claims),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "burst_count": {"type": "integer", "minimum": 1, "maximum": 1024}
+                },
+                "required": ["burst_count"],
+                "additionalProperties": False,
+            },
+            "side_effect": side_effect,
+        }
+        if title is not None:
+            document["title"] = title
+        return document
+
+    def _descriptor_with_composed_pin(
+        self,
+        *documents: dict[str, Any],
+        declare_burst: bool = True,
+        burst_side_effect: str = "state_change",
+    ) -> tuple[bytes, dict[str, bytes]]:
+        """The f1 descriptor with its vendor-catalog pin replaced by one
+        composed-class pin per document (the admission resolution keyed
+        by digest), plus the burst action declared."""
+        descriptor: dict[str, Any] = json.loads(
+            (FIXTURES / "descriptor-f1.json").read_bytes()
+        )
+        catalogs: dict[str, bytes] = {}
+        pins: list[dict[str, Any]] = []
+        for document in documents:
+            raw = (json.dumps(document, indent=2) + "\n").encode()
+            digest = hashlib.sha256(raw).hexdigest()
+            catalogs[digest] = raw
+            pins.append(
+                {
+                    "id": f"urn:veridian:composed:{len(pins) + 1}",
+                    "path": f"composed-{len(pins)}.json",
+                    "sha256": digest,
+                }
+            )
+        descriptor["contracts"] = [
+            row for row in descriptor["contracts"]
+            if str(row["id"]).startswith("urn:otdp:")
+        ] + pins
+        if declare_burst:
+            descriptor["actions"][self._BURST_URN] = {
+                "binding": {"kind": "adapter", "key": "fixture"},
+                "input_constraints": {},
+                "timeout_ms": 5000,
+                "side_effect": burst_side_effect,
+                "cancellable": True,
+                "retry": "never",
+            }
+        # The vendor action the un-pinned catalog used to describe is
+        # gone with the pin: drop it from the declared set too.
+        descriptor["actions"].pop("com.veridian-labs.auto-threshold/1.0.0", None)
+        return json.dumps(descriptor).encode(), catalogs
+
+    def test_composed_class_supplies_the_catalogue_side(self) -> None:
+        """A composed pin supplies the catalogue side for its claimed
+        URNs: resolution "composed" naming the class, the controls from
+        the class's input_schema, D13 narrowing unchanged on them, and
+        the member renders in the MAIN section (composed is not
+        custom)."""
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            self._composed_document()
+        )
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._BURST_URN] == ("composed", self._CLASS_URN)
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        section_ids = [section["id"] for section in features["sections"]]
+        assert "device-features-custom" not in section_ids, section_ids
+        main = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-section"
+        )
+        kinds = [
+            (node.get("kind"), node.get("field")) for node in main["children"]
+        ]
+        assert ("numeric", "burst_count") in kinds
+        assert ("button", None) in kinds
+
+    def test_ds3_a_claim_the_descriptor_does_not_declare_joins_the_map(self) -> None:
+        """DS3: a claim the descriptor does not declare simply does not
+        apply — it joins the catalogue side (so a named reference slot
+        may bind a composed-claimed URN; the family schema's slot action
+        pattern is the otdp three-segment shape, so the claim uses it),
+        and the class rides back as UNAPPLIED when none of its claims
+        applied."""
+        unclaimed = "otdp.logic_analyser.burst/1.0.0"
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            self._composed_document(claims=(unclaimed,)),
+            declare_burst=False,
+        )
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.unapplied_classes == (
+            (self._CLASS_URN, "composed-0.json"),
+        )
+        # The slot check runs against the MERGED map: a procedure slot
+        # naming the composed-claimed URN passes (pre-walk this exact
+        # input refused classref_unknown_action) — the slot is
+        # when-declared and the descriptor does not declare the action,
+        # so it contributes no target, exactly the SDK's shape.
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        arm_action = str(reference["slots"]["arm"]["action"])
+        reference["slots"]["arm"]["action"] = unclaimed
+        descriptor = json.loads(descriptor_raw)
+        _derive_from_document(
+            descriptor,
+            references_override=[reference],
+            extra_vendor_catalogs=catalogs,
+        )
+        # The declared half — the §3.5 composed tolerance: a DECLARED
+        # composed-claimed action in the configuration slot derives its
+        # settings schema from the class's input_schema alone, the $id
+        # falling back to the derived action-input urn.
+        descriptor["actions"][unclaimed] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "input_constraints": {},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        reference["slots"]["arm"]["action"] = arm_action
+        reference["slots"]["configure"]["action"] = unclaimed
+        derived = _derive_from_document(
+            descriptor,
+            references_override=[reference],
+            extra_vendor_catalogs=catalogs,
+        )
+        settings = next(
+            blob
+            for name, blob in derived.resources.items()
+            if name.startswith("settings/")
+        )
+        schema = json.loads(settings)
+        assert schema["$id"] == f"urn:otdp:action:{unclaimed}:input"
+        assert "burst_count" in schema["properties"]
+        assert derived.unapplied_classes == ()
+
+    def test_schema_invalid_composed_doc_refuses(self) -> None:
+        document = self._composed_document(title=None)  # title is required
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_invalid_composed_class:"
+        ):
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+
+    def test_ambiguous_pin_refuses_naming_the_carried_keys(self) -> None:
+        document = self._composed_document()
+        document["actions"] = {}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="ambiguous pin"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "actions" in str(caught.value)
+        assert "urn" in str(caught.value)
+        assert "claims" in str(caught.value)
+
+    def test_claim_against_the_served_catalog_refuses(self) -> None:
+        document = self._composed_document(
+            claims=("otdp.logic_analyser.arm/1.0.0",)
+        )
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "served OTDP catalog" in str(caught.value)
+
+    def test_claim_against_a_pinned_row_refuses(self) -> None:
+        """Two pins: one vendor catalog describing auto-threshold, one
+        class claiming the same URN — the claim collides with the pinned
+        row and refuses naming the pinned document."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        composed = self._composed_document(
+            claims=("com.veridian-labs.auto-threshold/1.0.0",)
+        )
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            composed, catalog
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "pinned document" in str(caught.value)
+
+    def test_two_classes_one_claim_refuses(self) -> None:
+        first = self._composed_document()
+        second = self._composed_document(urn="otdp.action.veridian_alt/1.0.0")
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            first, second
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "both class" in str(caught.value)
+
+    def test_one_class_urn_in_two_pins_refuses(self) -> None:
+        first = self._composed_document()
+        second = self._composed_document()
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(
+            first, second
+        )
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_claim_conflict:"
+        ) as caught:
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+        assert "two pinned documents" in str(caught.value)
+
+    def test_side_effect_under_refuses(self) -> None:
+        """The S20 direction at the class layer: a class declaring
+        side_effect none under a descriptor action declaring
+        state_change under-classifies and refuses (over-classification
+        stays legal)."""
+        document = self._composed_document(side_effect="none")
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        with pytest.raises(
+            ClassRefusal, match="^classref_composed_side_effect_under:"
+        ):
+            derive_attachment(
+                descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+            )
+
+    def test_shapeless_pin_is_disclosed_as_ignored(self) -> None:
+        """A digest-valid pin matching neither shape discriminator
+        contributes nothing and is DISCLOSED (never silently dropped)."""
+        document = {"catalog_version": "1.0.0", "vendor": "com.veridian-labs"}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.ignored_pins == ("composed-0.json",)
+
+    def test_empty_actions_pin_is_disclosed(self) -> None:
+        document: dict[str, Any] = {"actions": {}}
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(document)
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        assert derived.empty_action_pins == ("composed-0.json",)
+
+    def test_stray_composed_class_key_is_stripped_not_laundered(self) -> None:
+        """N2: composed provenance has exactly one writer — the composed
+        walk. A vendor-catalog action row carrying a stray
+        ``composed_class`` key is stripped and resolves CATALOG, never a
+        laundered composed label."""
+        catalog = json.loads((FIXTURES / "vendor-catalog.json").read_bytes())
+        catalog["actions"]["com.veridian-labs.auto-threshold/1.0.0"][
+            "composed_class"
+        ] = "otdp.action.veridian_fake/1.0.0"
+        descriptor_raw, catalogs = self._descriptor_with_composed_pin(catalog)
+        # The helper drops the un-pinned vendor action from the declared
+        # set; this arm is exactly about that row — re-declare it.
+        descriptor = json.loads(descriptor_raw)
+        descriptor["actions"]["com.veridian-labs.auto-threshold/1.0.0"] = {
+            "binding": {"kind": "adapter", "key": "fixture"},
+            "input_constraints": {},
+            "timeout_ms": 5000,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+        descriptor_raw = json.dumps(descriptor).encode()
+        derived = derive_attachment(
+            descriptor_raw, corpus=corpus_root(), vendor_catalogs=catalogs
+        )
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions["com.veridian-labs.auto-threshold/1.0.0"] == (
+            "catalog",
+            None,
+        )
+
+
+class TestAcceptanceM400:
+    """The three-layer acceptance tag (issue #556 Track A, design §7):
+    the m400-shaped fixture — a mostly-DAQ device with one composed and
+    one residual action, its triple generated from the pinned v0.21.0
+    expander beside its composed-class pin — derives with zero
+    refusals, every declared action resolved, and the three layers
+    distinguishable on the real path."""
+
+    _BURST = "com.meridian.m400.burst_mode/1.0.0"
+    _CLASS = "otdp.action.meridian_burst/1.0.0"
+    _SELF_CAL = "com.meridian.m400.self_cal/1.0.0"
+
+    def test_gm1_every_declared_action_resolves(self) -> None:
+        """G-M1: the acceptance fixture derives with zero refusals AND
+        100% of its declared actions carry a non-null resolution — the
+        denominator derived from the descriptor document, never a
+        literal count."""
+        derived = _derive("m400")
+        descriptor = json.loads((FIXTURES / "descriptor-m400.json").read_bytes())
+        declared = set(descriptor["actions"])
+        assert declared, "the fixture declares actions"
+        assert {urn for urn, _r, _c in derived.resolutions} == declared
+        assert all(
+            resolution in ("catalog", "composed", "custom")
+            for _urn, resolution, _class in derived.resolutions
+        )
+        assert derived.ignored_pins == ()
+        assert derived.unapplied_classes == ()
+        assert derived.empty_action_pins == ()
+
+    def test_gm3_the_layers_are_distinguishable(self) -> None:
+        """G-M3: one burst_mode-shaped URN derives ``custom`` with no
+        pin, ``composed`` with the pin, and a served-namespaced sibling
+        derives ``catalog`` — three derivations over the real path,
+        three asserted resolutions, the composed leg naming its class."""
+        descriptor = json.loads((FIXTURES / "descriptor-m400.json").read_bytes())
+        composed_pin = next(
+            row
+            for row in descriptor["contracts"]
+            if str(row["id"]) == "urn:meridian:composed-burst:1.0.0"
+        )
+        descriptor["contracts"].remove(composed_pin)
+        derived = _derive_from_document(descriptor)
+        assert dict(
+            (urn, (resolution, class_urn))
+            for urn, resolution, class_urn in derived.resolutions
+        )[self._BURST] == ("custom", None)
+        derived = _derive("m400")
+        resolutions = {
+            urn: (resolution, class_urn)
+            for urn, resolution, class_urn in derived.resolutions
+        }
+        assert resolutions[self._BURST] == ("composed", self._CLASS)
+        assert resolutions[self._SELF_CAL] == ("custom", None)
+        assert resolutions["otdp.daq.arm/1.0.0"] == ("catalog", None)
+
+    def test_the_custom_section_renders_beside_the_main_section(self) -> None:
+        """The device-features page partitions: the catalogued and
+        composed actions in the main section, the residual member in the
+        custom section — each action's controls carry its own field
+        rows."""
+        derived = _derive("m400")
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        sections = {section["id"]: section for section in features["sections"]}
+        assert set(sections) == {
+            "device-features-section",
+            "device-features-custom",
+        }
+        main_fields = [
+            node.get("field")
+            for node in sections["device-features-section"]["children"]
+        ]
+        assert "burst_count" in main_fields
+        custom_children = sections["device-features-custom"]["children"]
+        assert [
+            (node.get("kind"), node.get("field")) for node in custom_children
+        ] == [("text", "channel"), ("button", None)]
+
+
+class TestRefusalSplit:
+    """The refusal split (issue #556 Track A, design §3.1): every integrity
+    arm fires with its own code, mirroring the SDK expander at the v0.21.0
+    pin. The pre-split code wore ``classref_unknown_action`` for all of
+    these; the split keeps that code for exactly ONE condition (the D4
+    reference-slot arm below) and nothing else."""
+
+    def test_not_admitted_pin_refuses_classref_vendor_catalog_unreadable(
+        self,
+    ) -> None:
+        """The gateway-specific resolution fault keeps its own detail
+        sentence under the SDK's ``classref_vendor_catalog_unreadable``
+        code — the admission store is the gateway's equivalent of the
+        SDK's unreadable pinned file (the module docstring's disclosed
+        divergence)."""
+        descriptor_raw = (FIXTURES / "descriptor-f1.json").read_bytes()
+        with pytest.raises(
+            ClassRefusal, match="^classref_vendor_catalog_unreadable:"
+        ) as caught:
+            derive_attachment(descriptor_raw, corpus=corpus_root(), vendor_catalogs={})
+        assert "is not admitted" in str(caught.value)
+
+    def test_tampered_pin_bytes_refuse_classref_vendor_catalog_digest_mismatch(
+        self,
+    ) -> None:
+        """Pinned bytes that fail their digest are an integrity fault —
+        its own code since the split, never the recoverable gap's. The
+        map is keyed by the descriptor's PIN (the resolution lookup's
+        own key) with tampered bytes as the value, so the arm exercises
+        the digest check itself — keying by the tampered bytes' own
+        digest would miss the lookup and fire the not-admitted arm
+        instead (the pre-split arm passed that way, asserting its code
+        for the wrong reason)."""
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        pin = str(
+            next(
+                row["sha256"]
+                for row in descriptor["contracts"]
+                if not str(row["id"]).startswith("urn:otdp:")
+            )
+        )
+        raw = (FIXTURES / "vendor-catalog.json").read_bytes() + b" "
+        with pytest.raises(
+            ClassRefusal, match="^classref_vendor_catalog_digest_mismatch:"
+        ):
+            derive_attachment(
+                (FIXTURES / "descriptor-f1.json").read_bytes(),
+                corpus=corpus_root(),
+                vendor_catalogs={pin: raw},
+            )
+
+    def test_non_object_pin_refuses_classref_vendor_catalog_invalid(self) -> None:
+        """A digest-valid pin whose document is not a JSON object refuses
+        typed (the SDK's B7 row: the pre-split walk crashed on a bare
+        AttributeError — never an SDK error face, never a 500)."""
+        raw = b"[1, 2, 3]\n"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        row = next(
+            item
+            for item in descriptor["contracts"]
+            if not str(item["id"]).startswith("urn:otdp:")
+        )
+        row["sha256"] = hashlib.sha256(raw).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_vendor_catalog_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={row["sha256"]: raw},
+            )
+
+    def test_non_object_actions_map_refuses_classref_vendor_catalog_invalid(
+        self,
+    ) -> None:
+        """A digest-valid object pin whose ``actions`` is not an object
+        refuses typed (the SDK's R4 row: ``{"actions": 5}`` used to crash
+        the walk at ``.items()``)."""
+        raw = b'{"actions": 5}\n'
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        row = next(
+            item
+            for item in descriptor["contracts"]
+            if not str(item["id"]).startswith("urn:otdp:")
+        )
+        row["sha256"] = hashlib.sha256(raw).hexdigest()
+        with pytest.raises(ClassRefusal, match="^classref_vendor_catalog_invalid:"):
+            derive_attachment(
+                json.dumps(descriptor).encode(),
+                corpus=corpus_root(),
+                vendor_catalogs={row["sha256"]: raw},
+            )
+
+    def test_unserved_profile_catalog_refuses_its_own_code(
+        self, tmp_path: Path
+    ) -> None:
+        """A descriptor pinning a version whose profile catalog the corpus
+        does not carry is a platform fault (the SDK's own split code
+        ``classref_profile_catalog_unserved``) — never the recoverable
+        gap's code."""
+        import shutil
+
+        corpus = tmp_path / "standards"
+        shutil.copytree(corpus_root(), corpus)
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        catalog = corpus / "otdp" / str(descriptor["otdp_version"])
+        catalog.joinpath("device-profile-catalog.json").unlink()
+        with pytest.raises(ClassRefusal, match="^classref_profile_catalog_unserved:"):
+            derive_attachment(
+                (FIXTURES / "descriptor-f1.json").read_bytes(), corpus=corpus
+            )
+
+    def test_absent_profile_refuses_classref_profile_absent(self) -> None:
+        """A reference whose profile the served catalog does not carry is
+        a platform fault — re-coded ``classref_profile_absent`` (the
+        SDK's own code), still refusing."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["profile_id"] = "otdp.meridian_ghost/1.0.0"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        descriptor["profiles"].append("otdp.meridian_ghost/1.0.0")
+        with pytest.raises(ClassRefusal, match="^classref_profile_absent:"):
+            _derive_from_document(descriptor, references_override=[reference])
+
+    def test_slot_naming_an_unserved_urn_keeps_classref_unknown_action(self) -> None:
+        """The D4 corpus fault SURVIVES the retirement of its own code:
+        a reference slot naming an URN absent from every served catalog
+        is the ONE condition that still refuses
+        ``classref_unknown_action`` gateway-side."""
+        reference = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        reference["slots"]["abort"]["action"] = "otdp.logic_analyser.ghost/1.0.0"
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^classref_unknown_action:"):
+            _derive_from_document(descriptor, references_override=[reference])
+
+    def test_slot_conflicts_fire_before_the_profile_claims_check(self) -> None:
+        """The SDK's position (``derive_ui`` runs ``_check_slot_conflicts``
+        immediately after reference resolution): a multi-fault descriptor —
+        a URN claimed by named slots in two references AND a profile the
+        descriptor does not claim — raises the slot-conflict code both
+        sides, never the later check's."""
+        first = json.loads(
+            (
+                corpus_root()
+                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+            ).read_bytes()
+        )
+        second = json.loads(json.dumps(first))
+        second["profile_id"] = "otdp.meridian_ghost/1.0.0"
+        for key, slot in second["slots"].items():
+            if slot.get("action") == "otdp.logic_analyser.abort/1.0.0":
+                second["slots"][f"ghost-{key}"] = slot
+                del second["slots"][key]
+                break
+        descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
+        with pytest.raises(ClassRefusal, match="^classref_profile_slot_conflict:"):
+            _derive_from_document(
+                descriptor, references_override=[first, second]
             )
 
 
@@ -860,15 +1875,22 @@ def _derive_from_document(
     document: dict[str, Any],
     *,
     references_override: list[dict[str, Any]] | None = None,
+    extra_vendor_catalogs: dict[str, bytes] | None = None,
 ) -> DerivedAttachment:
     """A raw-bytes derivation with the vendor catalog admitted, for the
-    refusal arms that mutate the descriptor document."""
+    refusal arms that mutate the descriptor document. Composed-class
+    arms admit their pinned documents through
+    ``extra_vendor_catalogs`` (the admission resolution keyed by
+    digest)."""
     descriptor_raw = json.dumps(document).encode()
     decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
+    catalogs = _vendor_catalogs()
+    if extra_vendor_catalogs is not None:
+        catalogs.update(extra_vendor_catalogs)
     return derive_attachment(
         descriptor_raw,
         corpus=corpus_root(),
-        vendor_catalogs=_vendor_catalogs(),
+        vendor_catalogs=catalogs,
         decoder_docs={hashlib.sha256(decoder_raw).hexdigest(): decoder_raw},
         references_override=references_override,
     )
