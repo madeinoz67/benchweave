@@ -535,6 +535,9 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # bump (2026-10-25, gateway issue #556 track B) joins compliant the
     # same way: the SDK lock at the gitlink (88dcc4d, v0.21.0) carries
     # plugin-ui-class-reference 0.4.0, the predecessor's completed SDK leg.
+    # The children-ceiling removal (2026-10-26, gateway issue #560) joins
+    # the same way: the SDK lock at the gitlink (0d4b44d, v0.22.0) carries
+    # plugin-ui-class-reference 0.5.0, the predecessor's completed SDK leg.
     # The scratch family above carries the non-vacuity burden; this row
     # pins the deployment state — the judged set's shape, and a
     # non-compliant future bump still refuses by name below.
@@ -548,5 +551,6 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
         ("plugin-ui-class-reference", "0.3.0", "0.2.0"),
         ("plugin-ui-class-reference", "0.4.0", "0.3.0"),
         ("plugin-ui-class-reference", "0.5.0", "0.4.0"),
+        ("plugin-ui-class-reference", "0.6.0", "0.5.0"),
     ]
     assert check_train_windows(ROOT) == ()
