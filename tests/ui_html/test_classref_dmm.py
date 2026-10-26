@@ -50,7 +50,7 @@ from classref_census import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.5.0"
+FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.6.0"
 REFERENCE = FAMILY_DIR / "class-dmm.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-dmm.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-dmm.html"

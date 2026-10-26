@@ -519,9 +519,11 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "issue #541; design record 2026-10-22) in the same arc, then "
             "0.4.0->0.5.0 with the composed-member MINOR's corpus-pin re-pin "
             "(gateway issue #556 track B; design record 2026-10-25) in the "
-            "same arc",
+            "same arc, then 0.5.0->0.6.0 with the children-ceiling removal's "
+            "corpus-pin re-pin (gateway issue #560; the owner ruling: no cap "
+            "or limit on vendor features) in the same arc",
             1,
-            ("0.5.0",),
+            ("0.6.0",),
         ),
         "src/benchweave/presentation/panels.py": (
             "the classref-logic-analyser panel's authored corpus_pin — the "
@@ -539,9 +541,12 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "#541; design record 2026-10-22) in the same arc as the "
             "classref.py row, then 0.4.0->0.5.0 with the composed-member "
             "MINOR's corpus-pin re-pin (gateway issue #556 track B; design "
-            "record 2026-10-25) in the same arc",
+            "record 2026-10-25) in the same arc, then 0.5.0->0.6.0 with "
+            "the children-ceiling removal's corpus-pin re-pin (gateway "
+            "issue #560; the owner ruling: no cap or limit on vendor "
+            "features) in the same arc",
             1,
-            ("0.5.0",),
+            ("0.6.0",),
         ),
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "

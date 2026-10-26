@@ -840,7 +840,7 @@ class TestRefusals:
         §3.3's ``classref_unknown_slot``): a page binding a slot key absent
         from the reference's slots refuses."""
         reference = json.loads(
-            (corpus_root() / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json")
+            (corpus_root() / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json")
             .read_bytes()
         )
         reference["pages"][0]["binding_slots"].append("ghost-slot")
@@ -1228,7 +1228,7 @@ class TestResidualResolution:
         reference = json.loads(
             (
                 corpus_root()
-                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+                / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
             ).read_bytes()
         )
         reference["layouts"].append(
@@ -1409,7 +1409,7 @@ class TestComposedResolution:
         reference = json.loads(
             (
                 corpus_root()
-                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+                / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
             ).read_bytes()
         )
         arm_action = str(reference["slots"]["arm"]["action"])
@@ -1803,7 +1803,7 @@ class TestRefusalSplit:
         reference = json.loads(
             (
                 corpus_root()
-                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+                / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
             ).read_bytes()
         )
         reference["profile_id"] = "otdp.meridian_ghost/1.0.0"
@@ -1820,7 +1820,7 @@ class TestRefusalSplit:
         reference = json.loads(
             (
                 corpus_root()
-                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+                / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
             ).read_bytes()
         )
         reference["slots"]["abort"]["action"] = "otdp.logic_analyser.ghost/1.0.0"
@@ -1837,7 +1837,7 @@ class TestRefusalSplit:
         first = json.loads(
             (
                 corpus_root()
-                / "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+                / "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
             ).read_bytes()
         )
         second = json.loads(json.dumps(first))
@@ -1881,7 +1881,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
         tampered = (corpus / relpath).read_bytes() + b"\n"
         (corpus / relpath).write_bytes(tampered)
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -1892,7 +1892,7 @@ class TestReferenceIntegrity:
         self, tmp_path: Path
     ) -> None:
         corpus = self._tampered_corpus(tmp_path)
-        relpath = "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
+        relpath = "plugin-ui-class-reference/0.6.0/class-logic_analyser.json"
         (corpus / relpath).write_bytes(b"{not json")
         self._re_pin(corpus, relpath, b"{not json")
         descriptor = json.loads((FIXTURES / "descriptor-f1.json").read_bytes())
@@ -1923,3 +1923,142 @@ def _derive_from_document(
         decoder_docs={hashlib.sha256(decoder_raw).hexdigest(): decoder_raw},
         references_override=references_override,
     )
+
+
+class TestVendorFeaturesCeilingRemoval:
+    """Issue #560: a device with many real vendor actions derives a
+    device-features section whose children grow with the action count —
+    staging nodes per expressible field plus the button — so the 0.5.0
+    per-section children ceiling (16) refused real devices. The measured
+    evidence: 8 vendor actions with 2 fields each emit 24 children in one
+    section and were refused ``classref_layout_invalid``; the 0.6.0 family
+    removes the ceiling (density is a renderer concern, never a
+    validation one). Invented vendor throughout — fixture vocabulary
+    only, never a real product."""
+
+    _VENDOR = "com.lodestar.vx480"
+    _ACTION_COUNT = 8
+    _FIELDS_PER_ACTION = 2
+
+    def _descriptor_and_catalog(self) -> tuple[bytes, dict[str, bytes]]:
+        """The evidence-shaped device (invented vendor): the m400 daq-class
+        descriptor minus its vendor actions, plus eight catalogued vendor
+        actions each declaring two expressible required fields (a numeric
+        and a free text) — 8 x (2 staging nodes + 1 button) = 24 children
+        in the device-features section, one page, no custom members."""
+        descriptor = json.loads(
+            (FIXTURES / "descriptor-m400.json").read_bytes()
+        )
+        descriptor["id"] = "dev.lodestar.vx480"
+        descriptor["display_name"] = "Lodestar VX-480 (fixture)"
+        descriptor["description"] = (
+            "Fixture vocabulary only; the issue #560 evidence shape — a "
+            "daq-class device with eight catalogued vendor actions of two "
+            "fields each. Not a verified real device or implemented adapter."
+        )
+        descriptor["identity"]["manufacturer"] = "Lodestar Instruments"
+        descriptor["identity"]["model"] = "VX-480"
+        descriptor["integration"]["adapter"]["entry_point"] = (
+            "lodestar_vx480_plugin:create_plugin"
+        )
+        for urn in (
+            "com.meridian.m400.burst_mode/1.0.0",
+            "com.meridian.m400.self_cal/1.0.0",
+        ):
+            del descriptor["actions"][urn]
+        del descriptor["contracts"][2]  # the composed-burst pin
+        actions: dict[str, Any] = {}
+        for index in range(self._ACTION_COUNT):
+            urn = f"{self._VENDOR}.feature_{index}/1.0.0"
+            descriptor["actions"][urn] = {
+                "binding": {"kind": "adapter", "key": f"feature_{index}"},
+                "input_constraints": {},
+                "timeout_ms": 5000,
+                "side_effect": "state_change",
+                "cancellable": True,
+                "retry": "never",
+            }
+            actions[urn] = {
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        f"level_{index}_v": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 12.0,
+                        },
+                        f"tag_{index}": {"type": "string"},
+                    },
+                    "required": [f"level_{index}_v", f"tag_{index}"],
+                    "additionalProperties": False,
+                },
+                "side_effect": "state_change",
+            }
+        catalog = {
+            "catalog_version": "1.0.0",
+            "vendor": self._VENDOR,
+            "actions": actions,
+        }
+        catalog_raw = json.dumps(catalog).encode()
+        descriptor["contracts"].append(
+            {
+                "id": "urn:lodestar:vendor-catalog:1.0.0",
+                "path": "vendor-catalog.json",
+                "sha256": hashlib.sha256(catalog_raw).hexdigest(),
+            }
+        )
+        return (
+            json.dumps(descriptor).encode(),
+            {hashlib.sha256(catalog_raw).hexdigest(): catalog_raw},
+        )
+
+    def test_evidence_device_derives_and_validates_end_to_end(self) -> None:
+        """The expander path that 0.5.0 refused succeeds end to end: the
+        derivation emits the 24-child device-features section and the
+        block validates against the ACTIVE corpus schema (the serve
+        path's ``classref_layout_invalid`` gate reads the same function).
+        RED under 0.5.0 — the block fails the children maxItems — and the
+        children arithmetic is pinned beside the verdict so the count
+        cannot silently change shape: 8 actions x 3 nodes each; the daq
+        class's own actions ride their slot pages (capture,
+        configuration), never this section."""
+        descriptor_raw, catalogs = self._descriptor_and_catalog()
+        decoder_raw = (FIXTURES / "decoder-uart.json").read_bytes()
+        derived = derive_attachment(
+            descriptor_raw,
+            corpus=corpus_root(),
+            vendor_catalogs=catalogs,
+            decoder_docs={
+                hashlib.sha256(decoder_raw).hexdigest(): decoder_raw
+            },
+        )
+        from benchweave.presentation.classref import validate_layout_block
+
+        block = derived.manifest["extensions"][
+            "plugin-ui-class-reference:layout"
+        ]
+        features = next(
+            page
+            for page in block["pages"]
+            if page["page_id"] == "device-features"
+        )
+        main = next(
+            section
+            for section in features["sections"]
+            if section["id"] == "device-features-section"
+        )
+        children = main["children"]
+        expected = self._ACTION_COUNT * (self._FIELDS_PER_ACTION + 1)
+        assert len(children) == expected, (
+            f"{len(children)} children in the device-features section; "
+            f"the evidence shape derives {expected} "
+            f"({self._ACTION_COUNT} actions x "
+            f"({self._FIELDS_PER_ACTION} staging + 1 button))"
+        )
+        assert len(children) > 16, "the evidence shape no longer crosses 16"
+        error = validate_layout_block(block, corpus=corpus_root())
+        assert error is None, (
+            "the derived layout block fails the active family schema: "
+            f"{error} — the vendor-features children ceiling (issue #560) "
+            "is still refusing real device surfaces"
+        )

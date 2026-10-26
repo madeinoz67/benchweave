@@ -4,9 +4,9 @@ Landing 1 of the class-reference program (design record
 ``.claude/deep-review/2026-10-14-classref-logic-analyser-design.md``); the
 L5 widening rides design record
 ``.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md``.
-The family's ACTIVE version ``plugin-ui-class-reference/0.5.0`` ships four
+The family's ACTIVE version ``plugin-ui-class-reference/0.6.0`` ships four
 machine schemas (``class-reference``, ``layout``, ``composed-action-class``
-and the 0.5.0 ``composed-member-declaration``, which this module's own arms
+and the ``composed-member-declaration`` (arrived 0.5.0), which this module's own arms
 load) and EIGHT class references — the founding ``class-logic_analyser.json``
 (re-stamped, zero content change), the L11 ``class-dc_psu.json`` (the first
 scalar/readings-shaped class; design record
@@ -14,7 +14,7 @@ scalar/readings-shaped class; design record
 ``class-dmm.json`` (the observation-pure class; design record
 ``.claude/deep-review/2026-10-19-classref-l12-dmm-design.md`` — the F4
 settlement rides the same record: ``series`` is REQUIRED on ``time_series``
-plots), and the L13-L17 classes. The 0.1.0, 0.2.0 and 0.4.0 predecessors stay
+plots), and the L13-L17 classes. The 0.1.0, 0.2.0, 0.4.0 and 0.5.0 predecessors stay
 digest-frozen — the retained-freeze arms below assert them. Every schema rule
 carries a valid and an invalid case; the reference-content tests pin the D2
 structure-not-data discipline and the D12a extension-seam namespace at the
@@ -32,17 +32,17 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.5.0"
+DIRECTORY = ROOT / "standards/plugin-ui-class-reference/0.6.0"
 REFERENCE = DIRECTORY / "class-logic_analyser.json"
 REFERENCE_PSU = DIRECTORY / "class-dc_psu.json"
 REFERENCE_DMM = DIRECTORY / "class-dmm.json"
 CLASS_REF_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.5.0/class-reference.schema.json"
+    "/0.6.0/class-reference.schema.json"
 )
 LAYOUT_ID = (
     "https://benchweave.dev/contracts/plugin-ui-class-reference"
-    "/0.5.0/layout.schema.json"
+    "/0.6.0/layout.schema.json"
 )
 LAYOUT_REF = f"{LAYOUT_ID}#/$defs/layout_page"
 # The plugin-ui manifest schema whose extensions seam carries the layout
@@ -93,7 +93,7 @@ def minimal_layout_page() -> dict[str, Any]:
 
 def minimal_reference(**overrides: Any) -> dict[str, Any]:
     document: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "profile_id": "otdp.logic_analyser/1.0.0",
         "title": "Class reference",
         "targets": {"plugin_ui": ">=0.3.1"},
@@ -127,7 +127,7 @@ def test_all_family_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = (
             "https://benchweave.dev/contracts/plugin-ui-class-reference"
-            f"/0.5.0/{name}.schema.json"
+            f"/0.6.0/{name}.schema.json"
         )
         assert schema["$id"] == expected
 
@@ -583,7 +583,7 @@ def test_controls_levels_match_the_class_ladder() -> None:
 
 def test_minimal_layout_document_validates() -> None:
     layout = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [minimal_layout_page()],
     }
     assert layout_validator().is_valid(layout)
@@ -592,7 +592,7 @@ def test_minimal_layout_document_validates() -> None:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda doc: doc.update(contract_version="0.2.0"),
+        lambda doc: doc.update(contract_version="0.5.0"),
         lambda doc: doc.update(pages=[]),
         lambda doc: doc["pages"][0].pop("page_id"),
         lambda doc: doc["pages"][0].update(sections=[]),
@@ -601,7 +601,7 @@ def test_minimal_layout_document_validates() -> None:
 )
 def test_layout_document_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout)
@@ -619,7 +619,7 @@ def test_layout_document_rules_refuse(mutate: Any) -> None:
 )
 def test_section_rules_refuse(mutate: Any) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [minimal_layout_page()],
     }
     mutate(layout["pages"][0]["sections"][0])
@@ -628,7 +628,7 @@ def test_section_rules_refuse(mutate: Any) -> None:
 
 def test_control_kinds_are_closed() -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -650,7 +650,7 @@ def test_control_kinds_are_closed() -> None:
 def test_text_body_is_bounded() -> None:
     body = "x" * 512
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -677,7 +677,7 @@ def test_text_body_is_bounded() -> None:
 )
 def test_layout_nodes_are_closed_world(node: dict[str, Any]) -> None:
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -696,7 +696,7 @@ def test_depth_is_bounded_at_three() -> None:
 
     leaf = node("inner", [{"binding_id": "arm", "kind": "button"}])
     three_deep: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [leaf])])]}
         ],
@@ -704,12 +704,183 @@ def test_depth_is_bounded_at_three() -> None:
     assert layout_validator().is_valid(three_deep)
     beyond = node("inner", [node("beyond", [{"body": "x"}])])
     four_deep: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {"page_id": "capture", "sections": [node("outer", [node("middle", [beyond])])]}
         ],
     }
     assert not layout_validator().is_valid(four_deep)
+
+
+# --- the 0.6.0 children-ceiling removal (gateway issue #560) ----------------------
+#
+# The owner ruling: there is no cap on vendor features. A device with any
+# number of real vendor actions derives a section whose children grow with
+# the action count (staging nodes plus the button), so a per-section
+# children ceiling refuses real devices — measured on a device with 8
+# vendor actions and 2 fields each: 24 children, refused by the 0.5.0
+# schema. The 0.6.0 bump removes ``maxItems`` from exactly the three
+# ``children`` arrays (section, nested_section, deep_section). The page
+# and section ceilings STAY: a vendor feature surface adds children,
+# never pages or sections. Density is a rendering concern, not a
+# validation one.
+#
+# Both directions read the two trees directly in one run: the ACTIVE tree
+# (DIRECTORY, whatever version it is) must admit 17 children at every
+# section depth, and the digest-frozen 0.5.0 tree must keep refusing them
+# — the retained version's refusal is frozen history (CON-7), never
+# re-stamped. The document versions derive from each schema's own
+# ``contract_version`` const, so these arms are sweep-free at future
+# bumps (obligation 18's closing clause: a new version-bearing literal is
+# a defect — derive it instead).
+
+FROZEN_050_LAYOUT = (
+    ROOT / "standards/plugin-ui-class-reference/0.5.0/layout.schema.json"
+)
+
+
+def _layout_validator_for(path: Path) -> Draft202012Validator:
+    schema = json.loads(path.read_bytes())
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _version_of(validator: Draft202012Validator) -> str:
+    schema = validator.schema
+    assert isinstance(schema, dict)
+    const = schema["properties"]["contract_version"]["const"]
+    return str(const)
+
+
+def _button(index: int) -> dict[str, Any]:
+    return {"binding_id": f"vendor-action-{index}", "kind": "button"}
+
+
+def _over_ceiling_layout(children: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "pages": [
+            {
+                "page_id": "device-features",
+                "sections": [
+                    {
+                        "id": "features",
+                        "surface": "raised",
+                        "children": children,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param(lambda c: c, id="section"),
+        pytest.param(
+            lambda c: [
+                {
+                    "id": "nested",
+                    "surface": "raised",
+                    "children": c,
+                }
+            ],
+            id="nested-section",
+        ),
+        pytest.param(
+            lambda c: [
+                {
+                    "id": "nested",
+                    "surface": "raised",
+                    "children": [
+                        {
+                            "id": "deep",
+                            "surface": "raised",
+                            "children": c,
+                        }
+                    ],
+                }
+            ],
+            id="deep-section",
+        ),
+    ],
+)
+def test_children_ceiling_is_gone_at_every_section_depth(
+    wrap: Any,
+) -> None:
+    """RED against 0.5.0 (issue #560): 17 children at any of the three
+    section depths validate under the ACTIVE schema and are refused by the
+    frozen 0.5.0 schema — the same document, both trees, one run. 17 is
+    one past the removed ceiling of 16, sized to the measured evidence
+    (8 vendor actions x 2 fields each = 24 children)."""
+    active = _layout_validator_for(DIRECTORY / "layout.schema.json")
+    frozen = _layout_validator_for(FROZEN_050_LAYOUT)
+    document = _over_ceiling_layout(wrap([_button(i) for i in range(17)]))
+    document["contract_version"] = _version_of(active)
+    assert active.is_valid(document), (
+        "the active layout schema still refuses 17 children — the "
+        "children ceiling removal (issue #560) is not in the active tree"
+    )
+    frozen_document = {**document, "contract_version": _version_of(frozen)}
+    assert not frozen.is_valid(frozen_document), (
+        "the frozen 0.5.0 schema admitted a document its children "
+        "maxItems refuses — the retained tree moved"
+    )
+
+
+def test_page_and_section_ceilings_stay() -> None:
+    """What the bump does NOT remove: the page ceiling (16) and the
+    section ceiling (16) stay — a vendor feature surface adds children,
+    never pages or sections, so the arrays that bound page count and
+    section count keep their maxItems. Green before and after the bump by
+    construction; this arm pins that the removal did not over-remove."""
+    active = _layout_validator_for(DIRECTORY / "layout.schema.json")
+    version = _version_of(active)
+    button = {"binding_id": "arm", "kind": "button"}
+    section = {"id": "s", "surface": "raised", "children": [button]}
+    seventeen_pages: dict[str, Any] = {
+        "contract_version": version,
+        "pages": [
+            {"page_id": f"p{i}", "sections": [dict(section)]} for i in range(17)
+        ],
+    }
+    assert not active.is_valid(seventeen_pages)
+    seventeen_sections: dict[str, Any] = {
+        "contract_version": version,
+        "pages": [
+            {
+                "page_id": "p",
+                "sections": [
+                    {**dict(section), "id": f"s{i}"} for i in range(17)
+                ],
+            }
+        ],
+    }
+    assert not active.is_valid(seventeen_sections)
+    # The ceilings that stay are exactly 16: 16 pages and 16 sections
+    # admit (17 is one past each bound).
+    assert active.is_valid(
+        {
+            "contract_version": version,
+            "pages": [
+                {"page_id": f"p{i}", "sections": [dict(section)]}
+                for i in range(16)
+            ],
+        }
+    )
+    assert active.is_valid(
+        {
+            "contract_version": version,
+            "pages": [
+                {
+                    "page_id": "p",
+                    "sections": [
+                        {**dict(section), "id": f"s{i}"} for i in range(16)
+                    ],
+                }
+            ],
+        }
+    )
 
 
 # --- the admission fold: adversary lanes 1 and 2 (RED-first batch) ---------------
@@ -783,7 +954,7 @@ def test_seventeen_layout_pages_refuse_both_ways() -> None:
     as a standalone block AND as reference layouts."""
     pages = [minimal_layout_page() for _ in range(17)]
     assert not layout_validator().is_valid(
-        {"contract_version": "0.5.0", "pages": pages}
+        {"contract_version": "0.6.0", "pages": pages}
     )
     assert not reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -793,7 +964,7 @@ def test_sixteen_layout_pages_admit_both_ways() -> None:
     sixteen pages admit on both writers."""
     pages = [minimal_layout_page() for _ in range(16)]
     assert layout_validator().is_valid(
-        {"contract_version": "0.5.0", "pages": pages}
+        {"contract_version": "0.6.0", "pages": pages}
     )
     assert reference_validator().is_valid(minimal_reference(layouts=pages))
 
@@ -818,7 +989,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
     kinds; the trio admit as control nodes (RED against the 0.1.0 schema,
     which refuses them — the widening is what admits)."""
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -838,7 +1009,7 @@ def test_control_kinds_widen_to_the_input_trio(kind: str) -> None:
 def test_control_kinds_still_admit_the_founding_kinds() -> None:
     """The widening is additive: the founding kinds keep admitting."""
     layout: dict[str, Any] = {
-        "contract_version": "0.5.0",
+        "contract_version": "0.6.0",
         "pages": [
             {
                 "page_id": "capture",
@@ -860,12 +1031,14 @@ def test_control_kinds_still_admit_the_founding_kinds() -> None:
 
 
 def test_retained_freeze_predecessor_dirs_still_exist() -> None:
-    """Copy-never-move: the 0.1.0, 0.2.0 and 0.4.0 family dirs and the 0.3.1
-    plugin-ui dir stay in the tree, digest-frozen by their corpus rows."""
+    """Copy-never-move: the 0.1.0, 0.2.0, 0.4.0 and 0.5.0 family dirs and
+    the 0.3.1 plugin-ui dir stay in the tree, digest-frozen by their
+    corpus rows."""
     for relpath in (
         "standards/plugin-ui-class-reference/0.1.0",
         "standards/plugin-ui-class-reference/0.2.0",
         "standards/plugin-ui-class-reference/0.4.0",
+        "standards/plugin-ui-class-reference/0.5.0",
         "standards/plugin-ui/0.3.1",
     ):
         assert (ROOT / relpath).is_dir(), f"predecessor dir removed: {relpath}"
@@ -886,6 +1059,13 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
           "class-logic_analyser.json")),
         ("plugin-ui-class-reference/0.4.0",
          ("class-reference.schema.json", "composed-action-class.schema.json")),
+        ("plugin-ui-class-reference/0.5.0",
+         ("class-reference.schema.json", "layout.schema.json",
+          "composed-action-class.schema.json",
+          "composed-member-declaration.schema.json",
+          "class-logic_analyser.json", "class-dc_psu.json", "class-dmm.json",
+          "class-oscilloscope.json", "class-function_generator.json",
+          "class-electronic_load.json", "class-smu.json", "class-daq.json")),
         ("plugin-ui/0.3.1",
          ("ui-manifest.schema.json", "binding-catalogue.schema.json",
           "configuration-preset.schema.json", "presentation-envelope.schema.json")),
@@ -898,7 +1078,7 @@ def test_retained_freeze_predecessor_rows_verify_against_bytes() -> None:
                 f"retained row diverges from its frozen bytes: {relpath}"
             )
             checked += 1
-    assert checked == 12, f"expected 12 predecessor rows, checked {checked}"
+    assert checked == 24, f"expected 24 predecessor rows, checked {checked}"
 
 
 def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
@@ -922,20 +1102,36 @@ def test_retained_freeze_predecessor_schemas_keep_their_own_consts() -> None:
     assert layout["$defs"]["control"]["properties"]["kind"]["enum"] == [
         "button", "numeric", "rotary",
     ]
+    # The 0.5.0 predecessor (frozen at the 0.6.0 bump) keeps its own consts
+    # AND its own children ceiling — the retired cap is frozen history too.
+    family_050 = json.loads(
+        (ROOT / "standards/plugin-ui-class-reference/0.5.0/layout.schema.json")
+        .read_bytes()
+    )
+    assert family_050["properties"]["contract_version"]["const"] == "0.5.0"
+    for defs in ("section", "nested_section", "deep_section"):
+        assert family_050["$defs"][defs]["properties"]["children"]["maxItems"] == 16
     manifest_schema = json.loads(
         (ROOT / "standards/plugin-ui/0.3.1/ui-manifest.schema.json").read_bytes()
     )
     assert manifest_schema["properties"]["contract_version"]["const"] == "0.3.1"
 
 
-# --- copy fidelity against the frozen 0.4.0 predecessor (B2 fold, F3) ------------
+# --- copy fidelity against the frozen 0.5.0 predecessor (issue #560's bump) ------
 #
-# The verbatim-lift arms compare two 0.5.0 files with each other, so an
+# The verbatim-lift arms compare two 0.6.0 files with each other, so an
 # edit applied identically to BOTH sides of a lift keeps every one of them
 # green (the refute's equal-pair sabotage). This arm anchors each
-# re-stamped 0.5.0 machine file to the digest-frozen 0.4.0 bytes instead.
+# re-stamped 0.6.0 machine file to the digest-frozen 0.5.0 bytes instead.
+# The 0.6.0 delta class is WIDER than a re-stamp: layout.schema.json also
+# removes exactly the three per-section ``children`` ``maxItems`` and
+# states the honest bounds in its description (issue #560) — both declared
+# below, so anything beyond re-stamp plus the declared edits is caught.
+# The previous predecessor's equality (0.5.0 == 0.4.0 modulo its re-stamp)
+# is frozen history: both trees are digest-pinned by their corpus rows and
+# verified by the retained-freeze arms, so it needs no live comparison.
 
-PREDECESSOR = ROOT / "standards/plugin-ui-class-reference/0.4.0"
+PREDECESSOR = ROOT / "standards/plugin-ui-class-reference/0.5.0"
 CLASS_FILES = (
     "class-daq.json",
     "class-dc_psu.json",
@@ -946,40 +1142,62 @@ CLASS_FILES = (
     "class-oscilloscope.json",
     "class-smu.json",
 )
-FAMILY_SCHEMAS = (
+STAMP_ONLY_SCHEMAS = (
     "class-reference.schema.json",
-    "layout.schema.json",
     "composed-action-class.schema.json",
+    "composed-member-declaration.schema.json",
 )
 
 
-def test_restamp_fidelity_every_050_machine_file_equals_040_modulo_the_restamp() -> None:
+def test_restamp_fidelity_every_060_machine_file_equals_050_modulo_the_declared_edits() -> None:
     """Copy fidelity against the frozen predecessor: every re-stamped
-    machine file in 0.5.0 equals its 0.4.0 counterpart modulo the declared
+    machine file in 0.6.0 equals its 0.5.0 counterpart modulo the declared
     version-line re-stamp and NOTHING else — the eight class files change
-    exactly their one ``contract_version`` line, the three family schemas
-    change exactly their version-bearing lines (every occurrence of the
-    literal 0.4.0, and only that: $id, title, the version const and the
-    same-directory $ref). What this arm does NOT catch: an edit applied
-    identically to BOTH version trees preserves the modulo-re-stamp
-    equality and stays green here — that shape is caught by the
-    retained-freeze digest arms over the 0.4.0 rows and by
+    exactly their one ``contract_version`` line, the three stamp-only
+    schemas change exactly their version-bearing lines (every occurrence
+    of the literal 0.5.0, and only that: $id, title, the version const and
+    the cross-file $ref), and layout.schema.json carries the bump's one
+    declared machine change beside its re-stamp: the three ``children``
+    ``maxItems`` removals and the honest-bounds description. What this arm
+    does NOT catch: an edit applied identically to BOTH version trees
+    preserves the modulo equality and stays green here — that shape is
+    caught by the retained-freeze digest arms over the 0.5.0 rows and by
     ``test_manifest_hashes_match_contract_files`` over every row; and a
     hand-forged predecessor corpus row defeats those too, which is the
     repin-only discipline (CON-7), outside what any in-tree comparison arm
-    can catch. The new ``composed-member-declaration.schema.json`` has no
-    0.4.0 counterpart and is outside this arm by construction."""
+    can catch."""
     for name in CLASS_FILES:
         old = (PREDECESSOR / name).read_bytes()
         new = (DIRECTORY / name).read_bytes()
-        stamp = b'"contract_version": "0.4.0"'
+        stamp = b'"contract_version": "0.5.0"'
         assert old.count(stamp) == 1, name
-        assert new == old.replace(stamp, b'"contract_version": "0.5.0"'), name
-    for name in FAMILY_SCHEMAS:
+        assert new == old.replace(stamp, b'"contract_version": "0.6.0"'), name
+    for name in STAMP_ONLY_SCHEMAS:
         old = (PREDECESSOR / name).read_bytes()
         new = (DIRECTORY / name).read_bytes()
-        assert old.count(b"0.4.0") == new.count(b"0.5.0"), name
-        assert new == old.replace(b"0.4.0", b"0.5.0"), name
+        assert old.count(b"0.5.0") == new.count(b"0.6.0"), name
+        assert new == old.replace(b"0.5.0", b"0.6.0"), name
+    # layout.schema.json: the re-stamp plus the declared cap removals,
+    # compared structurally (the description edit makes replace-all the
+    # wrong instrument here) — every other node must be identical.
+    import copy
+
+    old_layout = json.loads((PREDECESSOR / "layout.schema.json").read_bytes())
+    new_layout = json.loads((DIRECTORY / "layout.schema.json").read_bytes())
+    expected = copy.deepcopy(old_layout)
+    expected["$id"] = old_layout["$id"].replace("0.5.0", "0.6.0")
+    expected["title"] = old_layout["title"].replace("0.5.0", "0.6.0")
+    expected["properties"]["contract_version"]["const"] = "0.6.0"
+    for defs in ("section", "nested_section", "deep_section"):
+        del expected["$defs"][defs]["properties"]["children"]["maxItems"]
+    expected["description"] = new_layout["description"]
+    assert expected == new_layout, "layout drifted beyond the declared 0.6.0 edits"
+    # The description delta is pinned by name: the false census claim is
+    # gone, the no-ceiling bound is stated.
+    assert "gate-time census" not in new_layout["description"]
+    assert "children <=16 per section" not in new_layout["description"]
+    assert "carries no ceiling" in new_layout["description"]
+    assert "renderer concern, not a validation one" in new_layout["description"]
 
 
 # --- the L11 widening and the dc_psu reference (issue #463 slot L11) ------------
@@ -1331,15 +1549,15 @@ class TestDmmReference:
 
 MEMBER_DECLARATION = (
     ROOT
-    / "standards/plugin-ui-class-reference/0.5.0"
+    / "standards/plugin-ui-class-reference/0.6.0"
     / "composed-member-declaration.schema.json"
 )
 
 
 def member_declaration_validator() -> Draft202012Validator:
     assert MEMBER_DECLARATION.is_file(), (
-        f"Missing {MEMBER_DECLARATION.name}: the 0.5.0 composed-member "
-        "declaration schema (issue #556 track B, slice B2)"
+        f"Missing {MEMBER_DECLARATION.name}: the composed-member "
+        "declaration schema (arrived 0.5.0; issue #556 track B, slice B2)"
     )
     schema = json.loads(MEMBER_DECLARATION.read_bytes())
     Draft202012Validator.check_schema(schema)
@@ -1378,7 +1596,7 @@ def test_member_declaration_carries_its_own_dialect_version() -> None:
     family bumps, so the family version is never a valid dialect value."""
     validator = member_declaration_validator()
     assert validator.is_valid(minimal_member_declaration(contract_version="0.1.0"))
-    assert not validator.is_valid(minimal_member_declaration(contract_version="0.5.0"))
+    assert not validator.is_valid(minimal_member_declaration(contract_version="0.6.0"))
     document = minimal_member_declaration()
     del document["contract_version"]
     assert not validator.is_valid(document)

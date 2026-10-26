@@ -333,7 +333,7 @@ def vendor_claiming_descriptor_556() -> JsonObject:
 
 def test_schema_valid_member_declaration_resolves_a_vendor_target() -> None:
     """The F1 seam, driven end to end: a composed-member declaration that
-    validates against the family's 0.5.0 schema, merged into the document
+    validates against the family's 0.6.0 schema, merged into the document
     set through the real ``merge_pinned_documents`` guard, resolves a
     vendor profile target through the real ``validate_presentation`` with
     ZERO target findings — the descriptor claims the vendor profile id, the
@@ -344,7 +344,7 @@ def test_schema_valid_member_declaration_resolves_a_vendor_target() -> None:
     schema = json.loads(
         (
             ROOT
-            / "standards/plugin-ui-class-reference/0.5.0"
+            / "standards/plugin-ui-class-reference/0.6.0"
             / "composed-member-declaration.schema.json"
         ).read_bytes()
     )

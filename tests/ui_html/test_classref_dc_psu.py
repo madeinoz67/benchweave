@@ -44,7 +44,7 @@ from classref_census import load_document as _load
 from classref_census import resolve_count as _resolve_count
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.5.0"
+FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.6.0"
 REFERENCE = FAMILY_DIR / "class-dc_psu.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-dc_psu.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-dc_psu.html"

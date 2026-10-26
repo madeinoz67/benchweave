@@ -73,10 +73,10 @@
         }
       },
       "plugin-ui-class-reference": {
-        "range": ">=0.1.0,<0.6.0",
+        "range": ">=0.1.0,<0.7.0",
         "yanked": {},
         "retired": [],
-        "note": "Range ceiling moved with the 0.5.0 admission (gateway issue #556 track B; design record .claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md section 10, the owner-decided one-document-one-bump motion): admitting the version entails the served range carries it - the same entailed-admission widening as the 0.4.0 admission (gateway issue #541 s2, >=0.1.0,<0.4.0 -> >=0.1.0,<0.5.0). No floor motion, no yank, no retirement; this note is the G-3 linked ruling reference.",
+        "note": "Range ceiling moved with the 0.6.0 admission (gateway issue #560; the owner ruling that there is no cap or limit on vendor features — the 0.5.0 per-section children ceiling refused a device with 8 vendor actions and 2 fields each at 24 children): admitting the version entails the served range carries it, the same entailed-admission widening as the 0.5.0 admission (gateway issue #556 track B, >=0.1.0,<0.5.0 -> >=0.1.0,<0.6.0) and the 0.4.0 admission before it (gateway issue #541 s2). No floor motion, no yank, no retirement; this note is the G-3 linked ruling reference.",
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.2.0/README.md"
@@ -89,6 +89,9 @@
           },
           "0.5.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.5.0/README.md"
+          },
+          "0.6.0": {
+            "migration_note": "standards/plugin-ui-class-reference/0.6.0/README.md"
           }
         }
       }
@@ -218,23 +221,23 @@
     },
     {
       "id": "plugin-ui-class-reference",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "status": "stable",
-      "released": "2026-10-25",
-      "supersedes": "0.4.0",
+      "released": "2026-10-26",
+      "supersedes": "0.5.0",
       "normative": [
-        "standards/plugin-ui-class-reference/0.5.0/class-reference.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/layout.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/composed-action-class.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/composed-member-declaration.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-logic_analyser.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-dc_psu.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-dmm.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-oscilloscope.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-function_generator.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-electronic_load.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-smu.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-daq.json"
+        "standards/plugin-ui-class-reference/0.6.0/class-reference.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/layout.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/composed-action-class.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/composed-member-declaration.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-logic_analyser.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-dc_psu.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-dmm.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-oscilloscope.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-function_generator.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-electronic_load.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-smu.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-daq.json"
       ]
     }
   ]

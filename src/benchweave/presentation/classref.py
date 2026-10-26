@@ -37,7 +37,14 @@ the design record §5's stated class: the W8 fold collapses each doubled
 staging numeric to one occurrence (f1/f2/f1-da's ``margin_ppm``/
 ``hysteresis_mv``, f6-smu's ``max_duration_ms``/``max_bytes``) and the
 envelope's manifest pin follows; f5-trio moved zero bytes and no
-completion-appended pair appeared (the W1 prediction held).
+completion-appended pair appeared (the W1 prediction held). At the 0.6.0
+family bump (0.5.0 -> 0.6.0, issue #560 — the per-section children
+ceiling removal) the six triples were re-stamped from THIS derivation
+over the new corpus: each manifest's layout ``contract_version`` and
+each envelope's derived manifest pin, a stamp-only delta; the derivation
+itself moved zero bytes, so the delta is the version line and its
+digest. The SDK's own vendored corpus carries 0.5.0 until the SDK leg
+re-stamps its side.
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -176,7 +183,7 @@ _FAMILY = "plugin-ui-class-reference"
 #: the registry's corpus pin (design record §3; R4's mitigation) cites the
 #: served family version, derived from the corpus manifest, never a
 #: literal in the render path (the constant documents the founding pin).
-FOUNDING_FAMILY_VERSION = "0.5.0"
+FOUNDING_FAMILY_VERSION = "0.6.0"
 
 
 class ClassRefusal(ValueError):

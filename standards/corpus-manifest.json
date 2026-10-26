@@ -1806,6 +1806,66 @@
       "path": "plugin-ui-class-reference/0.5.0/composed-member-declaration.schema.json",
       "source": "docs/plugin-ui-class-reference-v4/composed-member-declaration.schema.json",
       "sha256": "3c5835d406a74341d80a8cca786da2599dfdcc4baf4083e0be3ddf113ff4a9df"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-reference.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-reference.schema.json",
+      "sha256": "2f02a52dbe52af372e9a9b80841c0c94a60ff09b5e2dd6aa3b3d51951090af99"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/layout.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/layout.schema.json",
+      "sha256": "030e6fc68727d674c5371ad24ed845ffddc75ecfc566752c30254300f876f14d"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/composed-action-class.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/composed-action-class.schema.json",
+      "sha256": "ab9fed1dd7655b9d5fcb1684a1b9efcaf514186ed54d6f7bf739361e5389eff5"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-logic_analyser.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-logic_analyser.json",
+      "sha256": "9b73db149a879bf515cf54272439d6d7e39513c7be7cc9e6af19021e7ac96f9c"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-dc_psu.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-dc_psu.json",
+      "sha256": "f3f1f71d4db4b20aa8c378acd15e8a7d4c08b979698020b8e24a25eac4037077"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-dmm.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-dmm.json",
+      "sha256": "85ef30c7b79070fabd9dfd2f3845f616c8a5a2accf7803aa358ed064a8970209"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-oscilloscope.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-oscilloscope.json",
+      "sha256": "f74cc4ab0e6276098785cd673420454330119e95846bde2d36b4f7fb0b5e4c78"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-function_generator.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-function_generator.json",
+      "sha256": "5edc4158e36f4c6c02d29de963207db7aea24e3aa453617ea80924c24a906a03"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-electronic_load.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-electronic_load.json",
+      "sha256": "48cb3b393312dc5e3b00843f1048f1fa85aaa97a0e9c125c09943c1b5562a852"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-smu.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-smu.json",
+      "sha256": "b9617fbad4a8ac91b01e150badd60f5d3ccc4b2c9584e8cc4bea048a8ccdfd02"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/class-daq.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/class-daq.json",
+      "sha256": "39b2316fc2388010a3157659fe04ef632b69181c5fd112c64bf8e4c74a36928b"
+    },
+    {
+      "path": "plugin-ui-class-reference/0.6.0/composed-member-declaration.schema.json",
+      "source": "standards/plugin-ui-class-reference/0.5.0/composed-member-declaration.schema.json",
+      "sha256": "802f2068519afc3f04c27bdb2ee821c233609db628d53140cd3bae0d8ec3350d"
     }
   ]
 }
