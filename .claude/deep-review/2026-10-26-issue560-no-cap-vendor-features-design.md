@@ -465,3 +465,105 @@ family schemas (all bounds enumerated), v0.21.0 source extract (emission + H2 ve
 Gortex graph access was unavailable this session (checkout discovery pending); every read
 above is a native tool read. MuninnDB was down (socket errors); no memory was read or
 written.
+
+## 13. Dated addendum — the widened ruling (2026-10-26, post-refute fold; PR #565)
+
+Appended, never retrofitted: every section above keeps its bytes as written.
+This addendum supersedes PART of §2.3 and EXTENDS §4 and §8, and records two
+number corrections. Provenance: after this record was written, the maintainer
+ruled the owner's "no cap/limit on vendor features" directive reaches every
+ceiling that counts device content — not only the §2.1/§2.2 sites this record
+recommended. The gateway lane applied that ruling pre-merge, inside the same
+0.6.0 (one batch under GOVERNANCE's batching rule; no 0.6.1).
+
+### 13.1 The sixteen removed sites (supersedes §2.3's "they stay" list by name)
+
+§4's byte list named ten removal sites; the commit removes sixteen. The six
+beyond §4's list, five of which §2.3 ruled "they stay":
+
+- `class-reference.schema.json` `properties.pages.maxItems 64` — §2.3 kept it
+  as "what WE author in class documents". That rationale fails at composition:
+  a multi-class device CONCATENATES the per-class page templates into one
+  derived document, so the array holds derived device content, not our
+  authoring inventory alone (the refute's eight-class arm: 23 pages, clean).
+- `class-reference.schema.json` `properties.layouts.maxItems 16` — same
+  composition surface: each class's authored layout pages ride the merged
+  document; a six-class device carries every class's layouts.
+- `class-reference.schema.json` `properties.cannot_derive.maxItems 64` — one
+  row per underivable aspect; the row count scales with the feature surface,
+  so it is a content count, not structure.
+- `class-reference.schema.json` `$defs.expect.properties.forbid.maxItems 64`
+  — expectation entries declared per class and per energy-removing action;
+  they scale with the composed class count.
+- `class-reference.schema.json`
+  `$defs.component_expect.properties.must_not_be_wrapped_by.maxItems 16` —
+  same expect vocabulary, same scaling.
+- `class-reference.schema.json`
+  `$defs.page_template.properties.binding_slots.maxItems 256` — NEVER
+  CENSUSED by §2 at all (the census gap this fold closes): a page template's
+  slot bindings scale with the composed slot surface; a multi-class merge
+  with member injection carries every class's and member's slots on one page.
+
+Plus the ten §4 already named: layout `pages`, `sections` and the three
+`children` depths (§2.1); `members`, member `claims`, member `host_supplied`
+(§2.2); composed-action-class `claims` (§2.2); the reference `$defs.slot`
+`host_supplied` mirror (§2.2). Sixteen `maxItems` keywords in all; the parsed
+delta beyond them is the version lines and layout's `description` string.
+
+What §2.3 kept that STILL stays (the maintainer's ruled list governs; these
+are per-class authoring-vocabulary bounds that composition merges in memory,
+never into one corpus document): `slots.maxProperties 64`,
+`expect.components.maxProperties 64`, `expect.controls.maxProperties 256`,
+`component_expect.attribute.maxProperties 16`. §2.4's data-shape ceilings
+(lane 64, plot-series 16, plot_index 15) stay unchanged.
+
+### 13.2 §8 arms extended to the widened set — with honest provenance
+
+§8's original arms 1–6 were pre-committed before the motion and the refute
+verified them executable (40/100/300-operation devices derive; a 1200-child
+section composes; the eight-class composition makes 23 pages clean; a
+300-member declaration derives; the ablation bites; the disclosed red set is
+exactly the eight named tests). The widened sites need arms too:
+
+7. **Inventory-site arms (both directions, the two trees):** an over-cap
+   document at each of the six §13.1 class-reference sites — 65 pages, 17
+   layouts, 65 cannot-derive rows, 257 binding_slots, 65 forbid entries, 65
+   must_not_be_wrapped_by entries — validates under the 0.6.0 schema and is
+   refused by the digest-frozen 0.5.0 schema.
+8. **Widened-layout arms:** 17 pages and 17 sections per page admit under
+   0.6.0 and refuse under frozen 0.5.0; the seam stays one vocabulary with
+   two writers on both sides of the removal (the #563 F7 alignment, carried).
+9. **Consumer census:** no consumer (gateway mirror, ui-html renderer, SDK
+   expander/gate/server) carries a numeric ceiling on any removed collection
+   — the two plugin-ui-anchored plot constants excepted (§2.4).
+
+Provenance, stated honestly rather than borrowed: these arms were authored
+and proven RED against the pre-widening tree (uv-junit: 10 tests / 9
+failures / exit 1, the arms' own messages naming each still-refused site)
+BEFORE the removal was applied — but they landed in the SAME COMMIT as the
+widening, so at the record level they are same-commit pins, not
+pre-commitments. The record-level pre-commitment for the widened set is
+being written now, after the fact, and says so; arms 1–6 remain the only
+arms pre-committed before any mechanism existed.
+
+### 13.3 Number corrections (the review could not reproduce these)
+
+- **Parity fixture pairs: seven on the final tree** — dmm, f1, f1-da, f2,
+  f5-trio, f6-smu, m400; none excluded. The "six" in the first-pass arc
+  counted the pairs re-stamped at that moment (m400 included, dmm not yet
+  present); dmm arrived with the #563 rebase and was re-stamped in the same
+  arc, stamp-only. The classref.py provenance note is corrected in this fold
+  to carry the final-tree count.
+- **Fresh-cache mypy: 450 source files on the final tree.** The 447 figure
+  was measured on the pre-rebase tree and was true there; it is not the
+  final-tree number and the final evidence is 450 (exit 0 both trees).
+
+### 13.4 Design-time tier and keyword scan, re-run over the widened diff
+
+Tier 3 stands (the same three #254 Step-1 path rules: `standards/` corpus +
+manifests, JSON Schema files, the submodule pointer in the train). The
+keyword scan re-run over the REAL widened gateway diff (5,933 diff lines):
+`sha256` 36 (corpus rows, fixtures, test asserts), `migrate` 6 (this record
+and migration prose); `threading`/`asyncio`/`subprocess`/`hashlib`/
+`recovery`/`protection` — zero outside this record's own scan table. The
+keyword rule agrees with the path rules.
