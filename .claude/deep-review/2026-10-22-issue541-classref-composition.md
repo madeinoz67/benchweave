@@ -328,7 +328,12 @@ of a reviewer, so the survivors are listed before the build:
 - an effective schema narrowing to an empty admittance
   (`classref_effective_schema_empty`, unchanged);
 - a D7-class deviation attempt (unchanged — nothing stands between the operator
-  and abort).
+  and abort);
+- a composed member declaration whose `plot.over_slot` is not the member's
+  own `slot` key — `classref_composed_plot_slot_mismatch` (added 2026-10-25
+  by #556 track B's B2 fold: a declaration conflict, a document referring to
+  itself inconsistently; the code is enumerated in the track B record §3
+  rule 4, the family 0.5.0 schema description and README).
 
 Only **one** refusal is removed, and only in its knowledge-gap sense: "I do not
 know what this action admits" becomes "I derived it from the plugin's own

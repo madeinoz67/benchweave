@@ -899,7 +899,7 @@ class TestM400ServePath:
         assert "custom: com.meridian.m400.self_cal/1.0.0" in html
         assert (
             "composed: otdp.action.meridian_burst/1.0.0 (validated "
-            "against 0.4.0) supplies 1 declared action(s)" in html
+            "against 0.5.0) supplies 1 declared action(s)" in html
         )
 
     def test_gm2_every_presented_shape_produces_its_line(
@@ -964,7 +964,7 @@ class TestM400ServePath:
             "extra-0.json applied to no declared action",
             "pinned vendor catalog extra-2.json declares no actions",
             "composed: otdp.action.meridian_burst/1.0.0 (validated "
-            "against 0.4.0) supplies 1 declared action(s)",
+            "against 0.5.0) supplies 1 declared action(s)",
         ):
             assert line in html, line
 
@@ -1041,7 +1041,7 @@ def _schema_invalid_reference_corpus(tmp_path: Path) -> Path:
 
     probe = tmp_path / "standards"
     shutil.copytree(corpus_root(), probe)
-    relpath = "plugin-ui-class-reference/0.4.0/class-logic_analyser.json"
+    relpath = "plugin-ui-class-reference/0.5.0/class-logic_analyser.json"
     document = json.loads((probe / relpath).read_bytes())
     del document["slots"]
     raw = json.dumps(document, indent=2).encode()
@@ -1222,7 +1222,7 @@ def _admit_layout_attachment(
         ],
         "extensions": {
             "plugin-ui-class-reference:layout": {
-                "contract_version": "0.4.0",
+                "contract_version": "0.5.0",
                 "pages": layout_pages,
             }
         },
@@ -1982,7 +1982,7 @@ def test_panel_corpus_pin_mismatch_renders_the_honest_note(
     markup = panels.panel_markup(_PANEL_ID, context, corpus_path=corpus_root())
     assert markup is not None
     html = str(markup)
-    assert "0.4.0" in html and "9.9.9" in html
+    assert "0.5.0" in html and "9.9.9" in html
     assert 'data-bw-disabled-reason="no-authority"' not in html
 
 

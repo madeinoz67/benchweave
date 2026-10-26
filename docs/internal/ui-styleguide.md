@@ -264,13 +264,13 @@ The coverage census is mechanical: the canonical fixtures (`packages/ui-html/src
 
 ## Class-reference capture pages
 
-The class-reference standards family (plugin-ui-class-reference 0.4.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the only source for the pattern-library class page, the SDK expander, and the rendered-output gate. The expander turns a class-conformant descriptor into a normal plugin-ui manifest set. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
+The class-reference standards family (plugin-ui-class-reference 0.5.0) gives each OTDP device class a reference presentation, authored as data. One reference document per class is the only source for the pattern-library class page, the SDK expander, and the rendered-output gate. The expander turns a class-conformant descriptor into a normal plugin-ui manifest set. The design record (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`) carries the mechanism.
 
-The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.4.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.4/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
+The `class-capture` pattern-library page composes the `otdp.logic_analyser` capture-page composition from the §E.1 partials that the renderer already ships. The host does the composition. The page changes no renderer code and adds no new contract rows. Its data is the committed expansion of the family's founding reference (`standards/plugin-ui-class-reference/0.5.0/class-logic_analyser.json`) against the OTDP reference descriptor (`standards/otdp/0.2.4/examples/class-logic_analyser.json`). The drift guard (`tests/ui_html/test_classref_page.py`) re-derives the page's structure from those corpus files. An edit to a corpus file makes the drift guard fail until you regenerate the page. Lane identity is the declared position. Group labels are DECIMAL positional (`D1-D2`). The radix (hex default) governs the rendered values. Decoder lanes resolve only where the descriptor's pinned vectors resolve them.
 
 The `class-output` pattern-library page composes the `otdp.dc_psu`
 output-page composition the same way: the reference
-(`standards/plugin-ui-class-reference/0.4.0/class-dc_psu.json`, the L11
+(`standards/plugin-ui-class-reference/0.5.0/class-dc_psu.json`, the L11
 class) expanded against the OTDP reference descriptor
 (`standards/otdp/0.2.4/examples/class-dc_psu.json`), rendered from the
 §E.1 partials the renderer already ships — one reading tile per
@@ -289,7 +289,7 @@ slice's work) and the staged setpoint idiom is `cannot_derive`.
 
 The `class-readings` pattern-library page composes the `otdp.dmm`
 readings-page composition the same way: the reference
-(`standards/plugin-ui-class-reference/0.4.0/class-dmm.json`, the L12
+(`standards/plugin-ui-class-reference/0.5.0/class-dmm.json`, the L12
 class — observation-pure: no sourcing action, no directional safety
 surface, no capture view) expanded against the OTDP reference descriptor
 (`standards/otdp/0.2.4/examples/class-dmm.json`), rendered from the
@@ -311,7 +311,7 @@ fabricates none.
 
 The `class-waveform` pattern-library page composes the `otdp.oscilloscope`
 capture-page composition the same way: the reference
-(`standards/plugin-ui-class-reference/0.4.0/class-oscilloscope.json`, the
+(`standards/plugin-ui-class-reference/0.5.0/class-oscilloscope.json`, the
 L13 class — the sweep's first waveform-shaped one: capture view over the
 fetch dataset, acquisition-lifecycle run controls, no decode) expanded
 against the OTDP reference descriptor
@@ -338,7 +338,7 @@ page carries no data table.
 
 The `class-configuration` pattern-library page composes the
 `otdp.function_generator` configuration-page composition the same way:
-the reference (`standards/plugin-ui-class-reference/0.4.0/class-function_generator.json`,
+the reference (`standards/plugin-ui-class-reference/0.5.0/class-function_generator.json`,
 the L14 class — the sweep's first PURE SOURCE: no measurement action,
 so no observation binds and no plot template names an over-slot; two
 pages, zero layout blocks, zero numeric literals) expanded against the
@@ -367,7 +367,7 @@ the configuration page carries no plot.
 
 The `class-input` pattern-library page composes the
 `otdp.electronic_load` input-page composition the same way: the
-reference (`standards/plugin-ui-class-reference/0.4.0/class-electronic_load.json`,
+reference (`standards/plugin-ui-class-reference/0.5.0/class-electronic_load.json`,
 the L15 class — the sweep's first energy-ADMITTING instrument, the
 PSU's mirror over `sink`-role channels; zero vocabulary motion, the
 first sweep class since the analyser needing none) expanded against the
@@ -402,7 +402,7 @@ named deviation and no staged draw is fabricated.
 
 The `class-smu` pattern-library page composes the `otdp.smu`
 output-page composition the same way: the reference
-(`standards/plugin-ui-class-reference/0.4.0/class-smu.json`,
+(`standards/plugin-ui-class-reference/0.5.0/class-smu.json`,
 the L16 class — the PSU's shape over a THIRD channel role,
 `source_measure`; zero vocabulary motion, L12's zero-surface result
 second application and stronger) expanded against the OTDP reference
@@ -446,7 +446,7 @@ fallback serves this composition to that plugin the moment the batch
 lands; its descriptor bytes are vendored as a test fixture with the
 source named, and the conformance claim is executable —
 `tests/ui_html/test_classref_daq.py`). The reference
-(`standards/plugin-ui-class-reference/0.4.0/class-daq.json`, the L17
+(`standards/plugin-ui-class-reference/0.5.0/class-daq.json`, the L17
 class — zero vocabulary motion again; the batch's own `waveform`
 widening is load-bearing here) expanded against the OTDP reference
 descriptor, rendered from the §E.1 partials the renderer already
@@ -475,7 +475,7 @@ The standard compositions are the default every device gets, and the starting po
 
 Plugins declare pages, bindings, plots and exact registered panel identifiers. The host renders them. A plugin manifest cannot supply JavaScript, arbitrary CSS, permission, polling or a raw device command.
 
-Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI extension fields. The one governed exception is the class-reference family's namespaced `plugin-ui-class-reference:layout` block (plugin-ui-class-reference 0.4.0). The family schema is one vocabulary with two writers: a class-conformant descriptor's expansion, and a hand-authored block. Either writer may place layout structure in a manifest's namespaced `extensions` map. The canonical validator is extension-blind, so the family schema is the block's only validation authority; a host that does not know the namespace ignores the block and serves the manifest's plain pages (degrade by ignoring, never an error).
+Custom devices outside the current OTDP classes will use a separately versioned, bounded component-recipe contract. Until that contract lands, do not encode a private component tree in plugin UI extension fields. The one governed exception is the class-reference family's namespaced `plugin-ui-class-reference:layout` block (plugin-ui-class-reference 0.5.0). The family schema is one vocabulary with two writers: a class-conformant descriptor's expansion, and a hand-authored block. Either writer may place layout structure in a manifest's namespaced `extensions` map. The canonical validator is extension-blind, so the family schema is the block's only validation authority; a host that does not know the namespace ignores the block and serves the manifest's plain pages (degrade by ignoring, never an error).
 
 ## Exceptions
 

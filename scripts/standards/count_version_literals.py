@@ -516,9 +516,12 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "with the L11 dc_psu MINOR's corpus-pin re-pin (gateway issue "
             "#463 slot L11; design record 2026-10-18), then 0.3.0->0.4.0 with "
             "the composed-action-class MINOR's corpus-pin re-pin (gateway "
-            "issue #541; design record 2026-10-22) in the same arc",
+            "issue #541; design record 2026-10-22) in the same arc, then "
+            "0.4.0->0.5.0 with the composed-member MINOR's corpus-pin re-pin "
+            "(gateway issue #556 track B; design record 2026-10-25) in the "
+            "same arc",
             1,
-            ("0.4.0",),
+            ("0.5.0",),
         ),
         "src/benchweave/presentation/panels.py": (
             "the classref-logic-analyser panel's authored corpus_pin — the "
@@ -534,9 +537,11 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "design record 2026-10-18), then 0.3.0->0.4.0 with the "
             "composed-action-class MINOR's corpus-pin re-pin (gateway issue "
             "#541; design record 2026-10-22) in the same arc as the "
-            "classref.py row",
+            "classref.py row, then 0.4.0->0.5.0 with the composed-member "
+            "MINOR's corpus-pin re-pin (gateway issue #556 track B; design "
+            "record 2026-10-25) in the same arc",
             1,
-            ("0.4.0",),
+            ("0.5.0",),
         ),
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "

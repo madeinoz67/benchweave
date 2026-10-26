@@ -531,7 +531,10 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # The otdp 0.2.4 bump (2026-10-22, gateway issue #525 — the
     # readings-class examples' readable parameters) joins compliant the
     # same way: the SDK lock at its gitlink (3fa10c75, v0.18.0) carries
-    # otdp 0.2.3, the predecessor's completed SDK leg.
+    # otdp 0.2.3, the predecessor's completed SDK leg. The 0.5.0 family
+    # bump (2026-10-25, gateway issue #556 track B) joins compliant the
+    # same way: the SDK lock at the gitlink (88dcc4d, v0.21.0) carries
+    # plugin-ui-class-reference 0.4.0, the predecessor's completed SDK leg.
     # The scratch family above carries the non-vacuity burden; this row
     # pins the deployment state — the judged set's shape, and a
     # non-compliant future bump still refuses by name below.
@@ -544,5 +547,6 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
         ("plugin-ui-class-reference", "0.2.0", "0.1.0"),
         ("plugin-ui-class-reference", "0.3.0", "0.2.0"),
         ("plugin-ui-class-reference", "0.4.0", "0.3.0"),
+        ("plugin-ui-class-reference", "0.5.0", "0.4.0"),
     ]
     assert check_train_windows(ROOT) == ()

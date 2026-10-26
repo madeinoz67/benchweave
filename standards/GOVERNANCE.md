@@ -41,6 +41,7 @@ repin — the `sdk_compatibility` precedent.
 | Prose clarification (companion docs) | none | Prose is not digest-pinned; keep it truthful |
 | Additive machine errata (backwards-compatible) | PATCH of that standard | The interface `approver_token` pattern: new optional field, nothing removed or retyped |
 | Breaking machine change | MINOR at least | Old version retained frozen; `supersedes` recorded |
+| New normative file within an existing standard | MINOR of that standard | Standing practice, twice run (recorded 2026-10-25): a new machine file rides the version bump whose copy carries it — `composed-action-class.schema.json` at plugin-ui-class-reference 0.4.0 (#541 s2) and `composed-member-declaration.schema.json` at 0.5.0 (#556 track B) — it is not an admission (the standard already exists) and not additive errata (a PATCH cannot add a normative path) |
 | New standard | admission | Review + `status: stable`; new tree dir at its first version |
 | Deprecation | none (status) | Status change only; the version stays, digest-frozen |
 | Deletion of a version | never | Retired corpora live in git history, not the tree |

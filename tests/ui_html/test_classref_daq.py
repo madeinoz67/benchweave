@@ -79,7 +79,7 @@ from benchweave.presentation.classref import (
 from benchweave.vendoring import corpus_root
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.4.0"
+FAMILY_DIR = REPO_ROOT / "standards/plugin-ui-class-reference/0.5.0"
 REFERENCE = FAMILY_DIR / "class-daq.json"
 DESCRIPTOR = REPO_ROOT / "standards/otdp/0.2.4/examples/class-daq.json"
 MOCKUP = REPO_ROOT / "docs/internal/ui-styleguide-mockups/class-daq.html"
