@@ -196,6 +196,8 @@ All notable changes to this project will be documented in this file.
 - Record the dispatch-gating risk bound and the pointer-PR detection gap
 - The B7 addendum to the parent record's survivor row and the mirrored-source pin (#556 Track B B7)
 - Record the ruled over-ceiling divergence — the push note for the B7 branch (#556 Track B B7)
+- Close D1 — the member layer in the note, the guide, and the record (#556 Track B B8)
+- STE register pass on the member-surfaces passage, and the dialect key
 
 ### Features
 
