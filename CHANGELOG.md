@@ -188,6 +188,8 @@ All notable changes to this project will be documented in this file.
 - Composition diagrams — resolution, render path, promotion
 - The composition architecture note and the 0.4.0 ledger-contract prose
 - The 0.4.0 resolver paragraph states the split that ships
+- Correct the 0.5.0 README's re-stamp count to the tree
+- Cite the owner of the member-count ceiling
 - Record the §5 addendum — the envelope digest re-pin is entailed (issue #556 Track A)
 - Record the dispatch-gating risk bound and the pointer-PR detection gap
 
@@ -242,6 +244,7 @@ All notable changes to this project will be documented in this file.
 - OTDP 0.2.4 — the readings-class examples declare their readable parameters (issue #525)
 - Plugin-ui-class-reference 0.4.0 — composed action classes
 - Widen the composed claims vocabulary to any versioned action key
+- Plugin-ui-class-reference 0.5.0 — composed member declarations
 - Split the vendor-catalog refusal codes (issue #556 Track A, design §3.1)
 - Align emission with the released expander (W1/W8) and regenerate the parity fixtures (issue #556 Track A, design §3.4/§5)
 - Residual resolution, the custom section, shared-path fold hardening (issue #556 Track A, design §3.3/§3.5)
@@ -296,6 +299,9 @@ All notable changes to this project will be documented in this file.
 - Bump uvicorn from 0.52.4 to 0.54.0
 - Bump the codeql-action group across 1 directory with 2 updates
 - Bump pypa/gh-action-pypi-publish from 1.14.2 to 1.14.3
+- Regenerate the compatibility matrix for 0.5.0
+- Refresh the win-core manifest for the new schema arms
+- Advance the pointer to v0.22.0 — the #556 0.5.0 pairing
 
 ### Refactoring
 
@@ -357,7 +363,9 @@ All notable changes to this project will be documented in this file.
 - Flip the gate for #525 — clean validation, page-kind-aware plot
 - Window-immune active-row derivation in the gateway sync arm (#543)
 - The served-set total is 19 in the #525+#541 merge result
+- Prove the 0.5.0 schema's closed sets are lifted verbatim
 - Refresh the win-core manifest totals for the #556 Track A arms
+- Sweep the m400 disclosure sentences to the 0.5.0 family
 
 ### Build
 
@@ -379,6 +387,11 @@ All notable changes to this project will be documented in this file.
 - Issue #450 amendment — openapi's excluded copy pinned, the 18-copy pin, row-1 say-so
 - Issue #450 narrow fold — the refute's five residuals (rows A-E)
 - The L11 refute findings F1-F4 — placement-aware A3 census, both cross-constraints rows, the record's corrections
+- Land the B2 review wave — the profiles seam, the plot-slot refusal, copy fidelity
+
+### Merge
+
+- Origin/main into the B2 standards motion — Track A meets 0.5.0
 
 ### Release
 
