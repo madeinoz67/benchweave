@@ -76,6 +76,8 @@ All notable changes to this project will be documented in this file.
 - Close the 0.4.0 sweep's missed test surfaces
 - Admit the measured public-bot mailboxes (#553)
 - The bound tie keeps the exclusive end on both sides (#556 Track A)
+- The member modules drop the pytest fixture decorator — the name screen's empty-local email shape (#556 Track B B7)
+- Fold the B7 refute wave — the census carried, the fallback mirrored, the pin rows realigned (#556 Track B B7)
 
 ### Documentation
 
@@ -192,6 +194,8 @@ All notable changes to this project will be documented in this file.
 - Cite the owner of the member-count ceiling
 - Record the §5 addendum — the envelope digest re-pin is entailed (issue #556 Track A)
 - Record the dispatch-gating risk bound and the pointer-PR detection gap
+- The B7 addendum to the parent record's survivor row and the mirrored-source pin (#556 Track B B7)
+- Record the ruled over-ceiling divergence — the push note for the B7 branch (#556 Track B B7)
 
 ### Features
 
@@ -250,6 +254,9 @@ All notable changes to this project will be documented in this file.
 - Residual resolution, the custom section, shared-path fold hardening (issue #556 Track A, design §3.3/§3.5)
 - The composed resolution walk (issue #556 Track A, design §3.2)
 - The disclosure surface, the m400 acceptance tag, serve-path arms, docs (issue #556 Track A, design §3.4)
+- The member-declaration walk — shape discrimination, conflicts, the shared id-shadow guard (#556 Track B B7)
+- The injection seam and the composed derivation arms (#556 Track B B7)
+- The fold dispositions, the disclosure channel and the profile seam (#556 Track B B7)
 
 ### Miscellaneous
 
@@ -302,6 +309,7 @@ All notable changes to this project will be documented in this file.
 - Regenerate the compatibility matrix for 0.5.0
 - Refresh the win-core manifest for the new schema arms
 - Advance the pointer to v0.22.0 — the #556 0.5.0 pairing
+- Refresh the win-core manifest for the member-mirror arms (#556 Track B B7)
 
 ### Refactoring
 
