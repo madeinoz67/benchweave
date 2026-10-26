@@ -1351,3 +1351,378 @@ def test_the_sweep_bites_on_a_planted_disagreement(
         "the teeth arm expects the const refusal"
     )
     assert "$.otdp_version" in message and active in message, message
+
+
+# ---------------------------------------------------------------------------
+# The composed-class differential (issue #556 Track B, the B7 refute fold
+# F1b): the same descriptor and pin through BOTH derivations — the
+# gateway's ``derive_attachment`` over admission-shaped bytes, the pinned
+# SDK's ``derive_ui`` over a spooled package (every non-``urn:otdp:`` pin
+# file written beside the descriptor, the SDK's own resolution) —
+# comparing the refusal CODES, the disclosure DATA the REPORTED rows mint
+# from, and the derived surfaces byte for byte. The refute lane's
+# hand-run 23-scenario differential found the mirror faithful; this is
+# the durable subset. What these arms do NOT cover, stated: refusal
+# DETAIL sentences (the codes alone — the sanctioned detail divergences
+# stay in the records: not-admitted reads as the SDK's unreadable code,
+# and the digest detail says "pinned document" where the pin's shape is
+# not yet known); the SDK GATE's own REPORTED minting (renderer-borne;
+# pinned in the SDK repo's suite — here the data tuples plus the pinned
+# format literals in tests/interfaces_ui/test_ui_presentation.py carry
+# row equality, because the pinned gate's comprehensions are pure
+# f-strings over exactly these tuples); the gateway-only mints (the
+# composed-supplies row, the member residual rows — no SDK counterpart
+# at this pin); and the member vocabulary beyond the pin-lag cell (the
+# pinned SDK predates the B3–B5 member walk; the full member
+# differential arrives with the pointer advance, and that cell flips
+# with it).
+# ---------------------------------------------------------------------------
+
+CLASSREF_FIXTURES = ROOT / "tests/presentation/classref_fixtures"
+#: The SDK lane's package must not sit under a symlinked ancestor (the
+#: SDK's no-follow reader refuses one — the disclosed environment-
+#: conditional divergence above); pytest's tmp_path resolves, so no arm
+#: here needs to guard it.
+
+
+def _classref_base_catalogs() -> dict[str, bytes]:
+    """The committed fixture pins keyed by digest — the admission store's
+    resolution shape (the m400 tag's composed-class pin rides the map)."""
+    catalogs: dict[str, bytes] = {}
+    for name in (
+        "vendor-catalog.json",
+        "vendor-catalog-trio.json",
+        "composed-burst.json",
+        "decoder-uart.json",
+    ):
+        raw = (CLASSREF_FIXTURES / name).read_bytes()
+        catalogs[hashlib.sha256(raw).hexdigest()] = raw
+    return catalogs
+
+
+def _classref_pin(
+    descriptor: dict[str, Any], document: dict[str, Any], name: str
+) -> dict[str, bytes]:
+    """Admit one synthetic pinned document beside the descriptor and
+    return the digest-keyed map carrying its bytes."""
+    raw = (json.dumps(document, indent=2) + "\n").encode()
+    descriptor["contracts"].append(
+        {
+            "id": f"urn:meridian:{name.removesuffix('.json')}",
+            "path": name,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+    )
+    return {hashlib.sha256(raw).hexdigest(): raw}
+
+
+def _m400() -> dict[str, Any]:
+    descriptor: dict[str, Any] = json.loads(
+        (CLASSREF_FIXTURES / "descriptor-m400.json").read_bytes()
+    )
+    return descriptor
+
+
+def _composed_class(urn: str, claims: list[str], side_effect: str = "none") -> dict[str, Any]:
+    return {
+        "contract_version": "0.1.0",
+        "urn": urn,
+        "title": "Differential probe class",
+        "claims": claims,
+        "input_schema": {"type": "object", "properties": {}},
+        "side_effect": side_effect,
+    }
+
+
+def _declare_action(descriptor: dict[str, Any], urn: str, side_effect: str) -> None:
+    descriptor["actions"][urn] = {
+        "binding": {"kind": "adapter", "key": "fixture"},
+        "input_constraints": {},
+        "timeout_ms": 5000,
+        "side_effect": side_effect,
+        "cancellable": True,
+        "retry": "never",
+    }
+
+
+def _gw_derive(
+    descriptor: dict[str, Any], extra: dict[str, bytes] | None
+) -> tuple[Any, str | None]:
+    """The gateway lane over the real derivation (admission-shaped map)."""
+    from benchweave.presentation.classref import ClassRefusal, derive_attachment
+    from benchweave.vendoring import corpus_root
+
+    try:
+        derived = derive_attachment(
+            (json.dumps(descriptor, indent=2) + "\n").encode(),
+            corpus=corpus_root(),
+            vendor_catalogs=_classref_base_catalogs() | (extra or {}),
+        )
+    except ClassRefusal as exc:
+        return None, str(exc)
+    return derived, None
+
+
+def _sdk_derive(
+    tmp_path: Path,
+    label: str,
+    descriptor: dict[str, Any],
+    extra: dict[str, bytes] | None,
+) -> tuple[Any, str | None]:
+    """The SDK lane: every non-``urn:otdp:`` pin file written beside the
+    descriptor (the SDK's descriptor-relative resolution), the reference
+    read from the PINNED SDK's vendored family tree the way its own
+    expander reads it."""
+    import benchweave_sdk.classref as sdk_classref
+    from benchweave_sdk.served import active_version
+
+    package = tmp_path / f"diff-{label}"
+    package.mkdir(parents=True)
+    by_digest = _classref_base_catalogs() | (extra or {})
+    for row in descriptor["contracts"]:
+        if str(row.get("id", "")).startswith("urn:otdp:"):
+            continue
+        raw = by_digest.get(str(row["sha256"]))
+        assert raw is not None, f"SDK lane missing bytes for pin {row['path']}"
+        (package / str(row["path"])).write_bytes(raw)
+    raw = (json.dumps(descriptor, indent=2) + "\n").encode()
+    (package / "descriptor.json").write_bytes(raw)
+    family = active_version("plugin-ui-class-reference")
+    stem = str(descriptor["profiles"][0]).split(".")[1].split("/")[0]
+    reference = json.loads(
+        (
+            ROOT
+            / "packages/sdk/src/benchweave_sdk/standards/plugin-ui-class-reference"
+            / family
+            / f"class-{stem}.json"
+        ).read_bytes()
+    )
+    try:
+        derived = sdk_classref.derive_ui(
+            raw, reference, descriptor_path=package / "descriptor.json"
+        )
+    except ValueError as exc:
+        return None, str(exc)
+    return derived, None
+
+
+def _classref_scenarios() -> dict[
+    str, tuple[str, Callable[[dict[str, Any]], dict[str, bytes] | None]]
+]:
+    """label -> (expectation, builder). Expectation is one of both-clean,
+    both-refuse:<code>, pin-lag-member (the sanctioned divergence cell:
+    the pinned SDK predates the member walk, so a members pin is IGNORED
+    there while the gateway refuses it — the cell flips to a clean-equal
+    comparison when the pointer advances past the B3–B5 lineage)."""
+    scenarios: dict[
+        str, tuple[str, Callable[[dict[str, Any]], dict[str, bytes] | None]]
+    ] = {}
+
+    def _acceptance(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        return None  # the m400 tag verbatim: catalog + composed + custom
+
+    scenarios["m400-acceptance"] = ("both-clean", _acceptance)
+
+    def _dmm(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        descriptor.clear()
+        descriptor.update(json.loads((CLASSREF_FIXTURES / "descriptor-dmm.json").read_bytes()))
+        return None  # the dmm tag: the empty-page fallback's parity cell
+
+    scenarios["dmm-fallback-page"] = ("both-clean", _dmm)
+
+    def _ambiguous(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        return _classref_pin(
+            descriptor, {"actions": {}, "urn": "otdp.action.amb/1.0.0", "claims": []}, "amb.json"
+        )
+
+    scenarios["ambiguous-pin"] = ("both-refuse:classref_invalid_composed_class", _ambiguous)
+
+    def _claim_vs_served(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        return _classref_pin(
+            descriptor,
+            _composed_class("otdp.action.probe/1.0.0", ["otdp.daq.configure/1.0.0"]),
+            "conf-served.json",
+        )
+
+    scenarios["claim-vs-served-row"] = (
+        "both-refuse:classref_composed_claim_conflict",
+        _claim_vs_served,
+    )
+
+    def _side_effect_under(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        _declare_action(descriptor, "com.meridian.m400.zap/1.0.0", "state_change")
+        return _classref_pin(
+            descriptor,
+            _composed_class(
+                "otdp.action.zap/1.0.0", ["com.meridian.m400.zap/1.0.0"], "none"
+            ),
+            "zap.json",
+        )
+
+    scenarios["side-effect-none-under-state-change"] = (
+        "both-refuse:classref_composed_side_effect_under",
+        _side_effect_under,
+    )
+
+    def _digest_mismatch(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        document = _composed_class(
+            "otdp.action.dm/1.0.0", ["com.meridian.m400.self_cal/1.0.0"]
+        )
+        raw = (json.dumps(document, indent=2) + "\n").encode()
+        descriptor["contracts"].append(
+            {
+                "id": "urn:meridian:dm",
+                "path": "dm.json",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+        )
+        # The map serves DIFFERENT bytes under the pinned digest: the
+        # gateway verifies key==sha256(bytes); the SDK verifies the file's
+        # digest against the pin. Both refuse the same divergence.
+        return {hashlib.sha256(raw).hexdigest(): raw + b"\n"}
+
+    scenarios["digest-mismatch"] = (
+        "both-refuse:classref_vendor_catalog_digest_mismatch",
+        _digest_mismatch,
+    )
+
+    def _pin_disclosures(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        ignored = _classref_pin(
+            descriptor, {"catalog_version": "1", "vendor": "x"}, "ig.json"
+        )
+        unapplied = _classref_pin(
+            descriptor,
+            _composed_class(
+                "otdp.action.nowhere/1.0.0", ["com.meridian.m400.elsewhere/1.0.0"]
+            ),
+            "unapp.json",
+        )
+        empty = _classref_pin(descriptor, {"actions": {}}, "empty.json")
+        return ignored | unapplied | empty
+
+    scenarios["ignored-unapplied-empty-pins"] = ("both-clean", _pin_disclosures)
+
+    def _member_pin(descriptor: dict[str, Any]) -> dict[str, bytes] | None:
+        _declare_action(descriptor, "com.meridian.m400.sweep/1.0.0", "state_change")
+        return _classref_pin(
+            descriptor,
+            {
+                "contract_version": "0.1.0",
+                "members": [
+                    {
+                        "slot": "sweep",
+                        "kind": "procedure",
+                        "claims": ["com.meridian.m400.sweep/1.0.0"],
+                        "page": "capture",
+                    }
+                ],
+            },
+            "members.json",
+        )
+
+    scenarios["member-pin"] = (
+        # FLIPPED at the #561 rebase (2026-10-26), exactly as the old
+        # pin-lag cell's assertion message instructed: the pointer
+        # advanced to the v0.22.0 SDK (the B3-B5 member lineage) and the
+        # corpus serves the real 0.5.0 member schema, so BOTH lanes now
+        # walk the member document and refuse it identically — the
+        # member half of D4 (a claim no served or pinned catalog
+        # describes needs the catalogue side; pin a vendor row). The
+        # cell pins the two derivations agreeing on the member
+        # vocabulary's own refusal, codes and messages alike.
+        "both-refuse:classref_unknown_action",
+        _member_pin,
+    )
+    return scenarios
+
+
+@pytest.mark.parametrize(
+    "label", sorted(_classref_scenarios()), ids=sorted(_classref_scenarios())
+)
+def test_classref_lanes_agree_on_every_composed_scenario(
+    tmp_path: Path, label: str
+) -> None:
+    """The differential: one descriptor and pin set, two derivations,
+    one expectation — refusal codes equal, clean cells byte-equal on all
+    three derived documents with equal disclosure data."""
+    expectation, build = _classref_scenarios()[label]
+    descriptor = _m400()
+    extra = build(descriptor)
+
+    gw, gw_error = _gw_derive(descriptor, extra)
+    sdk, sdk_error = _sdk_derive(tmp_path, label, descriptor, extra)
+
+    if expectation.startswith("both-refuse:"):
+        code = expectation.split(":", 1)[1]
+        assert gw is None and gw_error is not None, (
+            f"{label}: gateway unexpectedly clean ({sdk_error})"
+        )
+        assert sdk is None and sdk_error is not None, (
+            f"{label}: SDK unexpectedly clean"
+        )
+        gw_code = gw_error.split(":", 1)[0]
+        sdk_code = sdk_error.split(":", 1)[0]
+        assert gw_code == code, f"{label}: gateway refused {gw_code!r}: {gw_error}"
+        assert sdk_code == code, f"{label}: SDK refused {sdk_code!r}: {sdk_error}"
+        return
+
+    # both-clean: the derived surfaces byte-equal, the disclosure data
+    # the REPORTED rows mint from equal, the resolutions equal.
+    assert gw is not None, f"{label}: gateway refused: {gw_error}"
+    assert sdk is not None, f"{label}: SDK refused: {sdk_error}"
+    for kind in ("envelope", "manifest", "catalogue"):
+        produced = (json.dumps(getattr(gw, kind), indent=2) + "\n").encode()
+        expected = (json.dumps(getattr(sdk, kind), indent=2) + "\n").encode()
+        assert produced == expected, (
+            f"{label}/{kind}: the two derivations diverge\n--- gateway "
+            f"---\n{produced[:600].decode()}\n--- sdk ---\n"
+            f"{expected[:600].decode()}"
+        )
+    assert gw.ignored_pins == tuple(sdk.ignored_pins), label
+    assert gw.unapplied_classes == tuple(sdk.unapplied_classes), label
+    assert gw.empty_action_pins == tuple(sdk.empty_action_pins), label
+    sdk_resolutions = tuple(
+        (str(urn), str(row.get("resolution", "catalog")), row.get("class"))
+        for urn, row in sorted(sdk.control_plan.items())
+    )
+    assert gw.resolutions == sdk_resolutions, label
+
+
+def test_the_classref_differential_bites_on_a_planted_disagreement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The differential's teeth, permanent: make the gateway's shape
+    enumeration OVER-FIRE (a plain vendor catalog counted as carrying two
+    groups — the regression class the ambiguity predicate must never
+    drift into) and the pin-disclosure cell GOES RED as a
+    gateway-refuses/SDK-clean disagreement on a both-clean cell. Without
+    this arm a green table proves only that both lanes run. The sabotage
+    touches ``_pin_shape_groups`` alone — the one definition the
+    ambiguity refusal reads — so the planted divergence is exactly the
+    discrimination the table's cells pin."""
+    import benchweave.presentation.classref as classref_module
+
+    real_groups = classref_module._pin_shape_groups
+
+    def over_firing(document: dict[str, Any]) -> list[str]:
+        groups = real_groups(document)
+        if "actions" in document:
+            groups = [*groups, "composed-class"]
+        return groups
+
+    monkeypatch.setattr(classref_module, "_pin_shape_groups", over_firing)
+    descriptor = _m400()
+    extra = _classref_pin(descriptor, {"actions": {}}, "empty.json")
+    gw, gw_error = _gw_derive(descriptor, extra)
+    sdk, sdk_error = _sdk_derive(tmp_path, "teeth", descriptor, extra)
+    # The planted disagreement: the gateway refuses the empty-catalog pin
+    # as ambiguous; the SDK derives it clean and files it empty — the
+    # ignored-unapplied-empty cell's both-clean expectation fails on
+    # exactly this shape.
+    assert gw is None and gw_error is not None, (
+        "the sabotaged discriminator still derived — the teeth arm "
+        "expects the plain catalog to refuse as ambiguous"
+    )
+    assert gw_error.startswith("classref_invalid_composed_class:"), gw_error
+    assert sdk is not None and sdk_error is None, sdk_error
+    assert sdk.empty_action_pins == ("empty.json",)

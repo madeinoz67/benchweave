@@ -4,7 +4,9 @@
 The gateway's own derivation over (descriptor × corpus reference); the SDK
 is read-not-imported (REG-4) — agreement with the SDK expander is pinned by
 the committed fixture documents (B8: canonical-JSON byte equality of the
-derived triples on 2/2 fixtures, F1 and F2). Fail-closed cases carry the
+derived triples — six tags from f1 through m400, seven with the dmm
+fallback tag; the founding "2/2 fixtures" wording predates the L5, smu,
+acceptance and fallback tags). Fail-closed cases carry the
 same typed ``classref_*:`` refusals the parent record's §3.3 table names;
 an unknown class fails OPEN (B3's fail-open arm — the fallback never
 invents obligations the descriptor does not create).
@@ -80,8 +82,12 @@ class TestParityB8:
         three-layer acceptance tag (issue #556 Track A): one descriptor
         carrying catalog, composed and custom resolutions at once,
         generated from the pinned v0.21.0 expander beside its
-        composed-class pin."""
-        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400"):
+        composed-class pin. The dmm arm is the empty-page fallback's
+        (issue #556, the B7 refute fold F2): a plain two-action DMM whose
+        device-features page derives nothing — the SDK expander emits the
+        fallback panel ("No additional device features."), and this tag
+        pins those bytes on the gateway derivation too."""
+        for tag in ("f1", "f2", "f1-da", "f5-trio", "f6-smu", "m400", "dmm"):
             derived = _derive(tag)
             for kind in ("envelope", "manifest", "catalogue"):
                 committed = (FIXTURES / f"fixture-{tag}-{kind}.json").read_bytes()
@@ -100,6 +106,7 @@ class TestParityB8:
             expected_profile = {
                 "f6-smu": "otdp.smu/1.0.0",
                 "m400": "otdp.daq/1.0.0",
+                "dmm": "otdp.dmm/1.0.0",
             }.get(tag, "otdp.logic_analyser/1.0.0")
             assert derived.profile_ids == (expected_profile,)
 
@@ -150,6 +157,28 @@ class TestParityB8:
             ("boolean", "holdoff_enable"),
             ("button", None),
         ]
+
+    def test_a_page_every_section_of_which_derives_empty_keeps_its_panel(
+        self,
+    ) -> None:
+        """The empty-page fallback, mirrored from the SDK expander (the
+        pinned v0.21.0 ``_build_layout``; issue #556, the B7 refute fold
+        F2): every declared page renders as a panel — a page whose surface
+        is fully placed (the dmm's device-features page: both actions sit
+        on named slots, the vendor-actions slot owns nothing) derives the
+        honest disclosure body, never an omitted page. The body is the
+        template's ``vendor_features`` branch ("No additional device
+        features."), the SDK's own wording; a page without that template
+        flag would carry "No additional surfaces for this page." (the
+        same branch, not exercised by a committed tag — the dmm tag is)."""
+        derived = _derive("dmm")
+        block = derived.manifest["extensions"]["plugin-ui-class-reference:layout"]
+        pages = {page["page_id"]: page for page in block["pages"]}
+        assert set(pages) == {"readings", "configuration", "device-features"}, pages
+        section = pages["device-features"]["sections"][0]
+        assert section["id"] == "device-features-section"
+        assert section["children"] == [{"body": "No additional device features."}]
+
 
     def test_field_rows_emit_the_trio_modes_and_text_bounds(self) -> None:
         """The widened ``_field_rows`` (mirrored from the SDK expander):

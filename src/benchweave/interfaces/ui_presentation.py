@@ -70,9 +70,11 @@ from benchweave.presentation.classref import (
     DerivedAttachment,
     derive_attachment,
     family_version,
+    pinned_contract_documents,
     select_references,
     validate_layout_block,
 )
+from benchweave.presentation.contracts import DocumentError, merge_pinned_documents
 from benchweave.presentation.panels import SUPPORTED_PANELS as SUPPORTED_PANELS
 from benchweave.standards.manifest import (
     StandardsError,
@@ -702,19 +704,25 @@ def _page_presets(
 
 
 def _classref_disclosures(derived: DerivedAttachment) -> tuple[str, ...]:
-    """The derivation's disclosure lines (issue #556 Track A, design
-    §3.4): the gateway's REPORTED analog — the SDK gate discloses
-    through its REPORTED channel, the gateway's honesty surfaces are the
-    derived marker block and the rendered page. Formats fixed by the
-    design record, mirrored from the SDK's REPORTED rows where the SDK
-    has them: ``custom: {urn}`` when the derived layout block mints
-    control nodes for the action's slug (the per-action discriminator —
-    every node binding id in the derived block), else ``custom, renders
-    nothing: {urn}``; one line per ignored pin, unapplied composed
-    class and empty-catalog pin; and one line per APPLIED composed
-    class naming the family version its document validated against and
-    the declared actions it supplies. Disclosures are never findings —
-    they never fail the page."""
+    """The derivation's disclosure lines (issue #556 Track A design §3.4;
+    Track B record §3 rules 1-3): the gateway's REPORTED analog — the SDK
+    gate discloses through its REPORTED channel, the gateway's honesty
+    surfaces are the derived marker block and the rendered page. Every
+    row the SDK mints is the SDK's own wording, mirrored: ``custom:
+    {urn}`` when the derived layout block mints control nodes for the
+    action's slug (the per-action discriminator — every node binding id
+    in the derived block), else ``custom, renders nothing: {urn}``; one
+    line per ignored pin, unapplied composed class and empty-catalog
+    pin; the member family (applied-nowhere pins, dead members inside
+    applied pins, and every declared member's residual row as ``{kind}
+    {member}: {detail}``). The design record's original §3.4 worded the
+    three pin rows its own way — Track A-era text the SDK never minted;
+    the 2026-10-26 B7 refute fold F4 aligned them to the pinned gate's
+    REPORTED rows, so this docstring's mirror claim is true row for row.
+    The one gateway-minted extra (no SDK counterpart at this pin): one
+    line per APPLIED composed class naming the family version its
+    document validated against and the declared actions it supplies.
+    Disclosures are never findings — they never fail the page."""
     block = (derived.manifest.get("extensions") or {}).get(LAYOUT_EXTENSION_KEY)
     minted: frozenset[str] = frozenset()
     if isinstance(block, dict):
@@ -735,19 +743,43 @@ def _classref_disclosures(derived: DerivedAttachment) -> tuple[str, ...]:
             if slug in minted
             else f"custom, renders nothing: {urn}"
         )
+    # The three pin rows are the SDK gate's own REPORTED wordings,
+    # aligned 2026-10-26 (the B7 refute fold F4): until that fold each
+    # carried Track A-era wording the SDK never minted — three rows the
+    # module docstring's "mirrored from the SDK's REPORTED rows where
+    # the SDK has them" was false for. The literals are the pinned
+    # gate's comprehensions (classref_gate.py, the R1/R5 fold), and the
+    # equivalence census (tests/sdk/test_descriptor_equivalence.py)
+    # pins the derived data both mint from.
     lines.extend(
-        f"ignored pin: {path} contributed nothing (shape matched neither "
-        "a vendor catalog nor a composed class)"
+        f"pinned document {path} contributed nothing"
         for path in derived.ignored_pins
     )
     lines.extend(
-        f"composed class {class_urn} pinned at {path} applied to no "
-        "declared action"
+        f"composed class {class_urn} is pinned ({path}) but its claims "
+        "name no action this descriptor declares"
         for class_urn, path in derived.unapplied_classes
     )
     lines.extend(
-        f"pinned vendor catalog {path} declares no actions"
+        f"pinned document {path} contributed nothing (its vendor-catalog "
+        "actions map is empty)"
         for path in derived.empty_action_pins
+    )
+    # (#556 Track B §3 rules 1-3; the B3 fold's F2) The member family, in
+    # the SDK gate's own REPORTED wording: a pin whose members applied
+    # nowhere, a dead member inside a pin that applied, and every
+    # declared member's residual row — never silent, never a finding.
+    lines.extend(
+        f"composed member declaration {path} applied nowhere"
+        for path in derived.unapplied_member_pins
+    )
+    lines.extend(
+        f"composed member declaration {path} member {slot} "
+        f"applied nowhere ({reason})"
+        for path, slot, reason in derived.unapplied_members
+    )
+    lines.extend(
+        f"{kind} {member}: {detail}" for kind, member, detail in derived.residual_rows
     )
     supplied: dict[str, int] = {}
     for _urn, resolution, class_urn in derived.resolutions:
@@ -825,14 +857,15 @@ def _classref_fallback(
             absence="no-attachment",
         )
     try:
+        admitted = (
+            vendor_catalogs
+            if vendor_catalogs is not None
+            else _admitted_vendor_catalogs(content, descriptor)
+        )
         derived = derive_attachment(
             descriptor_raw,
             corpus=corpus_root(),
-            vendor_catalogs=(
-                vendor_catalogs
-                if vendor_catalogs is not None
-                else _admitted_vendor_catalogs(content, descriptor)
-            ),
+            vendor_catalogs=admitted,
             decoder_docs=_admitted_decoder_docs(content, descriptor),
         )
     except ClassRefusal as refusal:
@@ -844,12 +877,32 @@ def _classref_fallback(
             absence=None,
         )
     resources = dict(derived.resources)
+    # (#556 Track B, the seam — B4's motion 1, gateway-side) The
+    # canonical validator's profile map reads the pinned documents beside
+    # the corpus set through the shared guard, so a composed member's
+    # target naming its declaration's vendor row validates here exactly
+    # as it does at the derive (the reader drops ignored-shape pins: only
+    # documents the walk accepts contribute anywhere, the B4 fold's F4).
+    schema_documents = _pin_scoped_documents(descriptor)
+    try:
+        schema_documents = merge_pinned_documents(
+            schema_documents,
+            pinned_contract_documents(descriptor, admitted),
+        )
+    except DocumentError as exc:
+        return PresentationState(
+            envelope_sha256=None,
+            valid=False,
+            findings=((exc.code, "documents", str(exc)),),
+            pages=(),
+            absence=None,
+        )
     report = validate_attachment(
         derived.envelope_raw,
         descriptor_raw=descriptor_raw,
         verified_resources=resources,
         binding_catalogue=derived.catalogue,
-        schema_documents=_pin_scoped_documents(descriptor),
+        schema_documents=schema_documents,
         supported_features=SUPPORTED_FEATURES,
         supported_panels=SUPPORTED_PANELS,
         firmware=_declared_firmware(descriptor),

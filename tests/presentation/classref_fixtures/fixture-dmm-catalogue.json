@@ -1,0 +1,91 @@
+{
+  "contract_version": "0.4.0",
+  "descriptor_sha256": "2ecc070b7194d3b2bda7989721fca740211f9544a2411be4ee96e1ca71882c2e",
+  "targets": [
+    {
+      "id": "measure",
+      "kind": "dataset",
+      "action_id": "otdp.dmm.measure/1.0.0",
+      "profile_ids": [
+        "otdp.dmm/1.0.0"
+      ],
+      "measurement_schema_id": "urn:otdp:measurement:0.2.3",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        },
+        {
+          "id": "ch2-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch1-voltage",
+      "kind": "observation",
+      "parameter_id": "ch1_voltage",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch1-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "measure-ch2-voltage",
+      "kind": "observation",
+      "parameter_id": "ch2_voltage",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "scalar",
+          "axis_role": "receipt_time"
+        },
+        {
+          "id": "ch2-voltage",
+          "type": "number",
+          "unit": "V",
+          "shape": "scalar",
+          "axis_role": "value"
+        }
+      ]
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "action_id": "otdp.dmm.configure/1.0.0",
+      "profile_ids": [
+        "otdp.dmm/1.0.0"
+      ],
+      "input_schema_id": "urn:otdp:action:dmm.configure:1.0.0:input",
+      "schema_asset_id": "settings/configure.schema.json",
+      "preset_asset_ids": []
+    }
+  ]
+}
