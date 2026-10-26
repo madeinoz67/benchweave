@@ -12,6 +12,16 @@ and "Composed member declarations"
 arguments live in the records listed at the end. Cross-references replace
 restatement here by design.
 
+**Scope, extended 2026-10-26 (#556 Track B).** The note now covers two
+layers of composition. Sections 1–8 describe the action layer, the
+founding subject. Section 9 describes the member layer as it shipped: the
+composed member declaration, the six vocabularies, the two-layer rule and
+its residual disclosures, and the pin seam. Section 10 states the
+deliberate divergences between the gateway and SDK derivations and the
+convergence obligation each one carries. Nothing in sections 1–8 is
+withdrawn by the extension; the deferral rows it closes are marked in
+section 7.
+
 Design records:
 
 - `.claude/deep-review/2026-10-22-issue541-classref-composition.md` — the
@@ -20,6 +30,11 @@ Design records:
 - `.claude/deep-review/2026-10-22-issue541-s2-standards-design.md` — the
   composed-action-class schema and the 0.4.0 family bump (the schema's closed
   sets and their derivations).
+- `.claude/deep-review/2026-10-25-issue556-track-a-gateway-mirror.md` —
+  the gateway mirror for composed and residual actions (#556 Track A).
+- `.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md` — the
+  six vocabularies and the composed member declaration (#556 Track B; its
+  SDK-side copy ships at benchweave-sdk `v0.22.0`).
 - `.claude/deep-review/2026-10-20-classref-composition-gate-design.md` — the
   cross-class composition gate (gateway issue #500).
 - `.claude/deep-review/2026-10-16-classref-l5-plugin-ui-0-4-0-design.md` —
@@ -227,11 +242,11 @@ reader can trace the argument; the reopen triggers are the record's.
 
 | Deferred | Id | Where it surfaces today |
 |---|---|---|
-| The other six vocabularies — procedures, observation variables, channels and decoders, datasets and capture shapes, plot kinds, settings idioms — each needing its own layer-2 declaration and layer-3 residual rule | **D1** | actions only in this increment; a member of these vocabularies that no class and no served catalog covers declares cleanly and derives nothing |
-| Computed measurements and custom decoders — the two named member shapes of D1's vocabularies | **D1** | the gate discloses each one per run on the reported channel (`deferred_members`, naming the deferred vocabulary); a computed measurement derives no surface, a custom decoder whose lanes no derived plot hosts renders no lane |
+| The other six vocabularies — procedures, observation variables, channels and decoders, datasets and capture shapes, plot kinds, settings idioms — each needing its own layer-2 declaration and layer-3 residual rule | **D1 — CLOSED 2026-10-26** | No longer deferred. Layer 2 is the composed member declaration (§9.1); layer 3 derives what the declared member admits and discloses the rest (§9.3). |
+| Computed measurements and custom decoders — the two named member shapes of D1's vocabularies | **D1 — CLOSED 2026-10-26** | Computed variables derive into dataset shapes and plot series, never a tile. Decoder lanes render where a `digital_lanes` plot hosts them. Each discloses only when it derives nothing, on the REPORTED channel. |
 | The reference-less device — a descriptor matching no class still refuses (`derive_ui_reference`); layers 2 and 3 need a page structure to resolve into | **D2** (fork F1) | no derive path; `verify-ui`'s reference-less arm reports the inventory as unavailable |
 | Per-control provenance badges — the layout vocabulary's `/control` node admits only `binding_id`, `field`, `kind` | **D3** | the `custom` marker renders at section level only (the derived section's own label) |
-| The gateway mirror (CON-12) — the gateway derivation still refuses the recoverable case | **D9** (mirror leg DS5) | `derive_attachment` in `src/benchweave/presentation/classref.py` still raises `classref_unknown_action`; the shipped state is "a plugin derives and previews", not yet "runs on a bench here" |
+| The gateway mirror (CON-12) — the gateway derivation still refuses the recoverable case | **D9 — CLOSED 2026-10-26** | Track A's mirror landed (gateway PR #557): `derive_attachment` resolves the recoverable case, and the pointer advanced to `v0.22.0` (PR #561). The served state is "a plugin derives, previews, and runs on a bench here". |
 
 The complete deferral table (including the reference-slot knowledge gap, the
 cross-class shared-claim question, the terminal-slug resolution hazard and the
@@ -239,6 +254,14 @@ SDK user-guide coverage owed as D7) is the parent record §6. The corpus prose
 for the declaration document (D8) closes with this increment's README
 extension. Deferral is not a defect: each row carries its reopen trigger, and
 the named states above are disclosed rather than dropped.
+
+**State checked 2026-10-26 (the #556 Track B close-out).** D1 and D9 are
+closed, and the rows above are marked so. D7 (the SDK user guide's
+coverage) and D8 (the corpus prose) are also closed; both were verified
+against the shipped artifacts, and the parent record §15 carries the
+pointer and the state table. D3, D4, D5 and D6 remain open with their
+triggers unchanged. The closed rows carry their evidence; the open rows
+carry their triggers.
 
 ## 8. Enforcing surfaces
 
@@ -262,3 +285,222 @@ promise to re-read):
 
 Fixture names in this family ("Meridian", "Veridian", the `ch1`/`ch2` channel
 naming) are invented, per the corpus README's Names section.
+
+### The member layer (added 2026-10-26, #556 Track B)
+
+- `tests/presentation/test_classref_members.py` (25 tests) and
+  `tests/presentation/test_classref_member_disclosures.py` (15 tests) —
+  the gateway's member walk, its refusals, and its disclosure rows over
+  the invented M-400 fixture and the LA fixture.
+- `tests/sdk/test_descriptor_equivalence.py` — the classref differential:
+  eight table cells, each driving the gateway's `derive_attachment` and
+  the pinned SDK's `derive_ui` over the same descriptor and pin
+  (`test_classref_lanes_agree_on_every_composed_scenario`); the planted
+  disagreement arm (`test_the_classref_differential_bites_on_a_planted_disagreement`)
+  proves the table runs.
+- The family contract test and the corpus baseline suite (the same two the
+  action layer relies on) — copy-never-move, source lineage and schema
+  pins over the 0.5.0 copy that carries the member schema.
+
+## 9. The member layer — composed member declarations
+
+The action layer answers what an action admits and which catalog side
+supplies it. It does not answer where a surface sits. A class reference
+authors the slots and pages a device presents, and a vendor has no way to
+extend them: the reference is authored in the corpus and a descriptor
+carries no page structure of its own. A second channel role, a capture
+dataset, a settings surface, or a procedure the class does not place
+therefore derives nothing. Before #556 that absence was silent. The member
+layer is the same three-layer pattern applied to placement — layer 1 the
+class reference's own slots, layer 2 the composed member declaration,
+layer 3 the residual rule — and its promise is two-sided: it never refuses
+a declared member, and it never leaves one silent.
+
+### 9.1 The declaration document
+
+`composed-member-declaration.schema.json` is a sibling of the composed
+action-class schema in the `plugin-ui-class-reference` family. The
+document requires `contract_version` and `members`, and may carry
+`profiles` (exactly one row). `contract_version` is the document's own
+dialect version, decoupled from the family version so a pinned,
+digest-verified document survives family bumps. `members` carries 1 to 64
+rows — the reference's own slot ceiling, because every member injects one
+slot.
+
+A member states `slot`, `kind`, `page`, and its kind's own fields. The
+four kinds are the reference schema's own closed slot vocabulary:
+
+- `channels` carries `where_role` and claims no action; it places lanes.
+- `dataset`, `configuration` and `procedure` carry `claims`, one or more
+  versioned action keys validated by the composed action class's claim
+  pattern; the reference slot's singular `action` is not inherited.
+  `when_declared`, `schema_source` and `host_supplied` are the action
+  branch's fields verbatim.
+- `dataset` may additionally carry `plot`, the page-template plot block
+  verbatim: one of the existing three kinds, with `over_slot` naming the
+  member's own slot and the per-kind conditionals unchanged. No other
+  kind may carry a plot (the schema refuses it).
+
+`page` names an existing page of the composed reference. No new component,
+page, plot kind or node kind is introduced: the component and slot
+inventories are the existing ones, applied by the existing rules.
+
+`profiles` is the vendor-profile seam: one row in the device profile
+catalog's own shape (`id`, `title`, `channel_roles`, `required_actions`,
+`optional_actions`). The descriptor makes the row claimable by listing the
+profile id in its namespace-open `profiles[]`. That is what lets a
+composed target resolve under the canonical validator's existing profile
+rule, with no validator widening.
+
+### 9.2 The six vocabularies
+
+| vocabulary | layer-2 home | layer-3 surface and disclosure |
+|---|---|---|
+| procedures | `procedure` member | the action control derives on the named page; the applied-nowhere family is the only disclosure, because a procedure member always derives at least its control |
+| observation variables | the descriptor's own `derived_variables[]` — no document | a value variable in every dataset target, and a plot series where the kind admits numeric series; never a reading tile (it has no readable parameter). The disclosure row names the target it derives into and any plot it was dropped from |
+| channels and decoders | `channels` member, plus a `dataset` member for a decoder's binding | lanes where a `digital_lanes` plot hosts them; otherwise a no-lane-host disclosure. An unmatched-role channel discloses |
+| datasets and capture shapes | `dataset` member, with optional `plot` | the dataset target and binding derive; a plot on a plot-less page joins the page template. A plot on a page that already hosts one derives nothing and discloses |
+| plot kinds | the `dataset` member's `plot` field, among the existing three kinds | the dataset member's row discloses a placement that derives nothing. A fourth kind is a dual-family standards motion, named outside this layer |
+| settings idioms | `configuration` member | the existing settings idiom derives (schema asset, preset scaffold, data-table, L3 target). The A02 birth deviation (presets are commissioned evidence) is keyed on slot kind, so it rides a composed slot unchanged |
+
+The vocabulary-to-ledger mapping is one mechanism, not a prose list:
+`_MEMBER_VOCABULARY` maps each member kind to its ledger vocabulary and
+`_MEMBER_LEDGER_VOCABULARIES` is the same four names for the read-back
+(`src/benchweave/presentation/classref.py`). Observation variables are the
+one vocabulary with no ledger key, because they have no declaration
+document — the descriptor owns that declaration.
+
+### 9.3 The two-layer rule and the residual disclosures
+
+Layer 2 supplies the reference side. The existing derivation arms run on
+the injected rows unchanged: the procedure loop, the configuration arm,
+the dataset arm, the per-slot channel resolution, and `_build_layout`.
+Only applied members inject; a member whose claims name no action the
+descriptor declares (or, for `channels`, whose role no declared channel
+carries) injects nothing and rides the applied-nowhere disclosure.
+
+Layer 3's promise is two-sided — never refuses, never silent. Every
+declared member lands either a derived surface or a row on the disclosure
+channel. The gateway's member family mints these rows (the SDK gate's
+REPORTED wording, mirrored):
+
+| row | condition |
+|---|---|
+| `composed member declaration <pin> applied nowhere` | a pinned declaration applies to nothing |
+| `composed member declaration <pin> member <slot> applied nowhere (<reason>)` | one member inside a pin that applied |
+| `settings member <urn>: no settings surface declared (...)` | an unclaimed staged action derives no settings idiom |
+| `dataset member <urn>: no dataset surface declared (...)` | an unclaimed bare-button action derives no dataset surface |
+| `observation variable <id>: ...` | a computed variable derives into dataset targets and no tile |
+| `channel <id> (role <role>): resolves to no lanes surface` | a channel role no resolved channels slot hosts |
+| `custom decoder <id>: no lane host (...)` | a decoder whose lanes no derived plot carries |
+| `composed plot <slot>: page <page> already hosts a plot (the page keeps the class's plot)` | a declared member plot on a page whose class template already plots |
+| `composed lane <id> (role <role>): no lane surface on page <page> (...)` | a joined page over the lane ceiling |
+
+Every one is a disclosure, never a finding: a run passes. The ledger
+inventory (`DerivedAttachment.composed_members`, the gateway's
+ledger-equivalent surface; the SDK writes the same four-key map into
+`ui/class-reference.json`) records only the APPLIED set, so a pin whose
+members apply nowhere is a disclosure and never drift.
+
+### 9.4 The seam
+
+The declaration rides the same `descriptor.contracts[]` path plus sha256
+pin as composed action classes and vendor catalogs. The walk discriminates
+by document shape through one definition (`_pin_shape_groups`): a document
+carrying `members` is a member declaration, one carrying `urn` plus
+`claims` is an action class, one carrying `actions` is a vendor catalog,
+and any overlap of those key sets refuses the ambiguity code. A document
+carrying none of the three shapes is ignored and disclosed, never silently
+dropped. Integrity checks fire first — an unreadable pin, a digest
+mismatch, and a non-object document keep the refusal split's typed codes —
+and every ACCEPTED document then rides the shared `pinned_id_shadow` guard
+(`merge_pinned_documents` over exactly the accepted set), so the derive
+and the canonical validation refuse the same shape under the same code.
+
+The gateway reads the pins from admission bytes (its equivalent of the
+plugin package directory) and merges them into the document set the
+canonical validator reads
+(`src/benchweave/interfaces/ui_presentation.py`: `_pin_scoped_documents`
+plus `pinned_contract_documents` through `merge_pinned_documents`). That
+is what makes the vendor profile row real at check and serve time, not
+only at the derive.
+
+### 9.5 Refusals, and the capacity-versus-declaration boundary
+
+The member layer removes no integrity or conflict refusal. The survivor
+families are enumerated in the parent record §8 and in the family README;
+the gateway's own arms pin them:
+
+- `classref_invalid_member_declaration` — a schema-invalid document, a
+  pin against a corpus serving no member schema, and an applied
+  procedure/configuration member whose declaration carries no vendor
+  profile row;
+- `classref_composed_slot_conflict` — a slot key a reference slot or
+  another member holds, a claim a member, class or reference slot holds, a
+  page the reference does not declare, and a member slot key spelling a
+  derived observation id;
+- `classref_composed_plot_slot_mismatch` — a `plot.over_slot` that is not
+  the member's own slot;
+- `classref_composed_plot_page_mismatch` — a dataset-binding plot kind on
+  a readings page;
+- `classref_unknown_action` — the member half of D4: an applied procedure
+  or configuration claim no served or pinned catalog describes;
+- `pinned_id_shadow` — the shared guard, over exactly the accepted pins.
+
+The capacity-versus-declaration boundary is one rule in two halves. A
+single channels slot over the lane ceiling REFUSES
+(`classref_lane_ceiling`): the declaration is the author's to fix. A
+JOINED page over the ceiling DROPS the overflow from the plot alone and
+discloses each dropped lane: no single declaration is at fault. A declared
+member plot on a page whose class template already plots is admissible and
+disclosed. The one case where the gateway refuses instead of disclosing —
+a class's own analog y series over the manifest ceiling — is a deliberate
+divergence, §10.
+
+## 10. Deliberate divergences and their convergence obligations
+
+The gateway derivation and the SDK derivation are deliberate mirrors
+(CON-12). They differ deliberately in the following places, and each
+difference states what would close it. A difference not listed here is
+drift, not a decision.
+
+**1. The readings expansion for a parameter-less descriptor.** A
+descriptor that declares no readable parameter derives in the gateway
+WITHOUT the readings expansion (no tiles, no observation bindings, the
+plot over the dataset binding). The SDK meets the same descriptor at
+authoring time and refuses typed (`classref_parameter_map`). Convergence
+boundary: every descriptor with at least one readable parameter resolves
+exactly as the SDK does, refusals included, and the parity fixture pins
+the agreement byte for byte (`_resolve_parameters`'s docstring in
+`src/benchweave/presentation/classref.py`). No convergence is owed for
+the zero-parameter shape: the gateway serves committed corpus examples
+that ship it, and the SDK's refusal is the honest authoring-time gate.
+
+**2. The admission-store detail sentence.** The gateway has no plugin
+package directory, so its unreadable-pin arm names the admission store in
+the DETAIL sentence while keeping the SDK's code
+(`classref_vendor_catalog_unreadable`). Convergence obligation: the code
+vocabulary is shared; only the detail sentence differs. This is the one
+deliberate code-vocabulary divergence of detail, disclosed beside the
+mechanism (`_vendor_catalog_documents`'s docstring).
+
+**3. The class-only analog over-ceiling case (ruled 2026-10-26).** An
+analog plot (`time_series` or `waveform`) whose OWN y series — the
+class's traces, not the composed computed variables — exceed the manifest
+schema's 16-entry ceiling refuses typed in the gateway
+(`classref_series_ceiling`). The SDK's derive is green, and its gate then
+raises an unhandled schema violation. This is not a mirror decision: an
+unhandled failure where a refusal belongs is not a semantic, and mirroring
+it would make two halves wrong together. OUTSTANDING MIRROR OBLIGATION:
+the moment the SDK fixes its own class-over-ceiling handling, the gateway
+adopts whatever it lands on. Both halves are reproduced through their
+production paths in the parent record §8. The COMPOSED series over the
+ceiling is a mirror, not a divergence: both halves drop the overflow from
+the plot alone, disclose it, and leave the wire shape unchanged.
+
+The empty-page fallback is a mirror too, by the B7 refute fold: the
+gateway emits the same "No additional device features." / "No additional
+surfaces for this page." sentence the pinned SDK emits, pinned byte for
+byte by the DMM fixture. The member-pin census cell was a scheduled pin
+lag, not a divergence: it flipped to a clean-equal comparison when the
+pointer advanced (parent record §14).

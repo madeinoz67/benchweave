@@ -525,6 +525,33 @@ documents contributed nothing. The authoring contract for composed classes
 and vendor catalogs lives in the SDK user guide; the gateway only reads what
 the descriptor pins.
 
+### How the gateway composes member surfaces
+
+A class reference places most surfaces of a device. It does not place the
+surfaces that a vendor adds. A pinned composed member declaration supplies
+those surfaces.
+
+The document states its own `contract_version`. It also carries a `members`
+key. Each member states a slot key, a kind, a page, and the fields for that
+kind. The four kinds are `channels`,
+`dataset`, `configuration`, and `procedure`. A member places channel lanes, a
+capture dataset, a settings surface, or a procedure control. The gateway reads
+the declaration and derives the surfaces with the same steps it uses for a
+class reference.
+
+The declaration can also state one vendor profile row. The descriptor can
+claim that profile. The vendor target then resolves under the existing
+validator rule.
+
+A member never disappears without a statement. The derived page's disclosure
+list states each member that derives no surface. The list also states each
+member that applies to no action or channel in the descriptor.
+
+The authoring contract is in the SDK user guide, section "Author a composed
+member declaration". The normative rules are in the active
+`plugin-ui-class-reference` family README, section "Composed member
+declarations". The gateway reads only the documents that the descriptor pins.
+
 ## 5. Implement the adapter lifecycle
 
 The normative factory and methods are in [core specification §8](../standards/otdp/0.2.4/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.

@@ -258,15 +258,15 @@ a row names a follow-on issue.
 
 | id | deferred | home | reopen trigger |
 |---|---|---|---|
-| D1 | The other six vocabularies — procedures, observation variables, channels and decoders, datasets and capture shapes, plot kinds, settings idioms — each needs its own layer-2 declaration and layer-3 residual rule; this increment lands actions only | documentation here | a plugin ships (or an owner-supplied descriptor declares) a member of one of these vocabularies that no class and no served catalog covers, and `derive-ui` refuses or mis-derives on it |
-| D2 | The reference-less device — `derive_ui_command` raises `derive_ui_reference` when no class reference matches the descriptor's profiles, so a fully custom device still has no derive path; layers 2 and 3 do not help it because there is no page structure to resolve into | documentation here | the owner's ruling on fork F1 below |
-| D3 | Per-control provenance badges — the layout vocabulary's `/control` node admits only `binding_id`, `field`, `kind`, so a `custom` marker renders at section level only | documentation here | the next layout-vocabulary widening opens (a `plugin-ui-class-reference` family bump for any other reason), at which point the provenance field rides it |
-| D4 | The reference-slot knowledge gap (`derive_ui:706`) — a class's own slot naming an unserved URN is a corpus fault, not a vendor gap; the split leaves it refusing | documentation here | a class reference in the corpus is shown to name an action URN that no served catalog describes |
-| D5 | Composed-class claims across two classes for one URN — refuse, never merge; a shared action class is a corpus-side design question | documentation here | a second plugin or a corpus class needs to claim an URN another class already claims |
-| D6 | The `_urn_for_binding` global terminal-slug resolution hazard (composition record §4) becomes easier to reach as more actions land on one device-features page | documentation here; recorded in `.claude/deep-review/2026-10-20-classref-composition-gate-design.md` §4 | the owner's ruling on that record's §4 rows arrives, or a composed device renders one class's staging fields under another class's button |
-| D7 | The SDK user guide's coverage of the new developer-facing surfaces — `resolution` provenance, `ui/class-reference.json`'s `custom_actions`, `verify-ui`'s `custom: <urn>` rows, and the "Custom device actions" section — is owed, not present (`user_guide/plugin-sdk.qmd`, currently mentioning `ui/class-reference.json` only for the `migrate-ui` pointer). **Extended 2026-10-23 after the slice-2 review:** it must also carry the composed authoring contract — the declaration's document shape (`urn`, `claims`, `input_schema`, `side_effect`), the claims and conflict rules, the closed `side_effect` set and the S20 direction — plus the `composed_actions` and `composed_classes` ledger rows. The SDK vendors no corpus README, so without this a vendor has no shipped, versioned description of the document they must author | documentation — slice 4 of this increment (task #146) | the release cut that ships either slice's behaviour, which must not land before this row closes; the cut's checklist reads this row |
-| D8 | The corpus prose for the declaration document is under-described: `standards/plugin-ui-class-reference/0.3.0/README.md` §"The deviation ledger contract" still describes the document as profile, version and `deviations` only, while the SDK now writes a third key. The "zero standards motion" claim in §9 is scoped to **schema bytes** — no schema governs the declaration's key set — and does not cover this prose | documentation — slice 2's standards leg, which adds the 0.4.0 copy | the release cut that ships slice 1's behaviour, which must not land before this row closes |
-| D9 | The CON-12 gateway mirror still refuses the recoverable case: `src/benchweave/presentation/classref.py::derive_attachment` raises `classref_unknown_action` at ~1765/1791/1805. Slice 1 is SDK-only by design, so the shipped state is "a plugin derives and previews", not yet "runs on a bench here" | documentation here; carried to the pointer PR | the gateway pointer advances to the release that carries slice 1 |
+| D1 | The other six vocabularies — procedures, observation variables, channels and decoders, datasets and capture shapes, plot kinds, settings idioms — each needs its own layer-2 declaration and layer-3 residual rule; this increment lands actions only | documentation here | a plugin ships (or an owner-supplied descriptor declares) a member of one of these vocabularies that no class and no served catalog covers, and `derive-ui` refuses or mis-derives on it. **CLOSED 2026-10-26 — the trigger fired and was answered.** #556 Track B landed the six vocabularies (SDK slices B1–B6; the gateway mirror B7). Evidence: the Track B record `.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md` (its SDK-side copy ships at benchweave-sdk v0.22.0) and the two merged gateway pull requests #561 (the 0.5.0 family and the v0.22.0 pointer) and #559 (the composed-member mirror). The close-out row-state table and the gateway re-check are §15. |
+| D2 | The reference-less device — `derive_ui_command` raises `derive_ui_reference` when no class reference matches the descriptor's profiles, so a fully custom device still has no derive path; layers 2 and 3 do not help it because there is no page structure to resolve into | documentation here | the owner's ruling on fork F1 below. **UNCHANGED 2026-10-26.** Out of #556's scope: Track B's record §0 extends this row's boundary by one sentence (vendor-minted pages) and does not reopen it. The trigger has not fired. |
+| D3 | Per-control provenance badges — the layout vocabulary's `/control` node admits only `binding_id`, `field`, `kind`, so a `custom` marker renders at section level only | documentation here | the next layout-vocabulary widening opens (a `plugin-ui-class-reference` family bump for any other reason), at which point the provenance field rides it. **UNCHANGED 2026-10-26.** The 0.5.0 layout vocabulary still admits only `binding_id`, `field` and `kind` on `/control` (measured on `standards/plugin-ui-class-reference/0.5.0/layout.schema.json` `$defs.control`); no widening opened. |
+| D4 | The reference-slot knowledge gap (`derive_ui:706`) — a class's own slot naming an unserved URN is a corpus fault, not a vendor gap; the split leaves it refusing | documentation here | a class reference in the corpus is shown to name an action URN that no served catalog describes. **UNCHANGED 2026-10-26.** Still refused. #556 added the member half (an applied procedure or configuration claim no served or pinned catalog describes refuses `classref_unknown_action`); the reference-slot half is unchanged. |
+| D5 | Composed-class claims across two classes for one URN — refuse, never merge; a shared action class is a corpus-side design question | documentation here | a second plugin or a corpus class needs to claim an URN another class already claims. **UNCHANGED 2026-10-26.** Still refuse-never-merge. #556 widened the conflict family — a claim another member or an applied composed class holds refuses `classref_composed_slot_conflict` — and no shared-claim merge landed. |
+| D6 | The `_urn_for_binding` global terminal-slug resolution hazard (composition record §4) becomes easier to reach as more actions land on one device-features page | documentation here; recorded in `.claude/deep-review/2026-10-20-classref-composition-gate-design.md` §4 | the owner's ruling on that record's §4 rows arrives, or a composed device renders one class's staging fields under another class's button. **UNCHANGED 2026-10-26.** The owner's §4 ruling has not arrived. One mechanism change is recorded and is not a closure: #556 Track B's B4 fold made the slot-keyed binding map win over the action-slug scan in `_urn_for_binding`; the slug scan stays the founding fallback. |
+| D7 | The SDK user guide's coverage of the new developer-facing surfaces — `resolution` provenance, `ui/class-reference.json`'s `custom_actions`, `verify-ui`'s `custom: <urn>` rows, and the "Custom device actions" section — is owed, not present (`user_guide/plugin-sdk.qmd`, currently mentioning `ui/class-reference.json` only for the `migrate-ui` pointer). **Extended 2026-10-23 after the slice-2 review:** it must also carry the composed authoring contract — the declaration's document shape (`urn`, `claims`, `input_schema`, `side_effect`), the claims and conflict rules, the closed `side_effect` set and the S20 direction — plus the `composed_actions` and `composed_classes` ledger rows. The SDK vendors no corpus README, so without this a vendor has no shipped, versioned description of the document they must author | documentation — slice 4 of this increment (task #146) | the release cut that ships either slice's behaviour, which must not land before this row closes; the cut's checklist reads this row. **CLOSED 2026-10-26 — verified in B8.** The SDK user guide at v0.22.0 carries the coverage this row names (`user_guide/plugin-sdk.qmd`: the three-layer resolution, `custom_actions`, the `custom: <urn>` rows, the "Custom device actions" section, the composed action-class authoring contract, and the `composed_actions` / `composed_classes` / `composed_members` ledger rows), shipped by Track B's B6. One stale sentence remains in that guide and is a named follow-up, not a reopen: "The gateway mirror of this resolution is also deferred. A gateway still refuses an action that the SDK resolves" is false since gateway #557; recorded in §15. |
+| D8 | The corpus prose for the declaration document is under-described: `standards/plugin-ui-class-reference/0.3.0/README.md` §"The deviation ledger contract" still describes the document as profile, version and `deviations` only, while the SDK now writes a third key. The "zero standards motion" claim in §9 is scoped to **schema bytes** — no schema governs the declaration's key set — and does not cover this prose | documentation — slice 2's standards leg, which adds the 0.4.0 copy | the release cut that ships slice 1's behaviour, which must not land before this row closes. **CLOSED 2026-10-26 — verified in B8.** The family's 0.4.0 copy describes the declaration's full key set (`standards/plugin-ui-class-reference/0.4.0/README.md` §"The deviation ledger contract" names `profile_ids`, `contract_version`, `reference_version` and four inventories), and the 0.5.0 copy extends the prose. The row's home — slice 2's standards leg — landed. |
+| D9 | The CON-12 gateway mirror still refuses the recoverable case: `src/benchweave/presentation/classref.py::derive_attachment` raises `classref_unknown_action` at ~1765/1791/1805. Slice 1 is SDK-only by design, so the shipped state is "a plugin derives and previews", not yet "runs on a bench here" | documentation here; carried to the pointer PR | the gateway pointer advances to the release that carries slice 1. **CLOSED 2026-10-26.** Track A's gateway mirror landed (PR #557) and the pointer advanced to v0.22.0 (PR #561) — the row's own trigger. Evidence: `.claude/deep-review/2026-10-25-issue556-track-a-gateway-mirror.md`; the gateway's `derive_attachment` resolves the recoverable case, pinned by `tests/presentation/test_classref_derive.py`. |
 
 ## 7. Pre-committed acceptance rule
 
@@ -753,3 +753,77 @@ had not seen, and this entry does not credit it with verifying them):
    the plain DMM descriptor). RESOLVED, not carried: this fold's F2 fix
    mirrors the fallback, and the dmm-shaped fixture now pins the shape
    byte for byte.
+
+## 15. Addendum (2026-10-26, the B8 close-out) — D1 closed, the neighbours walked
+
+#556 Track B's slice plan ends at B8: the docs and the close-out. This
+addendum records the §6 deferral table's state after the whole arc
+merged, so a reader does not have to reconstruct it from the commits.
+Every state change below is an explicit dated marker on the §6 row, never
+a silent rewrite of the prose that shipped.
+
+| id | state on 2026-10-26 | what changed it |
+|---|---|---|
+| D1 | **CLOSED** | #556 Track B: the six vocabularies landed in the SDK (B1–B6) and the gateway mirrored them (B7). |
+| D2 | open (unchanged) | Out of scope. Track B's record §0 extends the boundary by one sentence (vendor-minted pages) and does not reopen it. |
+| D3 | open (unchanged) | No layout-vocabulary widening opened. |
+| D4 | open (unchanged) | The member half was added; the reference-slot half still refuses. |
+| D5 | open (unchanged) | Still refuse-never-merge. |
+| D6 | open (unchanged) | The owner's §4 ruling has not arrived; B4 changed `_urn_for_binding`'s precedence, recorded in the row and not a closure. |
+| D7 | **CLOSED** (retrospective) | The SDK user guide's coverage landed with Track B's B6 and is verified against benchweave-sdk v0.22.0. |
+| D8 | **CLOSED** (retrospective) | The 0.4.0 family copy described the document's full key set; the 0.5.0 copy extends the prose. |
+
+**What closed D1, with pointers.** D1's reopen trigger was "a plugin
+ships (or an owner-supplied descriptor declares) a member of one of these
+vocabularies that no class and no served catalog covers, and `derive-ui`
+refuses or mis-derives on it". #556 Track B answered the trigger
+vocabulary by vocabulary; each row's layer-2 home, layer-3 rule and
+REPORTED disclosure is recorded in the Track B record's §4 and its dated
+addenda (`.claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md`;
+the SDK-side copy of that record ships at benchweave-sdk `v0.22.0`,
+commit `0d4b44d`):
+
+- procedures, settings idioms, channels and decoders, datasets and
+  capture shapes, and plot kinds compose through one composed member
+  declaration with four member kinds (`channels`, `dataset`,
+  `configuration`, `procedure`), validated by the family's 0.5.0
+  `composed-member-declaration.schema.json`.
+- observation variables need no new document: the descriptor's own
+  `derived_variables[]` row is the layer-2 declaration; the variable
+  derives into dataset shapes and plot series, never a reading tile, and
+  the gate reports the states.
+
+Evidence lives in two places, and both are named because either alone is
+incomplete: the Track B record carries the design and the per-slice folds;
+the two merged gateway pull requests carry the served state — **#561**
+(the 0.5.0 family copy and the `v0.22.0` pointer, merge `bfc5e197`) and
+**#559** (the composed-member mirror, merge `f485f873`).
+
+**The B8 re-check is code-side, not record-side.** D1's closure is not
+taken from the records alone. The shipped gateway derives member surfaces
+and discloses the residual states: `src/benchweave/presentation/classref.py`
+`_composed_member_inventory`, `_check_member_reference_conflicts`,
+`_inject_composed_members` and `_residual_member_rows`; pinned by
+`tests/presentation/test_classref_members.py` (25 tests) and
+`tests/presentation/test_classref_member_disclosures.py` (15 tests), and
+by the classref differential in `tests/sdk/test_descriptor_equivalence.py`
+(eight table cells, each driving both derivations over the same descriptor
+and pin; `test_classref_lanes_agree_on_every_composed_scenario`, with the
+teeth arm `test_the_classref_differential_bites_on_a_planted_disagreement`).
+
+**D7 and D8 close retrospectively, and the reason is stated.** Both rows'
+triggers were release cuts that have already happened. Leaving them open
+would leave this record claiming a gate that was passed. The coverage was
+verified against the shipped artifacts, not assumed: the SDK guide at
+`v0.22.0` and the 0.4.0/0.5.0 README copies, by the checks named in the
+rows themselves.
+
+**One stale claim found during the walk, reported not fixed here.**
+`user_guide/plugin-sdk.qmd` at the pinned SDK `v0.22.0` still says: "The
+gateway mirror of this resolution is also deferred. A gateway still
+refuses an action that the SDK resolves." That sentence was true when
+Track B's B6 wrote it and is false since gateway PR #557 (Track A) and
+#559 (the mirror). The fix is in the SDK repository, outside this gateway
+branch's licence; it is recorded here so the next SDK documentation pass
+carries it. It is not a D7 reopen: D7's coverage requirement is met; the
+sentence is a stale claim adjacent to it.
