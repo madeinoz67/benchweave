@@ -13,11 +13,11 @@ daq).
 RENDER-TIME EXPANSION (disclosed): the production expander is Landing 2's,
 unreleased at this slice. The analyser page's data was produced by a
 throwaway render-time expansion of the committed corpus pair —
-standards/plugin-ui-class-reference/0.5.0/class-logic_analyser.json
+standards/plugin-ui-class-reference/0.6.0/class-logic_analyser.json
 expanded against standards/otdp/0.2.3/examples/class-logic_analyser.json —
 and the module is the committed artifact. The dc_psu output page (L11)
 follows the same shape against
-standards/plugin-ui-class-reference/0.5.0/class-dc_psu.json ×
+standards/plugin-ui-class-reference/0.6.0/class-dc_psu.json ×
 standards/otdp/0.2.3/examples/class-dc_psu.json; the dmm readings page
 (L12) against class-dmm.json × class-dmm.json — the third composer, the
 observation-pure class (design record 2026-10-19). For every class page,

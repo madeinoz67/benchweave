@@ -37,7 +37,16 @@ the design record §5's stated class: the W8 fold collapses each doubled
 staging numeric to one occurrence (f1/f2/f1-da's ``margin_ppm``/
 ``hysteresis_mv``, f6-smu's ``max_duration_ms``/``max_bytes``) and the
 envelope's manifest pin follows; f5-trio moved zero bytes and no
-completion-appended pair appeared (the W1 prediction held).
+completion-appended pair appeared (the W1 prediction held). At the 0.6.0
+family bump (0.5.0 -> 0.6.0, issue #560 — the content-count cap removal)
+the parity fixture pairs were re-stamped from THIS derivation over the
+new corpus — SEVEN pairs on the final tree (f1, f2, f1-da, f5-trio,
+f6-smu, m400 at the first pass; dmm joining with the #563 rebase and
+re-stamped in the same arc): each manifest's layout ``contract_version``
+and each envelope's derived manifest pin, a stamp-only delta; the
+derivation itself moved zero bytes, so the delta is the version line and
+its digest. The SDK's own vendored corpus carries 0.5.0 until the SDK leg
+re-stamps its side.
 
 Mirrored-source pin: the derivation functions mirror
 ``benchweave_sdk.classref`` at v0.14.0 PLUS the L5 input-trio widening
@@ -65,10 +74,11 @@ profile row the seam admits), the plot-kind inheritance and the member
 plot, the computed variables, the placement dispositions and the
 mint-collision refusal, and the residual rows the SDK gate renders on
 its REPORTED channel — carried on ``PresentationState.disclosures`` in
-the SDK's own wording. The member-declaration SCHEMA itself joins the
-family at 0.5.0 (the B2 standards motion): until that bump merges, a
-member pin against this corpus refuses typed as a platform fault (the
-lazy-loader rule below) and member-pin-free derivations are unaffected.
+the SDK's own wording. The member-declaration SCHEMA itself joined the
+family at 0.5.0 (the B2 standards motion, merged 2026-10-26): before
+that merge a member pin against this corpus refused typed as a platform
+fault (the lazy-loader rule below); since it, member pins validate
+against the served schema and member-pin-free derivations are unaffected.
 A re-pin that moves the SDK
 derivation moves these functions in the same arc (the design's
 fixture-freeze re-pin rule); B8 reds otherwise.
@@ -176,7 +186,7 @@ _FAMILY = "plugin-ui-class-reference"
 #: the registry's corpus pin (design record §3; R4's mitigation) cites the
 #: served family version, derived from the corpus manifest, never a
 #: literal in the render path (the constant documents the founding pin).
-FOUNDING_FAMILY_VERSION = "0.5.0"
+FOUNDING_FAMILY_VERSION = "0.6.0"
 
 
 class ClassRefusal(ValueError):

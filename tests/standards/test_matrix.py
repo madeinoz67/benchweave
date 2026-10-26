@@ -288,18 +288,17 @@ def _version_table_rows(rendered: str, header: str) -> list[str]:
 
 
 def test_e3_one_row_per_retained_version_at_the_seed() -> None:
-    """E3 half 1: one row per retained version — 30 rows at this train.
+    """E3 half 1: one row per retained version — 31 rows at this train.
 
-    30 = the retained version directories enumerated from the corpus
+    31 = the retained version directories enumerated from the corpus
     manifest across the seven manifest standards at this commit (otdp 8
     after #525's 0.2.4, registry 4, execution 2, interface 2, plugin-ui 6,
-    plugin-ui-preview 3, plugin-ui-class-reference 5 after #556 track B's
-    0.5.0; measured 2026-10-25 at the #556 re-arc onto the #541 train — the
-    parent counted 29 for the class-ref family's four versions). The
-    expected count
-    is re-derived from the same mechanism the
-    render uses, and the literal 29 pins the denominator: if either moves,
-    the test names which.
+    plugin-ui-preview 3, plugin-ui-class-reference 6 after #560's 0.6.0
+    beside #556 track B's 0.5.0; measured 2026-10-25 at the #556 re-arc —
+    the parent counted 30, its own parent 29 for the class-ref family's
+    four versions). The expected count is re-derived from the same
+    mechanism the render uses, and the literal 30 pins the denominator:
+    if either moves, the test names which.
     """
     from benchweave.standards.manifest import load_manifest, retained_versions
     from benchweave.standards.matrix import VERSION_HEADER, render_matrix
@@ -309,7 +308,7 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
     expected = sum(
         len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
     )
-    assert expected == 30, f"the seed retained-set denominator moved: {expected}"
+    assert expected == 31, f"the seed retained-set denominator moved: {expected}"
     assert len(rows) == expected, (
         f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
         "(one row per retained version)"

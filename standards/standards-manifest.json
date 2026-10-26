@@ -3,7 +3,7 @@
   "sdk_compatibility": {
     "main_project": ">=0.1.0",
     "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance — checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync — same-version content drift is refused (standards_version_required), never re-vendored silently.",
-    "sdk": "0.22.0"
+    "sdk": "0.23.0"
   },
   "dependency_policy": {
     "policy_version": 1,
@@ -73,10 +73,10 @@
         }
       },
       "plugin-ui-class-reference": {
-        "range": ">=0.1.0,<0.6.0",
+        "range": ">=0.1.0,<0.7.0",
         "yanked": {},
         "retired": [],
-        "note": "Range ceiling moved with the 0.5.0 admission (gateway issue #556 track B; design record .claude/deep-review/2026-10-25-issue556-track-b-vocabularies.md section 10, the owner-decided one-document-one-bump motion): admitting the version entails the served range carries it - the same entailed-admission widening as the 0.4.0 admission (gateway issue #541 s2, >=0.1.0,<0.4.0 -> >=0.1.0,<0.5.0). No floor motion, no yank, no retirement; this note is the G-3 linked ruling reference.",
+        "note": "Range ceiling moved with the 0.6.0 admission (gateway issue #560; .claude/deep-review/2026-10-26-issue560-no-cap-vendor-features-design.md sections 4 and 9: section 4 carries the MINOR change-class ruling — the family's vocabulary-widening precedent, a loosening that re-states a normative bound; section 9 carries the train, the served-range motion, the SDK release cut v0.23.0 and the pointer ordering — and the owner ruling quoted at the record's top: no cap or limit on vendor features): admitting the version entails the served range carries it, the same entailed-admission widening as the 0.5.0 admission (gateway issue #556 track B, >=0.1.0,<0.5.0 -> >=0.1.0,<0.6.0) and the 0.4.0 admission before it (gateway issue #541 s2). No floor motion, no yank, no retirement; this note is the G-3 linked ruling reference.",
         "versions": {
           "0.2.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.2.0/README.md"
@@ -89,6 +89,9 @@
           },
           "0.5.0": {
             "migration_note": "standards/plugin-ui-class-reference/0.5.0/README.md"
+          },
+          "0.6.0": {
+            "migration_note": "standards/plugin-ui-class-reference/0.6.0/README.md"
           }
         }
       }
@@ -218,23 +221,23 @@
     },
     {
       "id": "plugin-ui-class-reference",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "status": "stable",
-      "released": "2026-10-25",
-      "supersedes": "0.4.0",
+      "released": "2026-10-26",
+      "supersedes": "0.5.0",
       "normative": [
-        "standards/plugin-ui-class-reference/0.5.0/class-reference.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/layout.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/composed-action-class.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/composed-member-declaration.schema.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-logic_analyser.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-dc_psu.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-dmm.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-oscilloscope.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-function_generator.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-electronic_load.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-smu.json",
-        "standards/plugin-ui-class-reference/0.5.0/class-daq.json"
+        "standards/plugin-ui-class-reference/0.6.0/class-reference.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/layout.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/composed-action-class.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/composed-member-declaration.schema.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-logic_analyser.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-dc_psu.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-dmm.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-oscilloscope.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-function_generator.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-electronic_load.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-smu.json",
+        "standards/plugin-ui-class-reference/0.6.0/class-daq.json"
       ]
     }
   ]

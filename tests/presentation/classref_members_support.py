@@ -36,7 +36,9 @@ from benchweave.vendoring import corpus_root
 
 def build_member_corpus(tmp_path: Path) -> Path:
     """The committed corpus copied into tmp — the served member schema
-    rides along natively (family 0.5.0 since the #561 standards PR);
+    rides along natively
+    (the family corpus since the #561 standards PR landed it at 0.5.0;
+    0.6.0 at this bump);
     nothing is planted. The arms that need a corpus WITHOUT the schema
     construct it themselves (the transitional refusal arm strips it)."""
     corpus = tmp_path / "standards"

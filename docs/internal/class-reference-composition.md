@@ -8,7 +8,7 @@ no-refusal promise from becoming a silent-derivation promise. It is an
 engineering record, not a normative surface: the normative text for the
 composed documents is the corpus README sections "Composed action classes"
 and "Composed member declarations"
-(`standards/plugin-ui-class-reference/0.5.0/README.md`), and the design
+(`standards/plugin-ui-class-reference/0.6.0/README.md`), and the design
 arguments live in the records listed at the end. Cross-references replace
 restatement here by design.
 

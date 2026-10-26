@@ -82,9 +82,10 @@ def test_export_is_byte_identical_across_runs(tmp_path: Path) -> None:
 def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
     """Issue #203 slice 1 (design §3.2, as resolved against the Q10 ruling):
     the bundle gains one entry per CARRIED (id, version) — retained ∧
-    in-range, 19 entries at this train (the #525 otdp 0.2.4
-    readings-parameters bump adds one; the #556 track B bump adds the
-    class-ref family's 0.5.0 beside its retained four; the L5 bump:
+    in-range, 20 entries at this train (the #560 children-ceiling bump
+    adds the class-ref family's 0.6.0 beside its retained five; the #525
+    otdp 0.2.4 readings-parameters bump and the #556 track B 0.5.0
+    before it; the L5 bump:
     plugin-ui's narrow range keeps exactly the active 0.4.0 —
     one-live-object; the classref family is multi-serving now, so 0.2.0
     joins 0.1.0; interface 0.1.1 rides beside 0.1.0 under the #450 fold's
@@ -120,6 +121,7 @@ def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
         ("plugin-ui-class-reference", "0.3.0"),
         ("plugin-ui-class-reference", "0.4.0"),
         ("plugin-ui-class-reference", "0.5.0"),
+        ("plugin-ui-class-reference", "0.6.0"),
         ("plugin-ui-preview", "0.1.1"),
         ("plugin-ui-preview", "0.2.0"),
     }
