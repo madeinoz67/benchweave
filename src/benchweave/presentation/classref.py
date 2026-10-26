@@ -76,11 +76,13 @@ fixture-freeze re-pin rule); B8 reds otherwise.
 Disclosed residuals of the plot-kind mirror: (1) a decoder-carrying
 numeric descriptor keeps its decode binding and target — the lanes
 simply do not ride the analog plot (the schema bans decoder lanes
-there; the SDK's own emission, mirrored); (2) the SDK's empty-page
-disclosure fallback (a page whose every authored section is
-reading-tiles) is not mirrored — such a page is omitted from the
-layout block as before, and no committed pair carries one; (3) the
-serve-side parameter guard ``_resolve_parameters`` documents below.
+there; the SDK's own emission, mirrored); (2) the serve-side parameter
+guard ``_resolve_parameters`` documents below. (The SDK's empty-page
+fallback WAS this list's second residual until the 2026-10-26 B7
+refute fold F2 mirrored it — every declared page now renders its panel,
+the dmm tag pinning the bytes; Track A's "the regen decides" deferral
+closed by decision, not by regeneration, because no committed fixture
+carried the shape until that tag.)
 
 Corpus discipline: every corpus file this module reads is digest-verified
 against its corpus-manifest row before parsing (``_verify_corpus_pin`` —
@@ -1949,8 +1951,34 @@ def _build_layout(
         # completion pass appends must arrive in time for the insert to
         # give it its numeric staging pair.
         _insert_ladder_numerics(sections, plan, page_slots, minted)
-        if sections:
-            block_pages.append({"page_id": page_id, "sections": sections})
+        if not sections:
+            # The empty-page fallback (issue #556, the B7 refute fold F2;
+            # the SDK expander's own emission since the 0.3.0 widening,
+            # mirrored verbatim): every declared page renders as a panel
+            # (the expect row's meaning) — a page whose surface is fully
+            # placed, or whose actions surface as disclosures elsewhere,
+            # derives the honest text body, never a page without its
+            # panel. Before this mirror the gateway OMITTED such a page;
+            # the dmm tag pins the emitted bytes.
+            template = (templates or {}).get(page_id, {})
+            sections = [
+                {
+                    "id": f"{page_id}-section",
+                    "title": str(page.get("title", page_id)),
+                    "surface": "raised",
+                    "span": 12,
+                    "children": [
+                        {
+                            "body": (
+                                "No additional device features."
+                                if template.get("vendor_features")
+                                else "No additional surfaces for this page."
+                            )
+                        }
+                    ],
+                }
+            ]
+        block_pages.append({"page_id": page_id, "sections": sections})
     block: dict[str, Any] = {
         "contract_version": family_version(corpus),
         "pages": block_pages,

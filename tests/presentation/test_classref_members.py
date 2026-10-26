@@ -4,18 +4,18 @@ dispositions, mirroring the SDK expander at the composed-member tips
 (``feat/556-b3-members`` ``2dd718d``, ``feat/556-b4-procedures-settings``
 ``3182312``, ``feat/556-b5-datasets-plots`` ``bac0ac3``, folds included).
 
-Corpus posture: the member-declaration schema joins the family at 0.5.0
-(the B2 standards motion, a sibling slice). This module's arms run against
-a SCRATCH corpus — the committed corpus copied into tmp with a
-test-authored member schema written at the ACTIVE family version and
-re-pinned into the copied manifest — so the walk's semantics
-(discrimination, conflicts, injection, dispositions) are pinned on every
-base, with or without the 0.5.0 bump merged. The schema's own closed sets
-(lifted verbatim from their owners) are B2's test surface, not this
-module's; a member pin against a corpus serving NO member schema is the
-transitional refusal arm below. When the corpus serves the real 0.5.0
-schema the same arms run unchanged — the walk reads whatever schema the
-active family serves, exactly as the SDK's lazy loader does.
+Corpus posture: since the #561 standards PR the committed corpus serves
+the REAL member-declaration schema at the ACTIVE family version
+(0.5.0), and these arms run against it — the scratch corpus is a plain
+copy (``classref_members_support.build_member_corpus``), the arms' own
+documents are real-schema-valid, and the test-authored stand-in that
+bridged the pre-0.5.0 window is RETIRED (its retirement record and the
+measurement that justified deletion live in
+``classref_members_support``'s module docstring). The schema's own
+closed sets are B2's test surface, not this module's; a member pin
+against a corpus serving NO member schema remains pinned by the
+transitional refusal arm below, which constructs that corpus by
+stripping the served schema in its own copy.
 """
 
 from __future__ import annotations
@@ -433,10 +433,34 @@ class TestMemberWalk:
         gateway's typed face): a member pin on a corpus whose active
         family serves no member-declaration schema is a platform fault
         that refuses LOUDLY — never a silently-empty read, never the
-        ignored-pin disclosure. Once the corpus serves the family's 0.5.0
-        tree the arm is unreachable by construction."""
+        ignored-pin disclosure. The arm CONSTRUCTS that corpus: once the
+        committed tree serves the family's 0.5.0 schema (the #561
+        standards PR), the copy strips it, so the arm pins the refusal
+        in both worlds rather than depending on which corpus it copies."""
+        import hashlib as _hashlib
+
+        from benchweave.standards.manifest import active_version_from_corpus
+
         corpus = tmp_path / "standards"
         shutil.copytree(corpus_root(), corpus)
+        version = active_version_from_corpus(corpus, "plugin-ui-class-reference")
+        relpath = (
+            "plugin-ui-class-reference"
+            f"/{version}/composed-member-declaration.schema.json"
+        )
+        schema_path = corpus / relpath
+        if schema_path.is_file():
+            raw = schema_path.read_bytes()
+            schema_path.unlink()
+            manifest_path = corpus / "corpus-manifest.json"
+            manifest = json.loads(manifest_path.read_bytes())
+            digest = _hashlib.sha256(raw).hexdigest()
+            manifest["files"] = [
+                row for row in manifest["files"] if row.get("sha256") != digest
+            ]
+            manifest_path.write_bytes(
+                (json.dumps(manifest, indent=2) + "\n").encode()
+            )
         descriptor = _m400()
         document = _members_document(
             [
@@ -455,25 +479,40 @@ class TestMemberWalk:
             _derive_document(descriptor, catalogs, corpus)
         assert "serves no composed-member-declaration schema" in str(exc.value)
 
+    # The bridge-retirement guard (F3, the 2026-10-26 fold) fired exactly
+    # as designed at the #561 rebase: the corpus now serves the real
+    # 0.5.0 schema, no arm needed the stand-in (measured: 25 of 26 arms
+    # pass against the real document), and both were DELETED together —
+    # see classref_members_support's retirement record.
 
-def _daq_reference() -> dict[str, Any]:
+
+def _reference_document(profile: str) -> dict[str, Any]:
+    """A corpus class reference read at the ACTIVE family version (the
+    #561 sweep: the member path pins no family literal — the corpus
+    carries 0.4.0 today and 0.5.0 after the standards PR, and the arms
+    read whichever is served)."""
+    from benchweave.standards.manifest import active_version_from_corpus
+
+    version = active_version_from_corpus(
+        corpus_root(), "plugin-ui-class-reference"
+    )
     document: dict[str, Any] = json.loads(
         (
             corpus_root()
-            / "plugin-ui-class-reference/0.4.0/class-daq.json"
+            / "plugin-ui-class-reference"
+            / version
+            / f"class-{profile}.json"
         ).read_bytes()
     )
     return document
+
+
+def _daq_reference() -> dict[str, Any]:
+    return _reference_document("daq")
 
 
 def _smu_reference() -> dict[str, Any]:
-    document: dict[str, Any] = json.loads(
-        (
-            corpus_root()
-            / "plugin-ui-class-reference/0.4.0/class-smu.json"
-        ).read_bytes()
-    )
-    return document
+    return _reference_document("smu")
 
 
 def _f1() -> dict[str, Any]:

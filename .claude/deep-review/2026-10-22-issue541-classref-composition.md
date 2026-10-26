@@ -366,22 +366,27 @@ two halves wrong together. The condition, precisely: an analog plot
 the composed computed variables (those mirror the SDK's B1 fold exactly:
 dropped from the plot, disclosed on the residual channel, wire shape
 unchanged) — exceed the manifest schema's `y.maxItems` 16 (`_ANALOG_Y_CEILING`).
-The gateway refuses typed: `classref_series_ceiling: {N} numeric variables
-ride the {kind} plot (ceiling 16)`, counted over the non-computed ids only —
-pinned by `test_a_numeric_series_ceiling_refuses_typed`
-(`tests/presentation/test_classref_derive.py`). The SDK at `bac0ac3` emits
-the y set for that same shape unrefused and undropped, and the load dies
-untyped; the evidence is the SDK-side measurement recorded in the Track B
-record's own B1 addendum (2026-10-25, F2 "a pre-existing ceiling defect,
-recorded and not touched"; measured there on the B1 worktree with a
-17-analogue-input descriptor: `plot waveform y count: 17`, and `verify_ui`
-raising `PluginLoadError: standalone_plugin_invalid:
-preview_invalid_presentation: invalid_document: ui-manifest: Document does
-not satisfy its schema`) — that reproduction is the SDK record's own, not
-re-measured gateway-side here; the gateway arm above is this side's
-evidence. The divergence is deliberate and convergent, and it is an
-OUTSTANDING MIRROR OBLIGATION: the moment the SDK fixes its own
-class-over-ceiling handling, the gateway adopts whatever it lands on.
+Both halves are now REPRODUCED, each through its production path (this
+paragraph updated 2026-10-26 by the refute follow-through; the entry's
+original wording cited the SDK side from the Track B record's B1 addendum
+rather than measuring it — no longer). GATEWAY side, through
+`derive_attachment` on this branch: the typed refusal
+`classref_series_ceiling: {N} numeric variables ride the {kind} plot
+(ceiling 16)`, counted over the non-computed ids only — pinned by
+`test_a_numeric_series_ceiling_refuses_typed`
+(`tests/presentation/test_classref_derive.py`). SDK side, independently
+reproduced 2026-10-26 through the shipped gate (`create_ui_resources`
+deriving and writing a manifest whose plot carries `y` count 17,
+unrefused and undropped, then the real `verify_ui` raising
+`PluginLoadError: standalone_plugin_invalid:
+preview_invalid_presentation: invalid_document: ui-manifest: Document
+does not satisfy its schema`) at SDK main `37905f7`; the derive-half
+(`derive_ui` green with the 17-entry `y`, the schema violation captured
+by raw jsonschema over the derived manifest) first reproduced at
+`20ad123` during the refute differential, identical at `37905f7`. The
+divergence is deliberate and convergent, and it is an OUTSTANDING
+MIRROR OBLIGATION: the moment the SDK fixes its own class-over-ceiling
+handling, the gateway adopts whatever it lands on.
 
 Only **one** refusal is removed, and only in its knowledge-gap sense: "I do not
 know what this action admits" becomes "I derived it from the plugin's own
@@ -499,3 +504,252 @@ make check-sdk-standards                           # pointer PR only
 
 The test paths above are the intended homes; the build leg corrects them to the
 SDK's actual layout if it differs, and says so in the commit.
+
+## 14. Addendum (2026-10-26, the B7 refute fold) — the record corrected, the census carried, the fallback mirrored
+
+The adversarial lane on the B7 mirror (23-scenario hand differential,
+SDK derivation vs gateway derivation) found the mirror faithful — every
+refusal code, every disclosure row and every derived surface it reached
+agreed — and found five things besides. All five fold in one commit;
+the dispositions and their evidence follow.
+
+**F1a (MEDIUM) — the gateway-side per-surface comparison obligation is
+unaddressable as written, and nothing said so.** The B5 fold's mirror
+obligation (the SDK-side Track B record, 2026-10-26) ends: "The
+gateway's per-surface gate rows grow the reading-tile comparison beside
+its data-table one." That sentence assumes a surface that does not
+exist on this side. Measured by the refute lane, line-pinned on this
+branch's tree: the gateway has no coverage gate, no authored ledger and
+no per-surface comparison of any kind —
+`src/benchweave/presentation/classref.py:1275-1278` merges every
+reference's `expect.components` into the merged reference, and its ONLY
+consumer is the `expect.controls` read at `:2601`; a grep of
+`src/benchweave/presentation/` for the per-surface vocabulary
+(reading-tile/data-table beyond the layout node KINDS at `:1848`/
+`:1879`) and for the gate's own detector names
+(`_reading_surface_findings`, `_data_table_surface_findings`, census,
+`data-bw-binding`) finds nothing — `contracts.py` carries zero hits;
+the B7 test modules
+(`tests/presentation/test_classref_members.py`,
+`test_classref_member_disclosures.py`) carry no per-surface arms. The
+SDK carriers the obligation points at are `classref_gate.py:588` and
+`:644`, wired at `:1067`/`:1076`, with the census reading the render's
+`data-bw-binding` at `:126`/`:131` (SDK refs at `37905f7`; the lane
+verified the detectors exist and are wired — the MISSING-not-
+downgradable / EXCESS-downgradable directionality wording is the
+record's own, not a line it read). Therefore the per-surface
+expectation obligation has NO GATEWAY HOME — this is not a deferral;
+the surface does not exist on this side — and what the mirror carried
+is the derive-side minted sets those rows would consume (the
+reading-tile expansion, the per-page plot emission, the disclosed
+placements — byte-pinned by the f6-smu and dmm tags). If a gateway
+coverage surface is ever built, the comparison rides it. The defect
+was the record's, not the code's, and this entry is the correction.
+
+**F1b (MEDIUM) — the equivalence census gained its composed-member
+arms.** This record's CON-12 obligation ("the equivalence census gains
+composed-member arms when B7 lands") is carried:
+`tests/sdk/test_descriptor_equivalence.py` now drives the same
+descriptor and pin through BOTH derivations — the gateway's
+`derive_attachment` over admission-shaped bytes and the pinned SDK's
+`derive_ui` over a spooled package (every non-`urn:otdp:` pin file
+written beside the descriptor, the reference read from the pinned SDK's
+vendored family tree) — over eight table cells: the m400 acceptance
+tag (all three resolutions, triples byte-equal, disclosure data and
+resolutions equal), the dmm fallback tag, the ambiguous pin, the
+claim-vs-served-row, side-effect-under and digest-mismatch refusals
+(codes equal both sides), the ignored/unapplied/empty pin-disclosure
+cell (data tuples equal — the row formats themselves pinned by the F4
+literals in `test_ui_presentation.py`, because the pinned gate's
+comprehensions are pure f-strings over exactly those tuples), and the
+member-pin PIN-LAG cell: the pinned SDK ignores a members document
+while the gateway refuses `classref_invalid_member_declaration`
+against a corpus serving no member schema — pinned as a NAMED
+divergence that flips to a clean-equal comparison when the pointer
+advances past the B3–B5 lineage (the cell's assertion message says so).
+A teeth arm plants a disagreement (the discriminator over-firing on a
+plain catalog) so the table's green proves the comparison runs. Not
+covered, stated in the module docstring: refusal DETAIL sentences
+(codes only — the sanctioned detail divergences stay here and in the
+Track A record); the SDK gate's own REPORTED minting (renderer-borne,
+pinned SDK-side); the gateway-only mints (composed-supplies row, member
+residual rows); the member vocabulary beyond the pin-lag cell. Runtime:
+the census module runs 174 tests in the lane's ordinary time — the
+differential adds eight in-process derivations, no new job, no
+renderer.
+
+**F2 (LOW-MEDIUM) — the empty-page fallback is mirrored, by decision.
+** Track A §3.4 deferred the fallback to "the regen decides"; no
+committed fixture carried an empty page, so the regen never decided and
+the conditional stayed open. The refute reached the divergence on the
+plain committed `descriptor-dmm.json` (the pinned SDK's own classref
+fixture, unmutated): the pinned SDK's layout carries three pages, the
+gateway's two — the device-features page, fully placed, omitted. The
+gateway's omit site (`if sections:` gating the page append) is
+identical at pre-B7 main `255a6a6d` — the divergence is pre-existing
+from Track A, not B7-widened. Ruled 2026-10-26: mirror the SDK. The
+mechanism (`presentation/classref.py::_build_layout`, the `if not
+sections` block) is the pinned SDK's own emission since the 0.3.0
+family widening (present at the `88dcc4d` pin), mirrored verbatim —
+"No additional device features." on a `vendor_features` page, "No
+additional surfaces for this page." otherwise. Byte-stability
+evidence, before/after: **zero of the 28 committed fixture files
+moved** (measured two ways — `git status` shows only the four NEW dmm
+files, and every reference-declared page on all six pre-existing tags
+derives non-empty, so the fallback never fires for them); the four new
+files are the dmm tag, generated from the pinned SDK expander at
+`88dcc4d` with its own emitted fallback bytes (sha256: descriptor
+`2ecc070b…`, envelope `3b65182d…`, manifest `1f49f864…`, catalogue
+`9ba8f54a…`). RED, pre-fix: `assert {'readings', 'configuration'} ==
+{'readings', 'configuration', 'device-features'}` — "Extra items in
+the right set: 'device-features'" (the fallback arm), and the dmm
+parity cell red on the manifest diff.
+
+**F3 (LOW-MEDIUM) — the test stand-in schema is a declared bridge, and
+the bridge announces its own retirement.** The B7 member arms run on a
+test-authored stand-in because the served corpus (0.4.0 at this
+pointer) serves no member schema — the real one is the B2 standards
+motion, ahead of the pointer. The stand-in is MATERIALLY LOOSER than
+the real `composed-member-declaration.schema.json`, and
+`classref_members_support`'s module docstring now enumerates the SIX
+loosenesses the refute measured (no member ceiling, no closed
+channels/action member split — no `oneOf`, no
+`additionalProperties:false` — no required claims on action members,
+no plot conditionals — series not required on analog kinds, group keys
+absent — no length or pattern bounds anywhere the real schema pins
+them, no vendor-profile constraints) and what production will narrow;
+its "same required keys and closed sets" claim — false — is gone. The
+refute's behavioral pin: a channels member carrying `claims` is
+refused by the real schema on both sides
+(`classref_invalid_member_declaration`, the oneOf finding), while
+under the stand-in the walk ACCEPTS the document and reaches
+`classref_composed_slot_conflict` — which is why the arms prove the
+WALK, never the schema. The guard arm
+`test_the_stand_in_announces_the_real_schema` FAILS the day the
+committed corpus serves any member schema at the ACTIVE family
+version (presence check, bytes never compared), so the bridge cannot
+outlive its premise silently. RED demonstration, planted scratch
+corpus (zero standards bytes touched): the guard fired with its
+retirement instruction; day-one state green (the committed corpus
+serves none).
+
+**The #561 ordering, ruled by the team lead 2026-10-26 (after this
+fold's arms were written): the standards PR (`benchweave#561`) lands
+the 0.5.0 corpus and the v0.22.0 pointer FIRST, and this fold lands
+after it** — which is precisely the condition the guard was built to
+announce. Handled in this commit, not deferred to the rebase:
+`build_member_corpus` plants the stand-in ONLY in the window where the
+active family serves no member schema and returns the copy untouched
+when it does; the member arms were driven against the REAL 0.5.0
+schema (PR #561's bytes planted at the active family path, sha256
+`3c5835d4…`) and **25 of 26 pass in that world — 24 unchanged, the
+transitional refusal arm after its premise-construction fix below, and
+the guard firing as the retirement instruction** — no arm needs the
+stand-in once the corpus serves the real document, so its post-#561
+retirement is a deletion, not a port. The two window arms construct
+their own premise: the transitional refusal arm strips a served schema
+to build its no-schema corpus, and the guard's firing in that world is
+the instruction to delete the stand-in and itself together. The member
+path's family literals are swept (the reference helpers read the ACTIVE
+family version, pinning no 0.4.0). The fixture triples do not move
+when the corpus moves (the team lead's ruling: the corpus change is a
+re-stamp plus additions).
+
+**The #561 rebase, executed (same day): the stand-in is RETIRED, not
+guarded.** Main merged the standards PR (bfc5e197: the 0.5.0 corpus,
+schema sha256 `3c5835d4…`, and the pointer to benchweave-sdk `v0.22.0`
+at `0d4b44d`); this branch rebased clean onto it and the retirement ran
+exactly as measured: `MEMBER_SCHEMA_STAND_IN` and the retirement guard
+are DELETED together (the guard's condition — corpus serves the schema
+while a stand-in exists — is permanently satisfied and would fire
+forever); `build_member_corpus` is a plain copy; the two placement
+arms' plots gained the real schema's required `series` key (they had
+been written against the stand-in's looser plot — the only arms whose
+documents changed, and their purpose, the placement disposition, does
+not depend on the missing key); the transitional refusal arm keeps its
+constructed premise; **NO arm keeps the stand-in**. The census's
+member-pin cell FLIPPED as its own assertion message instructed: both
+lanes now walk the member document at v0.22.0 and refuse it
+identically (`classref_unknown_action`, the member half of D4 — a
+claim no served or pinned catalog describes needs the catalogue side),
+so the cell is `both-refuse:classref_unknown_action`. **One fixture
+triple moved, the dmm tag** — this fold's own new tag, one corpus
+generation behind at birth: the envelope and manifest each moved
+exactly one line (the manifest's `contract_version` stamp 0.4.0 →
+0.5.0, the envelope's embedded manifest pin following; the catalogue
+byte-identical, `9ba8f54a…` before and after) — the pointer lane's
+re-stamp class, regenerated from the v0.22.0 expander over the 0.5.0
+corpus. Manifest sha256 `1f49f864…` → `28f0ee12…`; envelope
+`3b65182d…` → `3a08991f…`. The other six tags' fixtures were re-stamped
+on main by the pointer lane and did not move here.
+
+**F4 (LOW) — the three Track A-era pin rows are the SDK's wordings
+now.** The ignored-pin, unapplied-class and empty-catalog rows carried
+wording the SDK never minted (Track A §3.4's formats), and B7 had
+EDITED one of them (the ignored-pin row gained "nor a member
+declaration" pre-fold) instead of aligning it — the
+`_classref_disclosures` docstring's "mirrored from the SDK's REPORTED
+rows where the SDK has them" was false for exactly these three (the
+gateway wordings at `ui_presentation.py:744-754`; the SDK gate minted
+its rows twice — reference-less arm and reference-carrying arm, at
+`37905f7` `classref_gate.py:973-987` and `:1165-1190` — and the member
+family already matched verbatim). Aligned to the gate's rows
+(superseding §3.4's formats; Track A's record text stands as history):
+`pinned document {path} contributed nothing`; `composed class {urn} is
+pinned ({pin_path}) but its claims name no action this descriptor
+declares`; `pinned document {path} contributed nothing (its
+vendor-catalog actions map is empty)`. Zero fixture bytes moved — the
+rows are serve-time mints over the derivation's data, not derivation
+output (the F1b cell pins the data both sides mint from).
+`docs/internal/class-reference-composition.md` rows 170-172 already
+carried the SDK wordings — the code was the divergent half, and the
+alignment closes the doc-vs-code gap with zero doc edits. RED,
+pre-fix: `AssertionError: pinned document extra-1.json contributed
+nothing` (the realigned row absent from the rendered page).
+
+**F5 (NIT) — two residuals accepted.** The gateway's residual rows
+drop the SDK `ResidualMember.vocabulary` field (SDK `classref.py:96` at
+`37905f7`; the gateway's `residual_rows` is a `(kind, member, detail)`
+triple): the rendered row ("`{kind} {member}: {detail}`") is identical,
+and the field feeds only SDK-side ledger consumers the gateway does not
+carry. The seam's reader (`pinned_contract_documents`, gateway
+`classref.py:2531`) keeps single-group documents only where the SDK's
+presentation-side reader (`presentation.py:174` at `37905f7`) keeps
+every non-empty group: on a green derive an ambiguous pin already
+refused in the walk (`classref_invalid_composed_class`, gateway
+`classref.py:2268-2278`), so the stricter drop is unreachable from a
+green derive and errs in the safe direction — a document the walk
+refused contributes nothing. The same reader also silently continues on
+a non-object pin (gateway `:2529-2530`) where the SDK's reader refuses
+typed — likewise unreachable gateway-side (the walk's non-object arm
+refuses first, and admission guarantees decodable bytes).
+
+**The builder lane's four-place prose-vs-code list, folded.** The B7
+builder lane's report to the team-lead enumerated four places where the
+SDK's published semantics and the record's prose disagree; the list is
+THE BUILDER LANE'S. The adversarial lane independently verified places
+1 and 3; places 2 and 4 it reached by its own separately found findings
+(it never read the builder's list — it declined to reconstruct parts it
+had not seen, and this entry does not credit it with verifying them):
+
+1. *The per-surface gate rows* ("the gateway's per-surface gate rows
+   grow the reading-tile comparison beside its data-table one") —
+   VACUOUS: the gateway has no surface to mirror. Verified (F1a above):
+   no coverage gate, no authored ledger, no per-surface comparison;
+   `expect.components` merged and never consumed; the obligation has no
+   gateway home and is not a deferral — the surface does not exist on
+   this side.
+2. *The class-only over-ceiling case* — the ruled divergence; §8's
+   dated entry above is its home and now carries both halves reproduced
+   through their production paths. Cross-referenced here, not restated.
+3. *A member's plot choice on a readings page* — verified: the code is
+   RIGHT on both sides and the prose was WRONG. The emitted time_series
+   binds the page's first observation because a dataset binding on a
+   readings page is a capability mismatch, so the first-observation
+   binding is the only valid emission; the mirror inherited nothing
+   bad. A reader who finds the stale prose need not re-litigate.
+4. *The SDK's empty-page fallback section stays un-mirrored* — the
+   adversarial lane's F2 by another route (three pages against two on
+   the plain DMM descriptor). RESOLVED, not carried: this fold's F2 fix
+   mirrors the fallback, and the dmm-shaped fixture now pins the shape
+   byte for byte.

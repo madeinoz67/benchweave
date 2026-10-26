@@ -1,0 +1,140 @@
+{
+  "contract_version": "0.4.0",
+  "plugin_id": "dev.veridian.dmm",
+  "descriptor_sha256": "2ecc070b7194d3b2bda7989721fca740211f9544a2411be4ee96e1ca71882c2e",
+  "bindings": [
+    {
+      "id": "measure",
+      "kind": "dataset",
+      "target_id": "measure"
+    },
+    {
+      "id": "measure-ch1-voltage",
+      "kind": "observation",
+      "target_id": "measure-ch1-voltage"
+    },
+    {
+      "id": "measure-ch2-voltage",
+      "kind": "observation",
+      "target_id": "measure-ch2-voltage"
+    },
+    {
+      "id": "configure",
+      "kind": "configuration",
+      "target_id": "configure"
+    }
+  ],
+  "pages": [
+    {
+      "id": "readings",
+      "title": "Readings",
+      "kind": "readings",
+      "bindings": [
+        "measure-ch1-voltage",
+        "measure-ch2-voltage"
+      ],
+      "required": true,
+      "plots": [
+        {
+          "kind": "time_series",
+          "binding_id": "measure-ch1-voltage",
+          "x": "time",
+          "y": [
+            "ch1-voltage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "configuration",
+      "title": "Configuration",
+      "kind": "configuration",
+      "bindings": [
+        "configure"
+      ],
+      "required": true
+    },
+    {
+      "id": "device-features",
+      "title": "Device features",
+      "kind": "configuration",
+      "bindings": [],
+      "required": true
+    }
+  ],
+  "assets": [
+    {
+      "id": "settings/configure.schema.json",
+      "path": "settings/configure.schema.json",
+      "sha256": "d1f44ac5cd6e3a92f0bdce138a21eec2d2fdf591f133289c9aa430843a07b538"
+    }
+  ],
+  "extensions": {
+    "plugin-ui-class-reference:layout": {
+      "contract_version": "0.5.0",
+      "pages": [
+        {
+          "page_id": "readings",
+          "sections": [
+            {
+              "id": "trend",
+              "title": "Trend",
+              "surface": "recessed",
+              "span": 7,
+              "children": [
+                {
+                  "plot_index": 0
+                }
+              ]
+            },
+            {
+              "id": "table",
+              "title": "Table",
+              "surface": "raised",
+              "span": 5,
+              "children": [
+                {
+                  "binding_id": "measure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "configuration",
+          "sections": [
+            {
+              "id": "configuration-section",
+              "title": "Configuration",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "binding_id": "configure",
+                  "kind": "data-table"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "page_id": "device-features",
+          "sections": [
+            {
+              "id": "device-features-section",
+              "title": "Device features",
+              "surface": "raised",
+              "span": 12,
+              "children": [
+                {
+                  "body": "No additional device features."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -958,14 +958,19 @@ class TestM400ServePath:
         for line in (
             "custom: com.meridian.m400.self_cal/1.0.0",
             "custom, renders nothing: com.meridian.m400.noinput/1.0.0",
-            # The walk's shape vocabulary gained the member declaration
-            # (#556 Track B); the ignored-pin row names all three.
-            "ignored pin: extra-1.json contributed nothing (shape matched "
-            "neither a vendor catalog, a composed class nor a member "
-            "declaration)",
-            "composed class otdp.action.meridian_unapplied/1.0.0 pinned at "
-            "extra-0.json applied to no declared action",
-            "pinned vendor catalog extra-2.json declares no actions",
+            # The three pin rows are the SDK gate's own REPORTED wordings,
+            # aligned 2026-10-26 (the B7 refute fold F4): before the
+            # alignment each row carried Track A-era wording the SDK never
+            # minted, and the module docstring's "mirrored from the SDK's
+            # REPORTED rows where the SDK has them" was false for exactly
+            # these three. The literals are quoted from the pinned gate
+            # (classref_gate.py, the R1/R5 fold's comprehensions).
+            "pinned document extra-1.json contributed nothing",
+            "composed class otdp.action.meridian_unapplied/1.0.0 is pinned "
+            "(extra-0.json) but its claims name no action this descriptor "
+            "declares",
+            "pinned document extra-2.json contributed nothing (its "
+            "vendor-catalog actions map is empty)",
             "composed: otdp.action.meridian_burst/1.0.0 (validated "
             "against 0.5.0) supplies 1 declared action(s)",
         ):

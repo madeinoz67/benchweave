@@ -707,19 +707,22 @@ def _classref_disclosures(derived: DerivedAttachment) -> tuple[str, ...]:
     """The derivation's disclosure lines (issue #556 Track A design §3.4;
     Track B record §3 rules 1-3): the gateway's REPORTED analog — the SDK
     gate discloses through its REPORTED channel, the gateway's honesty
-    surfaces are the derived marker block and the rendered page. Formats
-    fixed by the design record, mirrored from the SDK's REPORTED rows
-    where the SDK has them: ``custom: {urn}`` when the derived layout
-    block mints control nodes for the action's slug (the per-action
-    discriminator — every node binding id in the derived block), else
-    ``custom, renders nothing: {urn}``; one line per ignored pin,
-    unapplied composed class and empty-catalog pin; the member family in
-    the SDK's own wording (applied-nowhere pins, dead members inside
-    applied pins, and every declared member's residual row as
-    ``{kind} {member}: {detail}``); and one line per APPLIED composed
-    class naming the family version its document validated against and
-    the declared actions it supplies. Disclosures are never findings —
-    they never fail the page."""
+    surfaces are the derived marker block and the rendered page. Every
+    row the SDK mints is the SDK's own wording, mirrored: ``custom:
+    {urn}`` when the derived layout block mints control nodes for the
+    action's slug (the per-action discriminator — every node binding id
+    in the derived block), else ``custom, renders nothing: {urn}``; one
+    line per ignored pin, unapplied composed class and empty-catalog
+    pin; the member family (applied-nowhere pins, dead members inside
+    applied pins, and every declared member's residual row as ``{kind}
+    {member}: {detail}``). The design record's original §3.4 worded the
+    three pin rows its own way — Track A-era text the SDK never minted;
+    the 2026-10-26 B7 refute fold F4 aligned them to the pinned gate's
+    REPORTED rows, so this docstring's mirror claim is true row for row.
+    The one gateway-minted extra (no SDK counterpart at this pin): one
+    line per APPLIED composed class naming the family version its
+    document validated against and the declared actions it supplies.
+    Disclosures are never findings — they never fail the page."""
     block = (derived.manifest.get("extensions") or {}).get(LAYOUT_EXTENSION_KEY)
     minted: frozenset[str] = frozenset()
     if isinstance(block, dict):
@@ -740,18 +743,26 @@ def _classref_disclosures(derived: DerivedAttachment) -> tuple[str, ...]:
             if slug in minted
             else f"custom, renders nothing: {urn}"
         )
+    # The three pin rows are the SDK gate's own REPORTED wordings,
+    # aligned 2026-10-26 (the B7 refute fold F4): until that fold each
+    # carried Track A-era wording the SDK never minted — three rows the
+    # module docstring's "mirrored from the SDK's REPORTED rows where
+    # the SDK has them" was false for. The literals are the pinned
+    # gate's comprehensions (classref_gate.py, the R1/R5 fold), and the
+    # equivalence census (tests/sdk/test_descriptor_equivalence.py)
+    # pins the derived data both mint from.
     lines.extend(
-        f"ignored pin: {path} contributed nothing (shape matched neither "
-        "a vendor catalog, a composed class nor a member declaration)"
+        f"pinned document {path} contributed nothing"
         for path in derived.ignored_pins
     )
     lines.extend(
-        f"composed class {class_urn} pinned at {path} applied to no "
-        "declared action"
+        f"composed class {class_urn} is pinned ({path}) but its claims "
+        "name no action this descriptor declares"
         for class_urn, path in derived.unapplied_classes
     )
     lines.extend(
-        f"pinned vendor catalog {path} declares no actions"
+        f"pinned document {path} contributed nothing (its vendor-catalog "
+        "actions map is empty)"
         for path in derived.empty_action_pins
     )
     # (#556 Track B §3 rules 1-3; the B3 fold's F2) The member family, in

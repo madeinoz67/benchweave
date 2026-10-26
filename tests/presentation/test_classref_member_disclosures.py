@@ -260,7 +260,11 @@ class TestPlacementAndResidualRows:
                     "kind": "dataset",
                     "claims": ["com.meridian.m400.wave/1.0.0"],
                     "page": "capture",
-                    "plot": {"kind": "waveform", "over_slot": "vendor-lanes"},
+                    "plot": {
+                        "kind": "waveform",
+                        "over_slot": "vendor-lanes",
+                        "series": "numeric_variables",
+                    },
                 }
             ]
         )
@@ -283,7 +287,11 @@ class TestPlacementAndResidualRows:
                     "kind": "dataset",
                     "claims": ["com.meridian.m400.wave/1.0.0"],
                     "page": "configuration",
-                    "plot": {"kind": "time_series", "over_slot": "vendor-plot"},
+                    "plot": {
+                        "kind": "time_series",
+                        "over_slot": "vendor-plot",
+                        "series": "numeric_variables",
+                    },
                 }
             ]
         )
