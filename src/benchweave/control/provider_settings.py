@@ -23,6 +23,19 @@ it must not grant. Endpoint and secret configuration arrives with the first
 runtime implementation through the deferred operator admission surface,
 never here.
 
+The commissioned ENDPOINT surface (issue #568, design §1.3b) is this
+module's second document: the operator-owned, required-when-bound
+``provider-connections.json`` beside the settings file, binding
+``connection_key`` → USB identity and expressing nothing else — the same
+carrier class, one scope narrower, in the same identity-only discipline
+(the one grantable fact is "this logical connection is that physical USB
+interface"). The settings schema stays byte-untouched; the deferred
+operator admission surface named above has now arrived, as this document.
+Refusals carry the typed ``connections_schema:`` prefix (the settings
+family's twin; the digest-mismatch twin has no emitter in this revision —
+the connections document pins no bytes by digest, and a named prefix with
+no mechanism behind it would be vocabulary without a guard).
+
 Nothing in the execution lattice pins this file. Its authority is the
 operator's file act plus its internal consistency; promotion into the
 commissioning shape (pinned, expiring with the commissioning) is the
@@ -49,6 +62,12 @@ from benchweave.vendoring import contract_family
 
 #: The one settings filename the bootstrap seam looks for (optional).
 TRANSPORT_SETTINGS_FILENAME = "transport-settings.json"
+
+#: The commissioned-endpoint filename (issue #568, design §1.3b): the
+#: gateway-owned operator document binding ``connection_key`` → USB identity,
+#: loaded ONLY beside a settings file that binds connections (maintainer
+#: ruling 3) — the settings file's own carrier class, one scope narrower.
+PROVIDER_CONNECTIONS_FILENAME = "provider-connections.json"
 
 #: The admission byte cap shared with every other admission document.
 _MAX_SETTINGS_BYTES = 1_048_576
@@ -120,6 +139,64 @@ TRANSPORT_SETTINGS_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["config_version", "admitted", "connections"],
+    "additionalProperties": False,
+}
+
+#: The identity-only commissioned-endpoint schema (gateway source, not
+#: corpus — host commissioning state, deliberately outside the vendored tree
+#: like the settings schema is; design §1.3b). The one grantable fact is
+#: connection_key → USB identity: a URL, path, host, port, credential or
+#: process reference is schema-unrepresentable. ``serial`` is REQUIRED
+#: (maintainer ruling 2): with a unique serial in the identity, wrong-device
+#: ambiguity is unrepresentable at the schema level rather than mitigated —
+#: devices without readable serials cannot be commissioned for provider
+#: transport in this revision.
+PROVIDER_CONNECTIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "config_version": {"const": "1"},
+        "connections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "connection_key": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$",
+                    },
+                    "usb": {
+                        "type": "object",
+                        "properties": {
+                            "vendor_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535,
+                            },
+                            "product_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535,
+                            },
+                            "serial": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9._-]{1,64}$",
+                            },
+                            "interface": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 8,
+                            },
+                        },
+                        "required": ["vendor_id", "product_id", "serial", "interface"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["connection_key", "usb"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["config_version", "connections"],
     "additionalProperties": False,
 }
 
@@ -234,6 +311,145 @@ class ProviderRegistry:
         return next(
             (entry for entry in self.admitted if entry.id == provider_id), None
         )
+
+    def bound_keys(self) -> frozenset[str]:
+        """The connection keys the settings document binds (the connections
+        document's consistency domain — every endpoint key must be one of
+        these)."""
+        return frozenset(key for key, _bound in self.connections)
+
+
+@dataclass(frozen=True)
+class UsbIdentity:
+    """One commissioned USB interface: the physical endpoint a connection
+    key resolves to. Four fields, nothing else — the identity a runtime
+    opens and the grant event records."""
+
+    vendor_id: int
+    product_id: int
+    serial: str
+    interface: int
+
+
+@dataclass(frozen=True)
+class ProviderConnections:
+    """The validated connections document: key → USB identity bindings.
+
+    Keys are unique by construction (the loader refuses a key carrying two
+    identities) and no two keys share one identity (a USB interface is
+    single-client; two device sessions interleaving on one handle is the
+    corrupt-conversation hazard — refused at load, re-checked at the grant
+    as the construction gate's defense-in-depth).
+    """
+
+    bindings: tuple[tuple[str, UsbIdentity], ...]
+
+    def resolve(self, connection_key: object) -> UsbIdentity | None:
+        """The commissioned identity a connection key resolves to, else None."""
+        if not isinstance(connection_key, str):
+            return None
+        return next(
+            (identity for key, identity in self.bindings if key == connection_key),
+            None,
+        )
+
+    def keys_on(self, identity: UsbIdentity) -> tuple[str, ...]:
+        """Every key bound to this identity — the grant's conflict
+        re-check: one identity, at most one key, or the grant refuses."""
+        return tuple(
+            key
+            for key, bound in self.bindings
+            if (bound.vendor_id, bound.product_id, bound.serial, bound.interface)
+            == (
+                identity.vendor_id,
+                identity.product_id,
+                identity.serial,
+                identity.interface,
+            )
+        )
+
+
+def load_provider_connections(path: Path, registry: ProviderRegistry) -> ProviderConnections:
+    """Exact-byte decode, validate, and materialize the connections document.
+
+    The document decodes through the exact-byte decoder under the shared
+    admission cap and validates against :data:`PROVIDER_CONNECTIONS_SCHEMA`;
+    internal consistency is judged against the LOADED registry (the settings
+    document's own posture): a key the settings do not bind is dead config
+    and refuses, a key bound twice refuses, and two keys sharing one USB
+    identity refuse — all ``connections_schema:``, machine-matchable like
+    every other admission refusal.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise SettingsRejected(
+            f"connections_schema: {path.name} could not be read "
+            f"(os error {exc.errno})"
+        ) from exc
+    digest = hashlib.sha256(raw).hexdigest()
+    try:
+        document = load_document(raw, digest, max_bytes=_MAX_SETTINGS_BYTES)
+    except DocumentRejected as exc:
+        raise SettingsRejected(f"connections_schema: {path.name} ({exc})") from exc
+    error = next(
+        iter(
+            Draft202012Validator(
+                PROVIDER_CONNECTIONS_SCHEMA, format_checker=FormatChecker()
+            ).iter_errors(document.content)
+        ),
+        None,
+    )
+    if error is not None:
+        raise SettingsRejected(
+            f"connections_schema: {path.name} {error.json_path}: {error.message}"
+        )
+
+    bound_keys = registry.bound_keys()
+    bindings: list[tuple[str, UsbIdentity]] = []
+    seen_keys: set[str] = set()
+    seen_identities: dict[tuple[int, int, str, int], str] = {}
+    for binding in document.content["connections"]:
+        key = binding["connection_key"]
+        usb = binding["usb"]
+        if key in seen_keys:
+            raise SettingsRejected(
+                f"connections_schema: {path.name} binds connection key {key!r} "
+                "more than once"
+            )
+        seen_keys.add(key)
+        if key not in bound_keys:
+            raise SettingsRejected(
+                f"connections_schema: {path.name} binds an endpoint for {key!r}, "
+                "which the settings document does not bind to any admitted "
+                "provider — an endpoint for an unadmitted connection is dead "
+                "config"
+            )
+        identity = UsbIdentity(
+            vendor_id=int(usb["vendor_id"]),
+            product_id=int(usb["product_id"]),
+            serial=str(usb["serial"]),
+            interface=int(usb["interface"]),
+        )
+        identity_key = (
+            identity.vendor_id,
+            identity.product_id,
+            identity.serial,
+            identity.interface,
+        )
+        rival = seen_identities.get(identity_key)
+        if rival is not None:
+            raise SettingsRejected(
+                f"connections_schema: {path.name} binds connection keys {rival!r} "
+                f"and {key!r} to one USB identity (vendor {identity.vendor_id}, "
+                f"product {identity.product_id}, serial {identity.serial!r}, "
+                f"interface {identity.interface}) — a USB interface is "
+                "single-client; two device sessions interleaving on one handle "
+                "is the corrupt-conversation hazard"
+            )
+        seen_identities[identity_key] = key
+        bindings.append((key, identity))
+    return ProviderConnections(bindings=tuple(bindings))
 
 
 def load_transport_settings(path: Path) -> ProviderRegistry:

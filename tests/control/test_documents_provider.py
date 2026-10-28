@@ -76,6 +76,28 @@ def _settings_for(package: Path) -> Path:
     }
     path = package / "transport-settings.json"
     path.write_text(json.dumps(settings, indent=2) + "\n")
+    # The commissioned-endpoint sibling (issue #568 presence rule): the
+    # connectionful settings this builder writes require it.
+    (package / "provider-connections.json").write_text(
+        json.dumps(
+            {
+                "config_version": "1",
+                "connections": [
+                    {
+                        "connection_key": "power_meter",
+                        "usb": {
+                            "vendor_id": 1027,
+                            "product_id": 24593,
+                            "serial": "FT-DEMO-0042",
+                            "interface": 1,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     return path
 
 
@@ -153,6 +175,12 @@ def _admit_package(
         commissioning_path=commissioning_path,
         descriptor_paths=descriptor_paths,
         provider_settings=settings,
+        provider_connections=(
+            settings.parent / "provider-connections.json"
+            if settings is not None
+            and (settings.parent / "provider-connections.json").is_file()
+            else None
+        ),
         now_wall=now_wall,
     )
 

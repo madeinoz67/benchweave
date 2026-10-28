@@ -251,6 +251,16 @@ def _admit(
     binding_path.write_text(json.dumps(binding, indent=2))
 
     try:
+        # The commissioned-endpoint sibling (issue #568): discovered beside
+        # the settings file exactly as the production lanes discover it —
+        # the builders that bind connections write it, the connectionless
+        # builders do not, and the presence rule holds either way.
+        connections = (
+            provider_settings.parent / "provider-connections.json"
+            if provider_settings is not None
+            and (provider_settings.parent / "provider-connections.json").is_file()
+            else None
+        )
         admit_documents(
             procedure_path=procedure_path,
             policy_path=policy_path,
@@ -259,6 +269,7 @@ def _admit(
             commissioning_path=commissioning_path,
             descriptor_paths=descriptor_paths,
             provider_settings=provider_settings,
+            provider_connections=connections,
             now_wall=now_wall,
         )
     except AdmissionRejected as exc:
@@ -689,6 +700,32 @@ def test_bomd_provider_document_is_digest_governed(tmp_path: Path) -> None:
 NOW_WALL = "2026-09-23T00:00:00Z"  # inside the corpus approval window
 
 
+def _endpoints_for(package: Path, key: str = "power_meter") -> None:
+    """``package/provider-connections.json`` binding the settings' key to an
+    invented USB identity (the #568 presence rule: connectionful settings
+    require the endpoints document; fixture serials are invented)."""
+    (package / "provider-connections.json").write_text(
+        json.dumps(
+            {
+                "config_version": "1",
+                "connections": [
+                    {
+                        "connection_key": key,
+                        "usb": {
+                            "vendor_id": 1027,
+                            "product_id": 24593,
+                            "serial": "FT-DEMO-0042",
+                            "interface": 1,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+
 def _settings_for_package(package: Path) -> Path:
     """``package/transport-settings.json`` admitting the package's contract.
 
@@ -715,6 +752,7 @@ def _settings_for_package(package: Path) -> Path:
     }
     path = package / "transport-settings.json"
     path.write_text(json.dumps(settings, indent=2) + "\n")
+    _endpoints_for(package)
     return path
 
 
@@ -830,6 +868,7 @@ def test_unadmitted_triple_refuses_sdk_clean(tmp_path: Path) -> None:
     }
     settings_path = package / "transport-settings.json"
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    _endpoints_for(package)
     exit_code, output = _sdk_check(slot_path)
     assert exit_code == 0, output
     admitted, message = _admit(
@@ -907,6 +946,7 @@ def test_connection_key_must_bind_the_same_admitted_contract(
     }
     settings_path = package / "transport-settings.json"
     settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    _endpoints_for(package)
     admitted, message = _admit(
         tmp_path,
         "psu",

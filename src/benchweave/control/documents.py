@@ -65,7 +65,10 @@ from jsonschema.exceptions import SchemaError
 
 from benchweave.content.json_document import DocumentRejected, load_document
 from benchweave.control.provider_settings import (
+    PROVIDER_CONNECTIONS_FILENAME,
     ProviderRegistry,
+    SettingsRejected,
+    load_provider_connections,
     load_transport_settings,
     provider_contract_validator,
 )
@@ -2054,6 +2057,7 @@ def admit_documents(
     descriptor_paths: dict[str, Path],
     *,
     provider_settings: Path | None = None,
+    provider_connections: Path | None = None,
     now_wall: str | None = None,
     contracts: Path = _CONTRACTS,
     operator_acknowledgements: dict[str, str] | None = None,
@@ -2102,6 +2106,24 @@ def admit_documents(
     provider_state: ProviderRegistry | None = None
     if provider_settings is not None:
         provider_state = load_transport_settings(provider_settings)
+        if provider_state.connections:
+            # The presence rule (issue #568, design §1.3b): the endpoints
+            # document is REQUIRED iff the settings bind any connection — a
+            # settings document with connections and no endpoints document
+            # refuses HERE, at admission, so the operator learns it at
+            # startup (or at the run path's disclosed re-admission), never
+            # at first transfer. The closed default (A02).
+            if provider_connections is None:
+                sibling = provider_settings.parent / PROVIDER_CONNECTIONS_FILENAME
+                raise SettingsRejected(
+                    f"connections_schema: {provider_settings.name} binds "
+                    f"{len(provider_state.connections)} connection(s) but no "
+                    f"{PROVIDER_CONNECTIONS_FILENAME} is configured beside it "
+                    f"(looked for {sibling}) — the commissioned endpoint "
+                    "document is required when the settings bind connections; "
+                    "the closed default refuses (A02)"
+                )
+            load_provider_connections(provider_connections, provider_state)
 
     execution_version, contracts_dir, routed_version, execution_pin = (
         _route_execution_contracts(bench_path, contracts)

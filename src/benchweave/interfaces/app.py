@@ -42,7 +42,10 @@ from benchweave.control.documents import (
     admit_documents,
 )
 from benchweave.control.operator_acknowledgements import load_operator_acknowledgements
-from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
+from benchweave.control.provider_settings import (
+    PROVIDER_CONNECTIONS_FILENAME,
+    TRANSPORT_SETTINGS_FILENAME,
+)
 from benchweave.control.stream_host import RunStreamHost
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
 from benchweave.host.services import QuotaLimits, ReadingSinks
@@ -232,6 +235,7 @@ def _spool_documents(
         )
     (spool / "package-lock.json").write_bytes((fixtures_dir / "package-lock.json").read_bytes())
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
+    connections_path = fixtures_dir / PROVIDER_CONNECTIONS_FILENAME
     # Issue #260: the operator-acknowledgement lane threads the run path
     # — an optional ``operator-acknowledgements.json`` beside the lattice
     # documents loads to admission's ``operator_acknowledgements``
@@ -258,6 +262,9 @@ def _spool_documents(
         ),
         "descriptor_paths": descriptor_paths,
         "provider_settings": settings_path if settings_path.is_file() else None,
+        "provider_connections": (
+            connections_path if connections_path.is_file() else None
+        ),
         "operator_acknowledgements": acknowledgements,
     }
 

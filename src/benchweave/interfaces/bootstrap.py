@@ -34,7 +34,10 @@ from benchweave.control.operator_acknowledgements import (
     ACKNOWLEDGEMENTS_FILENAME,
     load_operator_acknowledgements,
 )
-from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
+from benchweave.control.provider_settings import (
+    PROVIDER_CONNECTIONS_FILENAME,
+    TRANSPORT_SETTINGS_FILENAME,
+)
 from benchweave.registry.admission import AdmissionLimits
 from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.manifests import Key
@@ -128,6 +131,11 @@ def admit_fixture_lattice(
             )
         descriptor_paths[device_id] = path
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
+    # The commissioned-endpoint sibling (issue #568): discovered beside the
+    # settings file exactly as the settings file is discovered, and required
+    # by admission iff the settings bind connections (the presence rule
+    # refuses there, so this lane only ever PASSES the path).
+    connections_path = fixtures_dir / PROVIDER_CONNECTIONS_FILENAME
     ack_path = fixtures_dir / ACKNOWLEDGEMENTS_FILENAME
     return admit_documents(
         procedure_path=procedure_path,
@@ -137,6 +145,9 @@ def admit_fixture_lattice(
         commissioning_path=fixtures_dir / "commissioning.json",
         descriptor_paths=descriptor_paths,
         provider_settings=settings_path if settings_path.is_file() else None,
+        provider_connections=(
+            connections_path if connections_path.is_file() else None
+        ),
         operator_acknowledgements=(
             load_operator_acknowledgements(ack_path) if ack_path.is_file() else None
         ),

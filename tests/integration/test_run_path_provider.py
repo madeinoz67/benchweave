@@ -70,6 +70,28 @@ def _provider_fixtures(tmp_path: Path) -> Path:
         ],
     }
     (fixtures / "transport-settings.json").write_text(json.dumps(settings, indent=2))
+    # The commissioned-endpoint sibling (issue #568 presence rule): the
+    # connectionful settings above require it, discovered beside the
+    # settings file by the run-path spool exactly as bootstrap discovers it.
+    (fixtures / "provider-connections.json").write_text(
+        json.dumps(
+            {
+                "config_version": "1",
+                "connections": [
+                    {
+                        "connection_key": "power_meter",
+                        "usb": {
+                            "vendor_id": 1027,
+                            "product_id": 24593,
+                            "serial": "FT-DEMO-0042",
+                            "interface": 1,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        )
+    )
     # Repoint the bench's psu pin at the provider descriptor, then cascade
     # the digest lattice (commissioning pins bench; binding pins both).
     bench = json.loads((fixtures / "bench.json").read_text())
