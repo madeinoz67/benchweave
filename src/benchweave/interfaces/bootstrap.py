@@ -272,11 +272,44 @@ def admit_startup_bench(
         # members stay cache-only and meet the gate when a binding pins
         # them (D5: run admission is the backstop).
         raw = descriptor_path.read_bytes()
+        descriptor = json.loads(raw)
         stored.append(
             content_sha(
-                content, raw, json.loads(raw), now, family_schema_id=descriptor_family_id
+                content, raw, descriptor, now, family_schema_id=descriptor_family_id
             )
         )
+        # The descriptor-relative pinned provider contract joins the cache
+        # (issue #568): digest-verified against the pin, cached under the
+        # provider-contract family identity — the seam's provider-window
+        # pre-check resolves it digest-addressed from the store exactly as
+        # it resolves the descriptors, so the wire-visible early refusal is
+        # live in production (an unstored contract keeps the inverted-guard
+        # skip; the worker's gate is authoritative either way). Resolution
+        # failures are silent here: admission refuses with its own typed
+        # prefix against the true state (the _spool_provider_document
+        # posture).
+        transport = descriptor.get("transport")
+        provider = transport.get("provider") if isinstance(transport, dict) else None
+        if isinstance(provider, dict) and isinstance(provider.get("path"), str):
+            contract_path = descriptor_path.parent / provider["path"]
+            try:
+                contract_raw = contract_path.read_bytes()
+            except OSError:
+                continue
+            if hashlib.sha256(contract_raw).hexdigest() != provider.get("sha256"):
+                continue
+            provider_family_id = _family_or_legacy(
+                active_contract_family("otdp"), "otdp-transport-provider.schema.json"
+            )
+            stored.append(
+                content_sha(
+                    content,
+                    contract_raw,
+                    json.loads(contract_raw),
+                    now,
+                    family_schema_id=provider_family_id,
+                )
+            )
 
     for name, schema_name in (
         ("safety-policy.json", "safety-policy.schema.json"),
