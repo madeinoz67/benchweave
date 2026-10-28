@@ -30,7 +30,10 @@ from benchweave import __version__
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.dataset_services import build_dataset_services
-from benchweave.content.provider_runtime import make_ftdi_runtime_factory
+from benchweave.content.provider_runtime import (
+    # explicit re-export (the test seam's monkeypatch target)
+    make_ftdi_runtime_factory as make_ftdi_runtime_factory,
+)
 from benchweave.content.provider_transport import declares_provider
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
