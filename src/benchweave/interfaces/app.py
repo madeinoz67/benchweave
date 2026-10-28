@@ -30,6 +30,7 @@ from benchweave import __version__
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.dataset_services import build_dataset_services
+from benchweave.content.provider_runtime import make_ftdi_runtime_factory
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
@@ -862,6 +863,18 @@ def _build_run_factory(
                         wall=now_iso,
                         quota=quota_limits,
                         context_key=context_key,
+                        # Issue #568: the worker's authoritative grant
+                        # construction — the admitted registry and the
+                        # commissioned endpoints thread from the run's own
+                        # admission (they no longer die inside
+                        # admit_documents), and the production runtime
+                        # factory opens the device only after the
+                        # table-vs-grammar check passes. A grant refusal
+                        # fails the run build with the typed reason (the
+                        # poison-guard shape every worker-layer gate uses).
+                        providers=docs.providers,
+                        provider_endpoints=docs.provider_endpoints,
+                        runtime_factory=make_ftdi_runtime_factory(),
                     )
                     stream_controller = build_stream_services(
                         descriptor_digest=plan.digest,

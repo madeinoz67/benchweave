@@ -44,6 +44,18 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/madeinoz67/benchweave"
 
+# The commissioned FTDI provider runtime (issue #568, maintainer ruling 1):
+# pyftdi rides a `provider` extra — benches without USB devices carry no
+# transitive pyusb/libusb, and a provider-descriptor lattice on an
+# extra-less install refuses `provider_runtime_backend_missing:` at startup
+# admission, loud and early. A bounded range mirroring the SDK's server
+# extra: the upper bound is the API-drift fence, a patch release must not
+# need a code change.
+[project.optional-dependencies]
+provider = [
+  "pyftdi>=0.56,<1",
+]
+
 [dependency-groups]
 dev = [
   "anyio>=4",
@@ -74,6 +86,11 @@ dev = [
   # same way the SDK's dev env does. Users still get copier only via the
   # SDK's [scaffold] extra; nothing gateway-side imports it.
   "copier>=9.18,<10",
+  # Dev-only mirror of the `provider` extra (issue #568): the suite's
+  # backend probe and mypy's check of the lazy pyftdi import both need it
+  # resolved in the dev venv; users still install pyftdi only via
+  # `benchweave[provider]`.
+  "pyftdi>=0.56,<1",
 ]
 
 [tool.uv.sources]

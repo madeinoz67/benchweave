@@ -190,6 +190,14 @@ class AdmittedDocuments:
     #: carried, never dropped at the router or re-derived. A public wire
     #: surface for it is E3's deferral.
     execution_pin: DescriptorPin
+    #: The admitted provider registry (issue #568): the settings document's
+    #: validated state, threaded to the worker's grant construction so the
+    #: registry no longer dies inside this call. None on a provider-less
+    #: lattice.
+    providers: ProviderRegistry | None = None
+    #: The commissioned endpoints (issue #568): the connections document's
+    #: validated key → USB identity bindings, threaded beside the registry.
+    provider_endpoints: Any = None
 
 
 def _corpus_root_of(family_version_dir: Path) -> Path:
@@ -2104,6 +2112,7 @@ def admit_documents(
     ``AdmittedDocuments.execution_version``.
     """
     provider_state: ProviderRegistry | None = None
+    provider_endpoint_state: Any = None
     if provider_settings is not None:
         provider_state = load_transport_settings(provider_settings)
         if provider_state.connections:
@@ -2123,7 +2132,9 @@ def admit_documents(
                     "document is required when the settings bind connections; "
                     "the closed default refuses (A02)"
                 )
-            load_provider_connections(provider_connections, provider_state)
+            provider_endpoint_state = load_provider_connections(
+                provider_connections, provider_state
+            )
 
     execution_version, contracts_dir, routed_version, execution_pin = (
         _route_execution_contracts(bench_path, contracts)
@@ -2336,6 +2347,8 @@ def admit_documents(
         pins=pins,
         execution_version=execution_version,
         execution_pin=execution_pin,
+        providers=provider_state,
+        provider_endpoints=provider_endpoint_state,
     )
 
 

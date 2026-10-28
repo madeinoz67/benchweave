@@ -369,6 +369,17 @@ class ProviderConnections:
         )
 
 
+def _provider_backend_probe() -> None:
+    """The admission-side backend probe (issue #568, maintainer ruling 1):
+    a provider-descriptor lattice on an extra-less install refuses at the
+    connections load — loud and early, never at first transfer. The lazy
+    import keeps the runtime module out of this module's import graph (the
+    probe is its only dependency on it)."""
+    from benchweave.content.provider_runtime import require_backend
+
+    require_backend()
+
+
 def load_provider_connections(path: Path, registry: ProviderRegistry) -> ProviderConnections:
     """Exact-byte decode, validate, and materialize the connections document.
 
@@ -378,8 +389,12 @@ def load_provider_connections(path: Path, registry: ProviderRegistry) -> Provide
     document's own posture): a key the settings do not bind is dead config
     and refuses, a key bound twice refuses, and two keys sharing one USB
     identity refuse — all ``connections_schema:``, machine-matchable like
-    every other admission refusal.
+    every other admission refusal. After the document validates, the
+    backend probe runs (a commissioned provider lattice requires the
+    runtime's backend — ``provider_runtime_backend_missing:`` on an
+    extra-less install).
     """
+    _provider_backend_probe()
     try:
         raw = path.read_bytes()
     except OSError as exc:
