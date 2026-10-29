@@ -30,6 +30,11 @@ from benchweave import __version__
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.dataset_services import build_dataset_services
+from benchweave.content.provider_runtime import (
+    # explicit re-export (the test seam's monkeypatch target)
+    make_ftdi_runtime_factory as make_ftdi_runtime_factory,
+)
+from benchweave.content.provider_transport import declares_provider
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
@@ -40,9 +45,13 @@ from benchweave.control.documents import (
     _check_run_floor,
     _check_unattended_grant,
     admit_documents,
+    check_provider_grant_window,
 )
 from benchweave.control.operator_acknowledgements import load_operator_acknowledgements
-from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
+from benchweave.control.provider_settings import (
+    PROVIDER_CONNECTIONS_FILENAME,
+    TRANSPORT_SETTINGS_FILENAME,
+)
 from benchweave.control.stream_host import RunStreamHost
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
 from benchweave.host.services import QuotaLimits, ReadingSinks
@@ -232,6 +241,7 @@ def _spool_documents(
         )
     (spool / "package-lock.json").write_bytes((fixtures_dir / "package-lock.json").read_bytes())
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
+    connections_path = fixtures_dir / PROVIDER_CONNECTIONS_FILENAME
     # Issue #260: the operator-acknowledgement lane threads the run path
     # — an optional ``operator-acknowledgements.json`` beside the lattice
     # documents loads to admission's ``operator_acknowledgements``
@@ -258,6 +268,9 @@ def _spool_documents(
         ),
         "descriptor_paths": descriptor_paths,
         "provider_settings": settings_path if settings_path.is_file() else None,
+        "provider_connections": (
+            connections_path if connections_path.is_file() else None
+        ),
         "operator_acknowledgements": acknowledgements,
     }
 
@@ -653,6 +666,38 @@ def _require_registry_session(session: RegistrySession | None) -> RegistrySessio
     return session
 
 
+def _provider_window_approvals(
+    content: ContentStore, docs: AdmittedDocuments
+) -> list[tuple[str, str, object]]:
+    """The worker's approval facts for the provider window gate: per
+    provider-declaring bench device, the RAW descriptor re-derived by
+    pinned digest (the CON-10 projection drops ``transport``), the declared
+    triple resolved against the admission's own registry, and the admitted
+    approval's ``expires_at`` — one authority (the admitted bytes), no
+    re-derivation of identity."""
+    approvals: list[tuple[str, str, object]] = []
+    if docs.providers is None:
+        return approvals
+    for device in docs.bench["devices"]:
+        digest = str(device["descriptor"]["sha256"])
+        document = content.get_document(digest)
+        if document is None or not declares_provider(document["content"]):
+            continue
+        provider = document["content"]["transport"]["provider"]
+        provider_id = provider.get("id")
+        urn_parts = str(provider_id).split(":") if isinstance(provider_id, str) else []
+        declared_version = urn_parts[4] if len(urn_parts) == 5 else None
+        entry = docs.providers.find(provider_id, declared_version, provider.get("sha256"))
+        if entry is None:
+            continue  # admission's provider_not_admitted: row owns this fact
+        approval = entry.document.get("approval")
+        expires = approval.get("expires_at") if isinstance(approval, dict) else None
+        approvals.append(
+            (f"descriptor[{device['id']}]", str(provider_id), expires)
+        )
+    return approvals
+
+
 def _device_plans(
     content: ContentStore,
     docs: AdmittedDocuments,
@@ -799,6 +844,21 @@ def _build_run_factory(
             lease_present=bool(run_row)
             and str((run_row or {}).get("authority")) == "lease",
         )
+        # The provider-grant window gate's WORKER layer (issue #568, CTL-12)
+        # — the authoritative call beside the unattended grant's, over the
+        # same now_iso: every provider-declaring device's admitted approval
+        # must cover the run's whole window (max_body + max_protection). One
+        # helper, one vocabulary with the seam's runnability pre-check; a
+        # refusal lands in the worker's poison guard with the typed reason.
+        if docs.providers is not None:
+            approvals = _provider_window_approvals(content, docs)
+            if approvals:
+                check_provider_grant_window(
+                    approvals,
+                    now_wall=now_iso(),
+                    body_ms=docs.procedure.get("max_body_ms"),
+                    protection_ms=docs.procedure.get("max_protection_ms"),
+                )
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
         plans = _device_plans(content, docs, bench_id, run_id, registry_session)
@@ -855,6 +915,18 @@ def _build_run_factory(
                         wall=now_iso,
                         quota=quota_limits,
                         context_key=context_key,
+                        # Issue #568: the worker's authoritative grant
+                        # construction — the admitted registry and the
+                        # commissioned endpoints thread from the run's own
+                        # admission (they no longer die inside
+                        # admit_documents), and the production runtime
+                        # factory opens the device only after the
+                        # table-vs-grammar check passes. A grant refusal
+                        # fails the run build with the typed reason (the
+                        # poison-guard shape every worker-layer gate uses).
+                        providers=docs.providers,
+                        provider_endpoints=docs.provider_endpoints,
+                        runtime_factory=make_ftdi_runtime_factory(),
                     )
                     stream_controller = build_stream_services(
                         descriptor_digest=plan.digest,
