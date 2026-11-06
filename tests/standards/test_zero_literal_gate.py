@@ -902,7 +902,9 @@ class TestZeroModeOverRealTrees:
             # set-diff's one addition; the 0.7.0->0.7.1 anchor moved no .py
             # bytes; the sdk-scope register's scaffold.py row retired with
             # the same motion) — the ratchet moves with the submodule tree.
-            assert payload["scopes"]["sdk"]["scanned"] == 22, (
+            # 23 at the 0.24.0 pin: vectors.py, added by the #566 wire-truth
+            # scaffold (the set-diff's one addition across 0.23.0->0.24.0).
+            assert payload["scopes"]["sdk"]["scanned"] == 23, (
                 "the sdk class set moved — update this pin in the same "
                 "commit as the submodule tree change (the ratchet "
                 "discipline)"

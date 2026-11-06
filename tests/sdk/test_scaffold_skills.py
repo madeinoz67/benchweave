@@ -25,7 +25,10 @@ PACKAGE = "lumen_probe"
 #: ``skill`` role; CLAUDE.md is root-level dev tooling and never ships.
 #: Re-pinned at the SDK 0.7.0 copier render: the .claude/skills tree,
 #: .copier-answers.yml and AGENTS.md joined the set (the SDK-managed agent
-#: notes the upgrade path rewrites). The byte-exact authority for the tree
+#: notes the upgrade path rewrites). SDK 0.24.0 added
+#: src/<package>/wire.py — the wire-discipline helpers (#566, rows 8-10) —
+#: matching the SDK's base fixture at tests/fixtures/scaffold_expected/base.
+#: The byte-exact authority for the tree
 #: is the SDK's own fixture comparison (tests/test_scaffold_copier.py at
 #: the pinned tree); this pin keeps the gateway-side shape alarm.
 PINNED_FILE_SET = [
@@ -48,6 +51,7 @@ PINNED_FILE_SET = [
     f"src/{PACKAGE}/skills/develop-plugin/SKILL.md",
     f"src/{PACKAGE}/skills/drive-device/SKILL.md",
     f"src/{PACKAGE}/vectors.json",
+    f"src/{PACKAGE}/wire.py",
     "tests/test_plugin.py",
 ]
 
