@@ -11,4 +11,6 @@
 	# composed action classes and the widened claims, cut at 88dcc4d.
 	# v0.22.0 = the #556 pairing: the classref 0.5.0 family with
 	# composed member declarations, cut at 0d4b44d.
-	pin = v0.23.0
+	# v0.24.0 = the #585 pairing: the deterministic package-dir pick under
+	# src/ (the wheel-metadata order trap), cut at e99965e.
+	pin = v0.24.0
