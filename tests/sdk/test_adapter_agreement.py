@@ -94,9 +94,21 @@ EXPECTED_HOST_SERVICES = frozenset(
 # documented gap: the gateway exercises only the monotonic-clock subset; the
 # bridge's structural requirement is exactly callable(services.monotonic)
 GATEWAY_SERVICES_SUBSET = frozenset({"monotonic"})
-# documented gap: the capture surface is SDK-only
+# documented gap: the capture surface is SDK-only. SDK #568 declared the
+# capture lifecycle on the protocol (configure_capture, capture_progress —
+# "declared surface ... the host demands them at capture start"); the
+# gateway bridge drives none of it — its exercised services subset is the
+# pinned {monotonic}, and the gateway's own capture bundle implements only
+# the three artifact members, driven by its CaptureController rather than
+# by the adapter. So all five are gap members here.
 EXPECTED_CAPTURE_SERVICES = frozenset(
-    {"artifact_append", "artifact_finalise", "artifact_abort"}
+    {
+        "artifact_append",
+        "artifact_finalise",
+        "artifact_abort",
+        "configure_capture",
+        "capture_progress",
+    }
 )
 # documented gap: the dataset surface is SDK-only (issue #146 slice 1
 # landed the protocol; the gateway bundle arrives with slice 3 — the
