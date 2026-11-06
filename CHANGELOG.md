@@ -199,6 +199,7 @@ All notable changes to this project will be documented in this file.
 - Close D1 — the member layer in the note, the guide, and the record (#556 Track B B8)
 - STE register pass on the member-surfaces passage, and the dialect key
 - Fold the refute finding — record addendum, number corrections
+- The gateway commissioned provider runtime design record
 
 ### Features
 
@@ -262,6 +263,9 @@ All notable changes to this project will be documented in this file.
 - The fold dispositions, the disclosure channel and the profile seam (#556 Track B B7)
 - Plugin-ui-class-reference 0.6.0 — no children ceiling
 - Widen the cap removal to every content-count ceiling
+- The provider-connections document — loader, schema, presence rule
+- The FTDI provider runtime, the completed grant, the threading
+- The provider window gate, the seam pre-check, the provider_granted event
 
 ### Miscellaneous
 
