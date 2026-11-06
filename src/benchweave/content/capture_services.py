@@ -389,6 +389,8 @@ def build_capture_services(
     context_key: str,
     transport: Any = None,
     providers: Any = None,
+    provider_endpoints: Any = None,
+    runtime_factory: Any = None,
 ) -> tuple[ScopedServicesBundle, CaptureController | None]:
     """The permission gate's construction point (A11/A17).
 
@@ -406,6 +408,15 @@ def build_capture_services(
     naming the failed check (permission / admission / resolution) — never
     the caller's injection. A provider-less descriptor is untouched: the
     caller's ``transport`` stands exactly as before.
+
+    Issue #568 completes the grant: with ``provider_endpoints`` and a
+    ``runtime_factory`` supplied, the grant resolves the commissioned
+    endpoint, checks the runtime's op table against the admitted grammar
+    and opens the device (the new legs RAISE — a refusal fails the run
+    build). After the bundle exists, the session's ``record_evidence`` is
+    bound to the runtime's intent-first ladder: the energising ops' rows
+    land under the run's context key through the same member the adapter
+    sees.
     """
     document = content.get_document(descriptor_digest)
     if document is None:
@@ -417,7 +428,12 @@ def build_capture_services(
         )
     permissions = adapter_permissions(document["content"])
     if declares_provider(document["content"]):
-        transport = provider_transport_for(document["content"], providers)
+        transport = provider_transport_for(
+            document["content"],
+            providers,
+            endpoints=provider_endpoints,
+            runtime_factory=runtime_factory,
+        )
     quota_evidence = int(quota.max_evidence_entries)
     if ARTIFACT_WRITER in permissions:
         bundle = CaptureServicesBundle(
@@ -429,6 +445,7 @@ def build_capture_services(
             transport=transport,
             writer=writer,
         )
+        _bind_runtime_evidence(transport, bundle)
         controller = CaptureController(
             writer=writer,
             content=content,
@@ -444,5 +461,15 @@ def build_capture_services(
         context_key=context_key,
         transport=transport,
     )
+    _bind_runtime_evidence(transport, scoped)
     return scoped, None
+
+
+def _bind_runtime_evidence(transport: Any, bundle: Any) -> None:
+    """Bind the bundle's ``record_evidence`` to a runtime that takes one
+    (the provider grant's intent-first ladder); a no-op for every other
+    transport shape."""
+    attach = getattr(transport, "attach_runtime_evidence", None)
+    if attach is not None:
+        attach(bundle.record_evidence)
 

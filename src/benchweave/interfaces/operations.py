@@ -25,6 +25,7 @@ from benchweave.control.documents import (
     _classify_execution_pin,
     _corpus_root_of,
     _refuse_execution_pin,
+    check_provider_grant_window,
     classify_descriptor_pin,
 )
 from benchweave.control.documents import (
@@ -2097,6 +2098,7 @@ class Operations:
             # outcome_unknown).
             _refuse_execution_pin(bench_record, noun="bench document contract_version")
             pins: dict[str, Any] = {}
+            approvals: list[tuple[str, str, object]] = []
             for device in bench_document["content"].get("devices", []):
                 descriptor_ref = device.get("descriptor") if isinstance(device, dict) else None
                 descriptor_sha = (
@@ -2117,6 +2119,33 @@ class Operations:
                 pins[str(device.get("id", ""))] = classify_descriptor_pin(
                     descriptor.get("otdp_version")
                 )
+                # The provider window leg (issue #568, CTL-12): a stored
+                # provider-declaring descriptor contributes its approval's
+                # expiry, resolved digest-addressed — the pinned contract
+                # bytes themselves, never an unstored guess (the #260
+                # inverted-guard: an UNSTORED contract is not decided here;
+                # the worker's gate over the full admission result is
+                # authoritative).
+                transport = descriptor.get("transport")
+                provider = transport.get("provider") if isinstance(transport, dict) else None
+                if isinstance(provider, dict) and isinstance(provider.get("id"), str):
+                    contract_document = self._content.get_document(
+                        str(provider.get("sha256", ""))
+                    )
+                    if contract_document is not None:
+                        approval = contract_document["content"].get("approval")
+                        expires = (
+                            approval.get("expires_at")
+                            if isinstance(approval, dict)
+                            else None
+                        )
+                        approvals.append(
+                            (
+                                f"descriptor[{device.get('id', '')}]",
+                                str(provider["id"]),
+                                expires,
+                            )
+                        )
             _check_run_floor(pins, self._contracts)
             # The unattended-grant gate (issue #316, CTL-10): the binding
             # document's own content pins the procedure and commissioning
@@ -2161,6 +2190,22 @@ class Operations:
                     now_wall=self._now_iso(),
                     lease_present=lease_present,
                 )
+                # The provider window gate's SEAM layer (issue #568, CTL-12):
+                # the same helper and vocabulary the worker calls
+                # authoritatively — the wire-visible early refusal BEFORE
+                # any lease is consumed, over the approvals the stored
+                # documents above could answer (empty on a provider-less
+                # lattice, and empty when no pinned contract was stored —
+                # the inverted guard, the worker owning that lattice).
+                if approvals:
+                    check_provider_grant_window(
+                        approvals,
+                        now_wall=self._now_iso(),
+                        body_ms=procedure_document["content"].get("max_body_ms"),
+                        protection_ms=procedure_document["content"].get(
+                            "max_protection_ms"
+                        ),
+                    )
         except DocumentAdmissionRejected as rejected:
             # The typed vocabulary rides inside the existing failure
             # envelope — policy_denied is already in the catalog's map; no

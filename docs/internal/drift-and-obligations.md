@@ -256,7 +256,15 @@ and remain the reviewer's job.
     reopen trigger: the first provider implementation) — an endpoint field would put
     extension-contract §6's no-direct-access sentence one schema-edit away from false.
     Promotion into the commissioning shape (pinned, expiring with the commissioning) is
-    the same deferred row's.
+    the same deferred row's. **Reopen trigger fired 2026-10-28 (issue #568, the
+    gateway provider-runtime design record §1.3):** the endpoint surface arrived as
+    the sibling operator document `provider-connections.json` (same carrier class,
+    one scope narrower — identity-only by its own schema, `serial` REQUIRED), NOT as
+    a settings-schema edit; the settings schema stays byte-untouched. The
+    commissioning-shape promotion sentence stands — the record names its reopen
+    trigger (the next execution-standard head-opening train) and its mechanical
+    signal (the first operator having to re-state one USB identity in two
+    commissioning-adjacent documents).
 
 17. **The hand-carried reserved-seven transfer kinds** (the gateway mirror's
     `_RESERVED_TRANSFER_KINDS` in `src/benchweave/control/documents.py`; the SDK's
@@ -268,7 +276,10 @@ and remain the reviewer's job.
     silent shrink of either set fails its own lane. Extends the #147 record's
     deferral-8 posture to both sides; the derivation-vectors-style census fixture
     (one corpus document feeding both checkers) stays the deferred fix shape when the
-    §8.1 generic table grows.
+    §8.1 generic table grows. The §8.1 stream-trio field sets join the same
+    hand-carried twin family since issue #568 (`provider_runtime.STREAM_FIELDS`
+    ↔ the SDK's `serial._FIELDS`) with their own spelling test
+    (`tests/unit/test_provider_runtime.py`'s stream-trio arm).
 
 18. **The version-bearing-surface inventory** (issue #188's requested row;
     invariants CON-13) → every surface that declares a corpus or SDK version,

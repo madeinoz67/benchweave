@@ -65,7 +65,10 @@ from jsonschema.exceptions import SchemaError
 
 from benchweave.content.json_document import DocumentRejected, load_document
 from benchweave.control.provider_settings import (
+    PROVIDER_CONNECTIONS_FILENAME,
     ProviderRegistry,
+    SettingsRejected,
+    load_provider_connections,
     load_transport_settings,
     provider_contract_validator,
 )
@@ -187,6 +190,22 @@ class AdmittedDocuments:
     #: carried, never dropped at the router or re-derived. A public wire
     #: surface for it is E3's deferral.
     execution_pin: DescriptorPin
+    #: The admitted provider registry (issue #568): the settings document's
+    #: validated state, threaded to the worker's grant construction so the
+    #: registry no longer dies inside this call. None on a provider-less
+    #: lattice.
+    providers: ProviderRegistry | None = None
+    #: The commissioned endpoints (issue #568): the connections document's
+    #: validated key → USB identity bindings, threaded beside the registry.
+    provider_endpoints: Any = None
+    #: The provider-grant run-stream facts (issue #568, design §2.5): per
+    #: provider-declaring device whose connection resolves a commissioned
+    #: endpoint, ``{feature_id, id, version, sha256, connection_key, usb}``
+    #: — the grant's exact facts, landed as the ``provider_granted`` event
+    #: beside ``devices_pinned`` (the run record can always answer which
+    #: physical interface this run's connection resolved to, under which
+    #: contract revision).
+    provider_grants: dict[str, dict[str, Any]] | None = None
 
 
 def _corpus_root_of(family_version_dir: Path) -> Path:
@@ -1727,6 +1746,117 @@ def _check_unattended_grant(
         )
 
 
+def _provider_grant_facts(
+    descriptor: dict[str, Any],
+    provider_state: ProviderRegistry | None,
+    endpoints: Any,
+) -> dict[str, Any] | None:
+    """The ``provider_granted`` event's facts for one descriptor: the
+    admitted triple plus the commissioned USB identity its connection key
+    resolves to (design §2.5). None for a provider-less descriptor or a
+    connection with no commissioned endpoint (the grant construction owns
+    that refusal)."""
+    transport = descriptor.get("transport")
+    if not isinstance(transport, dict) or not isinstance(
+        transport.get("provider"), dict
+    ):
+        return None
+    provider = transport["provider"]
+    provider_id = provider.get("id")
+    urn_parts = str(provider_id).split(":") if isinstance(provider_id, str) else []
+    declared_version = urn_parts[4] if len(urn_parts) == 5 else None
+    entry = (
+        provider_state.find(provider_id, declared_version, provider.get("sha256"))
+        if provider_state is not None
+        else None
+    )
+    if entry is None:
+        return None
+    identity = (
+        endpoints.resolve(transport.get("connection_key"))
+        if endpoints is not None
+        else None
+    )
+    if identity is None:
+        return None
+    return {
+        "feature_id": entry.feature_id,
+        "id": entry.id,
+        "version": entry.version,
+        "sha256": entry.sha256,
+        "connection_key": transport.get("connection_key"),
+        "usb": {
+            "vendor_id": identity.vendor_id,
+            "product_id": identity.product_id,
+            "serial": identity.serial,
+            "interface": identity.interface,
+        },
+    }
+
+
+def check_provider_grant_window(
+    approvals: list[tuple[str, str, object]],
+    *,
+    now_wall: str,
+    body_ms: object,
+    protection_ms: object,
+) -> None:
+    """The provider-approval window gate (issue #568, CTL-12's window leg —
+    the CTL-10 arithmetic applied to the admitted approval).
+
+    A compliant start cannot straddle approval expiry: the run's whole
+    window (``now_wall + max_body_ms + max_protection_ms``, caller-supplied
+    values — never an ambient clock read) must fit inside EVERY
+    provider-declaring device's admitted approval ``expires_at``.
+    ``approvals`` carries ``(logical, provider_id, expires_at)`` triples the
+    two enforcement layers derive their own way (the worker from its
+    admission result; the seam digest-addressed over stored documents,
+    inverted-guard). One helper, one vocabulary, two layers — the
+    #260/#316 shape. Fail-closed like CTL-10's own clauses: a window that
+    cannot be judged (unparseable dates or budgets) refuses with the same
+    typed prefix — an unjudgeable window authorises no run start.
+    """
+    for logical, provider_id, expires_raw in approvals:
+        label = f"{logical} provider {provider_id}"
+        try:
+            expires = datetime.fromisoformat(str(expires_raw))
+            now = datetime.fromisoformat(now_wall)
+        except (TypeError, ValueError) as exc:
+            raise AdmissionRejected(
+                f"provider_grant_window_exceeded: {label} approval expiry "
+                f"({expires_raw!r}) cannot be compared against now_wall "
+                f"{now_wall!r}: {exc} — an unjudgeable window authorises no "
+                "run start"
+            ) from exc
+        if not isinstance(body_ms, int) or not isinstance(protection_ms, int):
+            raise AdmissionRejected(
+                f"provider_grant_window_exceeded: {label} cannot be judged "
+                f"against max_body_ms/max_protection_ms "
+                f"({body_ms!r}/{protection_ms!r}) — the approval window is "
+                "not demonstrably covered"
+            )
+        try:
+            window_exceeded = (
+                now + timedelta(milliseconds=body_ms + protection_ms) > expires
+            )
+        except (TypeError, OverflowError) as exc:
+            raise AdmissionRejected(
+                f"provider_grant_window_exceeded: {label}: now_wall "
+                f"{now_wall} + max_body_ms {body_ms} + max_protection_ms "
+                f"{protection_ms} cannot be compared against expires_at "
+                f"{expires_raw!r}: {exc}"
+            ) from exc
+        if window_exceeded:
+            raise AdmissionRejected(
+                f"provider_grant_window_exceeded: {label} approval expires at "
+                f"{expires_raw}, but the run window (now_wall {now_wall} + "
+                f"max_body_ms {body_ms} + max_protection_ms {protection_ms}) "
+                "exceeds it — a compliant start cannot straddle approval "
+                "expiry (CTL-10's own sentence, applied to the provider "
+                "approval)"
+            )
+
+
 def _project_full_form(
     device_id: str,
     descriptor: dict[str, Any],
@@ -2054,6 +2184,7 @@ def admit_documents(
     descriptor_paths: dict[str, Path],
     *,
     provider_settings: Path | None = None,
+    provider_connections: Path | None = None,
     now_wall: str | None = None,
     contracts: Path = _CONTRACTS,
     operator_acknowledgements: dict[str, str] | None = None,
@@ -2100,8 +2231,29 @@ def admit_documents(
     ``AdmittedDocuments.execution_version``.
     """
     provider_state: ProviderRegistry | None = None
+    provider_endpoint_state: Any = None
     if provider_settings is not None:
         provider_state = load_transport_settings(provider_settings)
+        if provider_state.connections:
+            # The presence rule (issue #568, design §1.3b): the endpoints
+            # document is REQUIRED iff the settings bind any connection — a
+            # settings document with connections and no endpoints document
+            # refuses HERE, at admission, so the operator learns it at
+            # startup (or at the run path's disclosed re-admission), never
+            # at first transfer. The closed default (A02).
+            if provider_connections is None:
+                sibling = provider_settings.parent / PROVIDER_CONNECTIONS_FILENAME
+                raise SettingsRejected(
+                    f"connections_schema: {provider_settings.name} binds "
+                    f"{len(provider_state.connections)} connection(s) but no "
+                    f"{PROVIDER_CONNECTIONS_FILENAME} is configured beside it "
+                    f"(looked for {sibling}) — the commissioned endpoint "
+                    "document is required when the settings bind connections; "
+                    "the closed default refuses (A02)"
+                )
+            provider_endpoint_state = load_provider_connections(
+                provider_connections, provider_state
+            )
 
     execution_version, contracts_dir, routed_version, execution_pin = (
         _route_execution_contracts(bench_path, contracts)
@@ -2225,6 +2377,7 @@ def admit_documents(
     descriptors: dict[str, dict[str, Any]] = {}
     descriptor_digests: dict[str, str] = {}
     pins: dict[str, DescriptorPin] = {}
+    provider_grants: dict[str, dict[str, Any]] = {}
     acked = operator_acknowledgements or {}
     for device_id, pin in device_pins.items():
         descriptor, descriptor_digest = _decode(
@@ -2264,6 +2417,14 @@ def admit_documents(
         _check_provider_admission(
             f"descriptor[{device_id}]", descriptor, provider_state, now_wall
         )
+        # The provider-grant facts (issue #568, design §2.5): recorded when
+        # the declaration resolves a commissioned endpoint — the event lands
+        # beside devices_pinned on the run's stream, and the grant
+        # construction re-checks every fact before the device opens (the
+        # same one authority: the admitted bytes).
+        grant = _provider_grant_facts(descriptor, provider_state, provider_endpoint_state)
+        if grant is not None:
+            provider_grants[device_id] = grant
         descriptors[device_id] = view
         descriptor_digests[f"descriptor/{device_id}"] = descriptor_digest
         # The admission-record surface of the pin facts (VR-46): the
@@ -2314,6 +2475,9 @@ def admit_documents(
         pins=pins,
         execution_version=execution_version,
         execution_pin=execution_pin,
+        providers=provider_state,
+        provider_endpoints=provider_endpoint_state,
+        provider_grants=provider_grants or None,
     )
 
 

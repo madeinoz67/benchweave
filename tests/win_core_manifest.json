@@ -104,6 +104,10 @@
       "core": 0,
       "total": 4
     },
+    "tests/contract/test_provider_refusal_prefixes.py": {
+      "core": 0,
+      "total": 2
+    },
     "tests/contract/test_publishing_baseline.py": {
       "core": 0,
       "total": 4
@@ -252,6 +256,10 @@
       "core": 0,
       "total": 2
     },
+    "tests/control/test_provider_grant_window.py": {
+      "core": 0,
+      "total": 10
+    },
     "tests/control/test_range_narrowing.py": {
       "core": 0,
       "total": 9
@@ -387,6 +395,10 @@
     "tests/integration/test_procedures.py": {
       "core": 0,
       "total": 116
+    },
+    "tests/integration/test_provider_runtime_run.py": {
+      "core": 0,
+      "total": 6
     },
     "tests/integration/test_registry_activation.py": {
       "core": 0,
@@ -927,6 +939,14 @@
     "tests/unit/test_protection_receive_time.py": {
       "core": 0,
       "total": 10
+    },
+    "tests/unit/test_provider_connections.py": {
+      "core": 0,
+      "total": 24
+    },
+    "tests/unit/test_provider_runtime.py": {
+      "core": 0,
+      "total": 23
     },
     "tests/unit/test_provider_settings.py": {
       "core": 0,

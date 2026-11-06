@@ -176,8 +176,16 @@ def test_out_of_grammar_kind_refused_before_any_runtime(store: Store) -> None:
     guard = mod.ProviderTransport(contract=contract)
     import asyncio
 
+    # Issue #568: the generic §8.1 kinds are in the effective grammar by
+    # construction (a provider grammar EXTENDS the transfer table) — the
+    # guard forwards them to the runtime's own §8.1 ladder, so without a
+    # runtime the refusal is the lane's, still before any transfer ran.
+    with pytest.raises(NotImplementedError, match="provider runtime"):
+        asyncio.run(
+            guard.transfer({"kind": "stream_send", "data": "aGk="}, context=None)
+        )
+
     for transaction in (
-        {"kind": "stream_send", "data": "aGk="},  # generic kind: never shadowed
         {"kind": "watt_link_query", "voltage": 1.0},  # unknown provider kind
         {"report_id": 0, "data": "aGk="},  # kindless
         ["hid_output_report"],  # not an object

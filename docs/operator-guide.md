@@ -142,18 +142,84 @@ admission: `document` names a settings-relative file whose bytes must hash
 to the admitted `sha256` and validate as a provider contract. Your
 admission record and the reviewed bytes are one act. The surface carries
 IDENTITY ONLY: there is no field for an endpoint, path, process,
-credential, or secret, by schema rather than by policy. Endpoint and
-secret configuration arrives with the first provider implementation
-through the execution-standard commissioning shape (deferred; see the
-issue #147 increment-3 design record), never through this file. An
-approval that has expired (`approval.expires_at` in the contract, judged
-at startup) is not an admitted contract. Re-admit the renewed bytes.
+credential, or secret, by schema rather than by policy. An approval that
+has expired (`approval.expires_at` in the contract, judged at startup) is
+not an admitted contract. Re-admit the renewed bytes.
 
 Run admission reads this same settings document: each run's spool resolves
 a descriptor's pinned provider contract beside it and threads the fixtures
 directory's `transport-settings.json` with a fresh wall stamp, so a
 provider-declaring lattice executes under the admissions recorded here.
 Bootstrap and the run path apply one standard.
+
+### The commissioned endpoint (`provider-connections.json`)
+
+A settings document that binds any connection needs the endpoints
+document. Put `provider-connections.json` in the fixtures directory,
+beside `transport-settings.json`. It binds each connection key to one
+USB interface, and nothing else.
+
+```json
+{
+  "config_version": "1",
+  "connections": [
+    {
+      "connection_key": "power_meter",
+      "usb": {
+        "vendor_id": 1027,
+        "product_id": 24593,
+        "serial": "FT-DEMO-0042",
+        "interface": 1
+      }
+    }
+  ]
+}
+```
+
+The schema permits no other field. A URL, a path, a host, a port, a
+credential, and a process reference are all invalid. The serial number
+is mandatory. A serial number makes the identity unambiguous when two
+devices of the same model are on the bus. Devices with no readable
+serial number cannot serve provider transport in this release.
+
+The gateway refuses these documents with the `connections_schema:`
+prefix:
+
+- a settings document that binds connections when no endpoints document
+  is present;
+- one connection key bound to two USB identities;
+- two connection keys bound to one USB interface (an interface serves
+  one client);
+- an endpoint for a connection key that the settings document does not
+  bind.
+
+The endpoint is the one grantable fact: "this logical connection is that
+physical USB interface". The promotion of this fact into the
+commissioning document is a later change. It does not affect what this
+document can grant.
+
+### The provider runtime and the approval window
+
+The FTDI provider transport needs pyftdi. Install it with
+`pip install "benchweave[provider]"`. A provider lattice on an install
+without it refuses `provider_runtime_backend_missing:` at startup. The
+install does not carry USB backends on benches without USB devices.
+
+The run window must fit inside the contract approval. The gateway
+refuses a run when `now + max_body_ms + max_protection_ms` is later than
+the contract's `approval.expires_at`. The refusal prefix is
+`provider_grant_window_exceeded:`. A run whose window ends at exactly
+the approval time is valid. An approval that cannot be judged refuses
+the run.
+
+Other refusals a provider lattice can meet at run start:
+
+- `provider_grant_endpoint_absent:` — the connection key has no endpoint;
+- `provider_grant_endpoint_conflict:` — two keys share one endpoint;
+- `provider_runtime_op_unsupported:` — the contract declares an op the
+  runtime does not carry (the contract is newer than the runtime);
+- `provider_runtime_device_unavailable:` — the USB device did not open
+  (absent, busy, or no permission).
 
 ## 3. Serve: run the gateway
 

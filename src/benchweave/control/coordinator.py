@@ -1364,6 +1364,24 @@ class RunCoordinator:
                     },
                 },
             )
+            # The provider-grant facts (issue #568, design §2.5): the same
+            # append-before-body discipline — per provider-declaring device,
+            # the grant's exact facts (triple + connection key + the
+            # commissioned USB identity), digest-covered by the terminal
+            # record's events ref. Skipped whole on a provider-less bench:
+            # zero motion for runs that never had a provider.
+            grants = self._docs.provider_grants
+            if grants:
+                self._store.append_event(
+                    f"run:{run_id}",
+                    {
+                        "kind": "provider_granted",
+                        "devices": {
+                            device_id: dict(facts)
+                            for device_id, facts in sorted(grants.items())
+                        },
+                    },
+                )
         except BaseException:
             release(self._store, reservation, self._wall.now_iso())
             raise

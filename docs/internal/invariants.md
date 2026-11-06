@@ -182,6 +182,41 @@ rather than rewriting the history — that is how this file earns trust.
   handle that overrode the hold would put a second coordinator's veto in a sidecar
   file.*
 
+- **[CTL-12]** *(2026-10-28, issue #568 — the gateway provider-runtime design
+  record's §4 new invariant.)* A provider-declaring device's run is granted a
+  provider transport only when the seven-fact conjunction holds: the declared
+  triple is exactly an admitted triple with an unexpired approval; the run's
+  whole window (`now_wall + max_body_ms + max_protection_ms`, caller-supplied
+  values — never an ambient clock read) cannot exceed the approval's
+  `expires_at`; the connection key resolves to exactly one commissioned USB
+  identity (serial mandatory — wrong-device ambiguity unrepresentable at the
+  schema level) not shared with any other connection; and a runtime whose op
+  table covers the admitted grammar's every op is constructed. Refusals are
+  typed (`provider_grant_window_exceeded:`, `provider_grant_endpoint_absent:`,
+  `provider_grant_endpoint_conflict:`, `provider_runtime_op_unsupported:`,
+  `provider_runtime_backend_missing:`, `provider_runtime_device_unavailable:`)
+  and land at two layers (seam best-effort over stored documents — an
+  UNSTORED pinned contract keeps the #260 inverted-guard skip — and worker
+  authoritative), the #260/#316 shape. The transport's life is the run's
+  life; the run lease remains the binding budget (STO-4 unchanged). Beneath
+  the bridge's existing envelope the runtime never fabricates and never
+  retries (REG-2's posture), and the two energising ops (`set_bitmode`,
+  `reset_device` — the classification is a module constant) land their intent
+  row BEFORE the driver call, refusing `provider_runtime_audit_refused:` when
+  it cannot land, except under `protect:` where the safe action dispatches
+  and the disclosure flushes at close (A07's own carve-out). The run stream
+  records the grant's facts (`provider_granted`, beside `devices_pinned`).
+  Pinned by `tests/control/test_provider_grant_window.py` (window arithmetic,
+  seam/worker parity, inverted guard) + `tests/unit/test_provider_runtime.py`
+  (grant construction, ladder, intent-first) +
+  `tests/integration/test_provider_runtime_run.py` (Metric A over the
+  scripted driver double, B0-B5 controls) +
+  `tests/unit/test_provider_connections.py` (the connections document,
+  presence rule, identity-only schema). *A02: the grant is commissioned
+  identity plus arithmetic on declared values — nothing is inferred; A04: no
+  client can reach the transport, the wire surface for provider ops does not
+  exist; A07: intent that cannot be recorded is not actuated.*
+
 ## State & persistence invariants
 
 - **[STO-1]** The store is single-writer SQLite — WAL journal, `synchronous=FULL`,

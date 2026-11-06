@@ -714,6 +714,42 @@ class that report no serial number and swap across ports. A device that
 echoes an expected identity can pass. The check is a routing safeguard and
 operator trust, not a defence against a hostile device.
 
+### Provider transactions over the commissioned connection
+
+An adapter that pins a transport provider sends its wire protocol through
+one call: `context.services.transfer(transaction, context)`. The host
+checks each transaction against the admitted contract grammar before the
+device sees it. The host serves the contract's kinds and the generic
+stream kinds (`stream_send`, `stream_receive`, `stream_exchange`) over
+one commissioned device.
+
+Two control operations are energising: `set_bitmode` and `reset_device`.
+For these two, the host records the intent before it calls the device.
+The record carries the transaction, the operation id, and a time stamp.
+When the record cannot be written, the host refuses the call with
+`provider_runtime_audit_refused:` and does not call the device. A
+protective action is the exception. A protective action has an operation
+id that starts with `protect:`. A protective action runs even when the
+record fails. The host records the failure and sends it at session close.
+
+A device error on one transaction maps to `ConnectionError` with the
+exception class name. The host makes one attempt per transaction. It
+does not retry. A faulted session stays faulted. Reconnect with a new
+run. A read that reaches its time limit with an incomplete frame raises
+`TimeoutError`. The host never returns an incomplete frame as complete.
+
+Refusal prefixes an adapter can see:
+
+- `provider_transaction:` — the transaction violates the grammar.
+- `provider_runtime_kind_unsupported:` — the kind is reserved but not
+  served (CAN, I2C, SPI in this release).
+- `provider_runtime_op_unsupported:` — the contract declares an op the
+  runtime does not carry.
+- `provider_runtime_audit_refused:` — the intent could not be recorded.
+- `provider_runtime_driver_fault:` — the device call failed.
+- `provider_runtime_result_grammar:` — the device answer violates the
+  result grammar.
+
 ## 6. Create controller firmware
 
 For an ESP32 or another controller, first decide whether firmware implements native OTDP UART JSON or a documented protocol behind an adapter. Keep firmware pin assignments and electrical behaviour explicit; OTDP does not choose a safe board configuration.

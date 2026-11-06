@@ -21,6 +21,16 @@ Nothing in production constructs these objects yet (issue #167 carries the
 activation wiring): this seam enforces admission and grammar at the
 component boundary the composing services define, and is READY for row 9's
 wiring rather than blocked by it.
+
+Issue #568 completes the grant (design §1.2/§2.2): with a runtime factory
+supplied, the construction resolves the commissioned endpoint, checks the
+runtime's op table against the admitted grammar's every op (BEFORE the
+device opens), opens the device, and injects the runtime behind the guard.
+The guard's kind gate also widened to the corpus's own composition (§0.6:
+the gateway serves BOTH transaction families on a provider connection):
+the generic §8.1 kinds forward to the runtime's own ladder — a provider
+grammar EXTENDS the transfer table, so the table's kinds are always in the
+effective grammar — while unknown kinds refuse exactly as before.
 """
 
 from __future__ import annotations
@@ -30,7 +40,8 @@ from typing import TYPE_CHECKING, Any
 from jsonschema import Draft202012Validator
 from referencing.exceptions import Unresolvable
 
-from benchweave.control.documents import adapter_permissions
+from benchweave.content.provider_runtime import grammar_op_consts
+from benchweave.control.documents import _RESERVED_TRANSFER_KINDS, adapter_permissions
 
 if TYPE_CHECKING:
     from benchweave.control.provider_settings import ProviderRegistry
@@ -108,12 +119,31 @@ class ProviderTransport:
                 "carrying a 'kind' string"
             )
         kind = transaction["kind"]
-        if kind not in self._grammar:
+        if kind not in self._grammar and kind not in _RESERVED_TRANSFER_KINDS:
             raise ValueError(
                 f"provider_transaction: kind {kind!r} is not in the admitted "
                 "contract's grammar; a provider grammar extends the transfer "
                 "table and never shadows it"
             )
+        if kind not in self._grammar:
+            # A generic §8.1 kind (issue #568, §0.6): the grammar EXTENDS the
+            # transfer table, so the table's kinds are in the effective
+            # grammar by construction — the runtime's own §8.1 ladder
+            # validates them (strict field sets, bounds); the unserved
+            # reserved kinds refuse there, typed.
+            if self._runtime is None:
+                raise NotImplementedError(
+                    f"transfer: no provider runtime is injected for kind "
+                    f"{kind!r} — provider implementations are a separate act "
+                    "(the issue #147 implementation lane); the admitted "
+                    "grammar is enforced regardless"
+                )
+            result = self._runtime.transfer(transaction, context)
+            if hasattr(result, "__await__"):
+                generic: dict[str, Any] = await result
+            else:
+                generic = result
+            return generic
         payload = {key: value for key, value in transaction.items() if key != "kind"}
         error = self._first_error(kind, "request_schema", payload)
         if error is not None:
@@ -140,6 +170,14 @@ class ProviderTransport:
                 f"the admitted grammar at {error.json_path}: {error.message}"
             )
         return outcome
+
+    def attach_runtime_evidence(self, record: Any) -> None:
+        """Bind the session bundle's ``record_evidence`` to the injected
+        runtime's intent-first ladder (a no-op without a runtime that takes
+        one — the tests' doubles bind their own)."""
+        attach = getattr(self._runtime, "attach_evidence", None)
+        if attach is not None:
+            attach(record)
 
     async def close_transport(self, context: Any) -> None:
         """Close through the runtime; a no-op without one (nothing was
@@ -187,9 +225,14 @@ def declares_provider(raw_descriptor: object) -> bool:
 
 
 def provider_transport_for(
-    raw_descriptor: dict[str, Any], providers: ProviderRegistry | None
+    raw_descriptor: dict[str, Any],
+    providers: ProviderRegistry | None,
+    *,
+    endpoints: Any = None,
+    runtime_factory: Any = None,
 ) -> Any:
-    """The grant gate (design §1.3a): three checks, then the guard.
+    """The grant gate: the landed three checks, then the runtime grant
+    (issue #568, design §1.2/§2.2).
 
     Returns a bound :class:`ProviderTransport` when every check holds,
     else a :class:`_TransportRefusal` naming the failed check. The
@@ -205,6 +248,21 @@ def provider_transport_for(
        check's degenerate state (no admitted triple exists to match);
     3. the resolution: ``connection_key`` resolves to a connection bound
        to the SAME admitted contract (S12-extended).
+
+    With ``endpoints`` supplied, the commissioned-identity legs join:
+
+    4. the endpoint: the connection key resolves to exactly one
+       commissioned USB identity (``provider_grant_endpoint_absent:``; the
+       conflict re-check — ``provider_grant_endpoint_conflict:`` — is the
+       construction gate's defense-in-depth over the connections
+       document's own load-time refusal);
+    5. the runtime: ``runtime_factory(contract, identity)`` constructs the
+       runtime UNOPENED, the table-vs-grammar check demands the runtime's
+       dispatch table cover every op the grammar discriminates
+       (``provider_runtime_op_unsupported:`` BEFORE the device opens), and
+       only then does the device open. ``runtime_factory=None`` keeps
+       today's posture: the guard constructs with no runtime and the first
+       transfer raises ``NotImplementedError`` (the B0 control's shape).
     """
     permissions = adapter_permissions(raw_descriptor)
     if SCOPED_TRANSPORT not in permissions:
@@ -254,4 +312,56 @@ def provider_transport_for(
             f"contract ({bound.id})"
         )
         return _TransportRefusal(f"transfer: {detail} — no provider transport is granted")
-    return ProviderTransport(contract=entry.document)
+    runtime: Any = None
+    if endpoints is not None:
+        identity = endpoints.resolve(key)
+        if identity is None:
+            # The worker-layer grant refusals RAISE (design §1.4 step 3: a
+            # refusal fails the run build with the typed reason — the
+            # poison-guard shape), unlike the landed 1-3 bound refusals.
+            raise ValueError(
+                f"provider_grant_endpoint_absent: connection key {key!r} "
+                "resolves to no commissioned USB identity in the "
+                "provider-connections document — no provider transport is "
+                "granted (the closed default, A02)"
+            )
+        rivals = endpoints.keys_on(identity)
+        if len(rivals) > 1:
+            raise ValueError(
+                f"provider_grant_endpoint_conflict: connection keys "
+                f"{sorted(rivals)} share one commissioned USB identity — a USB "
+                "interface is single-client; no provider transport is granted"
+            )
+        if runtime_factory is not None:
+            runtime = runtime_factory(entry.document, identity)
+            _check_table_covers_grammar(entry.document, runtime)
+            runtime.open()
+    return ProviderTransport(contract=entry.document, runtime=runtime)
+
+
+def _check_table_covers_grammar(contract: dict[str, Any], runtime: Any) -> None:
+    """The table-vs-grammar check (design §2.2.3): every op the admitted
+    grammar's request schema discriminates must be in the runtime's
+    dispatch table, and every grammar kind must discriminate ops at all —
+    an un-runnable procedure refuses the GRANT, before the device opens
+    (the honest #260 posture; a version-skew belt against a newer pinned
+    contract this runtime predates)."""
+    from benchweave.content.provider_runtime import _OPS
+
+    for kind, ops in grammar_op_consts(contract).items():
+        if not ops:
+            raise ValueError(
+                f"provider_runtime_op_unsupported: the admitted grammar kind "
+                f"{kind!r} discriminates no op this runtime's table "
+                f"dispatches ({sorted(_OPS)}) — the grant refuses rather than "
+                "serving a kind it cannot run"
+            )
+        for op in sorted(ops):
+            if op not in _OPS:
+                raise ValueError(
+                    f"provider_runtime_op_unsupported: the admitted grammar "
+                    f"kind {kind!r} discriminates op {op!r}, which this "
+                    "runtime's dispatch table does not carry (the pinned "
+                    "contract may be newer than the runtime) — the grant "
+                    "refuses rather than failing mid-run"
+                )
