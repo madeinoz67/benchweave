@@ -323,6 +323,7 @@ All notable changes to this project will be documented in this file.
 - Bump mypy from 2.3.1 to 2.4.0
 - Bump astral-sh/setup-uv from 10.3.0 to 10.3.2
 - Bump actions/setup-python from 7.0.0 to 7.1.0
+- Bump ruff from 0.17.1 to 0.17.3
 
 ### Refactoring
 
