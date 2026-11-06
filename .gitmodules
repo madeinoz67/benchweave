@@ -11,4 +11,7 @@
 	# composed action classes and the widened claims, cut at 88dcc4d.
 	# v0.22.0 = the #556 pairing: the classref 0.5.0 family with
 	# composed member declarations, cut at 0d4b44d.
-	pin = v0.23.0
+	# v0.24.0 = the #568 pairing: the live FTDI provider transport, the
+	# provider-agnostic executor registry, discovery and the binding store,
+	# and the provider dialect's mock double, cut at e99965e.
+	pin = v0.24.0

@@ -48,6 +48,7 @@ PINNED_FILE_SET = [
     f"src/{PACKAGE}/skills/develop-plugin/SKILL.md",
     f"src/{PACKAGE}/skills/drive-device/SKILL.md",
     f"src/{PACKAGE}/vectors.json",
+    f"src/{PACKAGE}/wire.py",
     "tests/test_plugin.py",
 ]
 

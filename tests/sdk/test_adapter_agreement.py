@@ -96,7 +96,15 @@ EXPECTED_HOST_SERVICES = frozenset(
 GATEWAY_SERVICES_SUBSET = frozenset({"monotonic"})
 # documented gap: the capture surface is SDK-only
 EXPECTED_CAPTURE_SERVICES = frozenset(
-    {"artifact_append", "artifact_finalise", "artifact_abort"}
+    {
+        "artifact_append",
+        "artifact_finalise",
+        "artifact_abort",
+        # #569 declared the capture-services surface: the configure and
+        # progress pair joined CaptureServices at the 0.24.0 tree.
+        "configure_capture",
+        "capture_progress",
+    }
 )
 # documented gap: the dataset surface is SDK-only (issue #146 slice 1
 # landed the protocol; the gateway bundle arrives with slice 3 — the
