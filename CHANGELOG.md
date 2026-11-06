@@ -317,6 +317,12 @@ All notable changes to this project will be documented in this file.
 - Refresh the win-core manifest for the member-mirror arms (#556 Track B B7)
 - Advance the pointer to v0.23.0 — the #560 0.6.0 pairing
 - Refresh the manifest for the widened class-reference arms
+- Bump playwright from 1.64.0 to 1.64.1
+- Bump fastmcp[server] from 4.1.0 to 4.1.4
+- Bump fastapi from 0.156.4 to 0.162.0
+- Bump mypy from 2.3.1 to 2.4.0
+- Bump astral-sh/setup-uv from 10.3.0 to 10.3.2
+- Bump actions/setup-python from 7.0.0 to 7.1.0
 
 ### Refactoring
 
