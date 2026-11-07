@@ -329,6 +329,7 @@ All notable changes to this project will be documented in this file.
 - Bump actions/setup-python from 7.0.0 to 7.1.0
 - Bump ruff from 0.17.1 to 0.17.3
 - Advance the pointer to v0.24.0 — the #585 package-dir pairing
+- Bump pytest from 9.1.1 to 9.2.0
 
 ### Refactoring
 
