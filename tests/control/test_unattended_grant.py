@@ -702,9 +702,10 @@ def test_low2_marginal_window_refuses_at_the_worker_after_seam_accepts(
     runs one second later and its window overshoots: the factory's
     admission-path call refuses ``qualification_window_exceeded:`` inside
     the real thread, the poison guard contains it (terminal projection,
-    NO terminal record — honest ``outcome_unknown``), and the typed
-    reason rides the gateway log. A pin of lane-probe-verified
-    behavior."""
+    and since issue #513 a judgeable poison lands a recovery-shaped
+    terminal record — ``outcome_unknown`` with the typed reason durable
+    in the record's reasons), and the typed reason also rides the
+    gateway log. A pin of lane-probe-verified behavior."""
     import logging
 
     # expires = seam-now + 102 s exactly (the commissioned 100000 ms body
@@ -729,7 +730,16 @@ def test_low2_marginal_window_refuses_at_the_worker_after_seam_accepts(
         assert projection["state"] == "terminal", projection
         assert projection["outcome"] == "outcome_unknown", projection
         row = cell.store.get_run(str(result["run_id"]))
-        assert row is not None and row["terminal"] is None  # no fabricated record
+        # Issue #513 pin update (the only existing no-record pin): the
+        # real-factory poison is judgeable (real admitted docs), so the
+        # poison path now lands a record — outcome_unknown, never a
+        # fabricated outcome, with the typed refusal durable in reasons.
+        assert row is not None and row["terminal"] is not None, row
+        assert row["terminal"]["outcome"] == "outcome_unknown", row["terminal"]
+        assert any(
+            "qualification_window_exceeded" in reason
+            for reason in row["terminal"]["reasons"]
+        ), row["terminal"]
         assert "run_worker poison" in caplog.text, caplog.text
         assert "qualification_window_exceeded" in caplog.text, caplog.text
     finally:

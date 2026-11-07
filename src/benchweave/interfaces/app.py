@@ -1099,6 +1099,7 @@ def create_app(
         ),
         now_iso=now_iso,
         limits=limits,
+        contracts=contracts,
     )
     operations = Operations(
         store,

@@ -405,12 +405,15 @@ def test_worker_survives_poisoned_build_run(
     """A coordinator-construction failure must not kill the worker thread.
 
     The poisoned run (a binding whose pinned document is not stored) lands
-    terminal with honest unknown truth — no fabricated terminal record —
-    and a ``run_changed`` event plus a server-side ERROR log line carry the
-    failure (D4, interface-errata slice: the worker error left the wire
-    for the gateway log — §10 excludes crash detail from event payloads —
-    while the event pins the run's binding document); a subsequent good
-    run still executes to ``passed``.
+    terminal with honest unknown truth — and since issue #513 its poison
+    is judgeable (the caller-data echo class: the judge stamps the
+    composition record), so a recovery-shaped terminal record lands with
+    ``outcome_unknown`` and the poison named in its first reason — never a
+    fabricated outcome — plus a ``run_changed`` event and a server-side
+    ERROR log line carrying the failure (D4, interface-errata slice: the
+    worker error left the wire for the gateway log — §10 excludes crash
+    detail from event payloads — while the event pins the run's binding
+    document); a subsequent good run still executes to ``passed``.
     """
     gateway = _launch(tmp_path)
     try:
@@ -420,7 +423,24 @@ def test_worker_survives_poisoned_build_run(
         honest = _run_get(gateway, poisoned)
         assert honest["outcome"] == "outcome_unknown", _outcome_detail(gateway, poisoned)
         assert honest["safe_state"] == "unknown"
-        assert honest["terminal_record"] is None, "no record may be fabricated"
+        # Issue #513 pin update (strengthened, not flipped): the record is
+        # present, the wire still reads outcome_unknown, and the record's
+        # own outcome/reasons carry honest uncertainty with the poison
+        # named — a record that claimed anything else would be exactly the
+        # fabrication this test exists to catch.
+        assert honest["terminal_record"] is not None, (
+            "the judgeable poison must gain a terminal record"
+        )
+        record_store = Store.open(tmp_path / "state.db")
+        try:
+            row = record_store.get_run(poisoned)
+        finally:
+            record_store.close()
+        assert row is not None and row["terminal"] is not None, row
+        assert row["terminal"]["outcome"] == "outcome_unknown", row["terminal"]
+        assert row["terminal"]["reasons"][0].startswith("run_worker poison:"), (
+            row["terminal"]
+        )
         assert poisoned in caplog.text and "Error" in caplog.text, (
             "the poison must be visible in the gateway log, keyed by run id"
         )

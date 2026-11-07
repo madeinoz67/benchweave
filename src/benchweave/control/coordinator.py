@@ -449,6 +449,101 @@ def _log_recovery_unresolved(run_id: str, reason: str, echo: str) -> None:
     )
 
 
+def finalize_poisoned_run(
+    store: Store,
+    run_id: str,
+    *,
+    error: BaseException,
+    now: str,
+    contracts: Path = _CONTRACTS,
+) -> bool:
+    """Attempt the worker poison path's terminal record (issue #513).
+
+    Recovery-shaped — the #260/#534 judge decides, the record validates
+    against the run's own version — with three poison-path differences
+    the sweep does not have:
+
+    - ``run["terminal"] is not None`` returns False WITHOUT writing:
+      ``_finish_run`` re-raises a non-Exception pending AFTER
+      ``finalize_run``, so the poison branch regularly fires with the
+      record already landed, and overwriting it would launder the true
+      outcome (the exact thing CTL-9 forbids).
+    - An access failure cannot defer (requeueing a poisoned job is an
+      infinite poison loop): nothing is written, the outcome does not
+      change, and the projection close proceeds.
+    - The lease is left to the next boot's sweep leg, which releases it
+      unconditionally over any terminal state — the worker never saw
+      the reservation.
+
+    Returns True iff a record was written.
+    """
+    run = store.get_run(run_id)
+    if run is None or run["tombstoned"] or run["terminal"] is not None:
+        return False
+    echo = str(run["binding"].get("version", ""))
+    decision = _recovery_record_version(run, contracts, ContentStore(store))
+    if decision.access_failure is not None:
+        # Not the sweep's deferral: the poison path cannot retry, and the
+        # projection close below is irreversible, so the run keeps no
+        # record — disclosed, never silently absent.
+        _LOG.error(
+            "run_worker poison record unjudgeable: run %s gains no record — "
+            "%s (echo %r); the projection closes terminal without a record",
+            run_id,
+            decision.access_failure,
+            echo,
+        )
+        return False
+    if decision.containment is not None:
+        # The #507 boundary: no record is safe. The sweep's prefix is
+        # reused — the durable row stays without a record on both paths.
+        _log_recovery_unresolved(run_id, decision.containment, echo)
+        return False
+    record = build_terminal_record(
+        run_id=run_id,
+        binding_pin=decision.binding_pin,
+        principal_id=run["principal_id"],
+        started_at=run["started_at"],
+        ended_at=now,
+        body_outcome="outcome_unknown",
+        safe_state="unknown",
+        reasons=[
+            f"run_worker poison: {type(error).__name__}: {error}",
+            *decision.reasons,
+            "run was not terminalised by its own machinery; body execution "
+            "never resumes",
+        ],
+        evidence_refs=_store_evidence_refs(store, run_id, decision.binding_pin),
+        contracts=contracts,
+        execution_version=decision.record_version,
+    )
+    store.finalize_run(run_id, record)
+    return True
+
+
+def _store_evidence_refs(
+    store: Store, run_id: str, binding_pin: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Recovery-shaped evidence for a store-owned terminalization: the
+    binding pin plus the run's own event-stream digest (the retained-bytes
+    the store can still vouch for). Shared by the sweep legs (through the
+    coordinator method) and the worker's poison record (issue #513)."""
+    events = store.read_events(f"run:{run_id}")
+    digest = hashlib.sha256(canonical_json(events).encode("utf-8")).hexdigest()
+    return [
+        {
+            "id": str(binding_pin["id"]),
+            "version": str(binding_pin["version"]),
+            "sha256": str(binding_pin["sha256"]),
+        },
+        {
+            "id": f"events:{run_id}",
+            "version": "1",
+            "sha256": digest,
+        },
+    ]
+
+
 def _pin_evidence(pin: Any) -> dict[str, Any]:
     """One device's pin facts as run-event evidence (VR-46): the validated
     version and its conformance class always; the yank deprecation note and
@@ -1642,18 +1737,7 @@ class RunCoordinator:
         self, run_id: str, binding_pin: dict[str, Any]
     ) -> list[dict[str, str]]:
         """Recovery evidence: what the store itself retains for the run."""
-        return [
-            {
-                "id": str(binding_pin["id"]),
-                "version": str(binding_pin["version"]),
-                "sha256": str(binding_pin["sha256"]),
-            },
-            {
-                "id": f"events:{run_id}",
-                "version": "1",
-                "sha256": self._event_stream_digest(run_id),
-            },
-        ]
+        return _store_evidence_refs(self._store, run_id, binding_pin)
 
     def _rebuild_ledger_from_events(self, run_id: str) -> None:
         """Suppress replay of every recorded occurrence of ``run_id``.

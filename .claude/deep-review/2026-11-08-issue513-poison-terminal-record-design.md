@@ -317,3 +317,28 @@ drain; the drain-faults tests pin projection/liveness only).
 | `outcome_unknown` records read as "gateway uncertainty" by auditors who wanted the stronger never-resumes claim | The reasons list carries the exact mechanism; if an audit workflow needs a distinct outcome value, that is a corpus amendment motion with its own record — not this increment. |
 | Judge cost per poison (doc read, corpus classification) slows the drain | Measured once in F1's run (milliseconds against a sqlite read); if a poison storm ever makes it material, the observation belongs to the #513 follow-up, not the mechanism. |
 | Access-failure poisons keep the null record forever (the projection closes; recovery skips terminal rows) | Accepted and disclosed (§3): it is today's behavior for every poison run, narrowed to a judge-failure subclass; the log line remains the operator's evidence. The reopen trigger would be a judge-failure poison observed in a real log. |
+
+## 12. Addendum (2026-11-08, build lane) — the §9 census was wrong
+
+§9 claimed `test_unattended_grant.py:730` was "the only existing assertion
+in the tree that pins the no-record shape (checked: `test_record_lane.py:452-511`
+pins only the 202 posture, no drain; the drain-faults tests pin
+projection/liveness only)". The survey sampled those three neighborhoods and
+never swept the tree: `tests/integration/test_event_recovery.py:423`
+(`test_worker_survives_poisoned_build_run`) asserts `terminal_record is None`
+— "no record may be fabricated" — over a real-gateway poison, and §9 did not
+look at that file.
+
+The full battery found it the hard way: post-fix that run is judgeable (its
+`POISON_REF` is the caller-data echo class — echo `1.0.0` names no carried
+dialect and its digest names no stored document, so the judge's
+`version_unknown:` honest-ref branch returns the composition decision), the
+mechanism writes the record, and the pin reddens.
+
+Disposition (team-lead ruling, this arc): strengthened, not flipped — the pin
+now asserts record-present AND wire `outcome_unknown` AND the record's own
+`outcome == "outcome_unknown"` AND `reasons[0]` starting `run_worker
+poison:`, so a record that appeared claiming anything but honest uncertainty
+still fails the test it has always failed. The lesson for §9's shape: a
+"only existing pin in the tree" claim is a tree-wide grep, not a
+neighborhood sample.
