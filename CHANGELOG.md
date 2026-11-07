@@ -334,6 +334,7 @@ All notable changes to this project will be documented in this file.
 - Bump fastmcp[server] from 4.1.4 to 4.1.6
 - Bump anyio from 4.15.1 to 4.16.0
 - Bump astral-sh/setup-uv from 10.3.2 to 10.3.3
+- Bump the codeql-action group with 2 updates
 
 ### Refactoring
 
