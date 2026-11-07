@@ -81,6 +81,7 @@ All notable changes to this project will be documented in this file.
 - Bound the docs assembly's children and the Build Docs job (#501)
 - Register the guard test module in the win_core manifest
 - Fold the refute wave — reclaim on E1, correct the frame comment, disclose the setsid residual
+- #513 poison guard writes a recovery-shaped terminal record
 
 ### Documentation
 
@@ -207,6 +208,8 @@ All notable changes to this project will be documented in this file.
 - Issue #501 docs-bounds design record
 - Close F4/F5 with their exact lines and evidence
 - Commit the demo-lattice de-timing design record
+- Issue #513 poison terminal record design record
+- Fold the refute wave — correct the byte-identical claim, scope the audit surface
 
 ### Features
 
