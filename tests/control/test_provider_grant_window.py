@@ -48,7 +48,7 @@ FIXTURES = ROOT / "fixtures" / "execution"
 EXAMPLES = ROOT / "standards" / "otdp" / "0.2.2" / "examples"
 NOW = "2026-10-28T00:00:00Z"
 BENCH_ID = "sim-bench"
-#: The fixture procedure's budgets: 8000 + 2000 = the 10 s run window the
+#: The fixture procedure's budgets: 100000 + 2000 = the 102 s run window the
 #: approval must cover (max_body_ms/max_protection_ms read from the
 #: committed fixture, never retyped).
 PROCEDURE_WINDOW_MS = 10_000
@@ -292,7 +292,7 @@ def test_b2_window_exceeded_refuses_at_the_seam_and_the_worker(
     """B2: the approval expires inside the run window (half the body) →
     ``provider_grant_window_exceeded:`` at the seam pre-check AND at the
     worker, one vocabulary."""
-    cell = _Cell(tmp_path, "b2", expires="2026-10-28T00:00:05Z")
+    cell = _Cell(tmp_path, "b2", expires="2026-10-28T00:00:50Z")
     try:
         seam = _seam_message(cell)
         assert seam is not None and "provider_grant_window_exceeded:" in seam, seam
@@ -318,7 +318,7 @@ def test_a_window_covered_by_the_approval_admits_both_layers(
 
 def test_the_boundary_window_admits_at_the_worker(tmp_path: Path) -> None:
     """The boundary: expires exactly at now + body + protection admits."""
-    cell = _Cell(tmp_path, "boundary", expires="2026-10-28T00:00:10Z")
+    cell = _Cell(tmp_path, "boundary", expires="2026-10-28T00:01:42Z")
     try:
         worker = _worker_refusal(cell)
         assert worker is None or "provider_grant_window_exceeded:" not in worker, worker

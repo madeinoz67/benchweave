@@ -333,9 +333,10 @@ def test_cell3_unattended_evidence_not_passed_refuses(tmp_path: Path) -> None:
 
 def test_cell4a_window_exceeded_by_one_ms_refuses(tmp_path: Path) -> None:
     """Cell 4a: the grant is in order but ``expires_at`` lands ONE
-    MILLISECOND inside the run window (8000 ms body + 2000 ms protection) —
-    acceptance-time arithmetic refuses at the door, marginally."""
-    cell = _Cell(tmp_path, "c4a", expires_at="2027-06-01T00:00:09.999000Z")
+    MILLISECOND inside the run window (100000 ms body + 2000 ms
+    protection, the #576 commissioned envelope) — acceptance-time
+    arithmetic refuses at the door, marginally."""
+    cell = _Cell(tmp_path, "c4a", expires_at="2027-06-01T00:01:41.999000Z")
     try:
         message = _seam_refusal(cell)
         assert message.startswith("qualification_window_exceeded:"), message
@@ -706,12 +707,13 @@ def test_low2_marginal_window_refuses_at_the_worker_after_seam_accepts(
     behavior."""
     import logging
 
-    # expires = seam-now + 10 s exactly: seam equality admits (DOC-1),
-    # worker-now (+1 s) + 10 s overshoots by exactly one second.
+    # expires = seam-now + 102 s exactly (the commissioned 100000 ms body
+    # + 2000 ms protection): seam equality admits (DOC-1), worker-now
+    # (+1 s) + 102 s overshoots by exactly one second.
     cell = _Cell(
         tmp_path,
         "low2b",
-        expires_at="2027-06-01T00:00:10Z",
+        expires_at="2027-06-01T00:01:42Z",
         real_factory=True,
         worker_clock="2027-06-01T00:00:01Z",
     )
@@ -755,7 +757,7 @@ _ILLEGAL_CELLS: list[dict[str, Any]] = [
             {**_passing_unattended_evidence(), "result": "failed"},
         ],
     },
-    {"name": "ctl-4a", "expires_at": "2027-06-01T00:00:09.999000Z"},
+    {"name": "ctl-4a", "expires_at": "2027-06-01T00:01:41.999000Z"},
     {"name": "ctl-4b", "expires_at": "2027-06-01T00:00:05Z"},
     {"name": "ctl-5", "expires_at": "2027-05-31T00:00:00Z"},
     {"name": "ctl-6", "procedure_mode": "manual"},

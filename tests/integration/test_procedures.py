@@ -415,7 +415,10 @@ def test_body_budget_rejected(tmp_path: Path) -> None:
 
 def test_energised_budget_rejected(tmp_path: Path) -> None:
     def mutate(procedure: dict[str, Any]) -> None:
-        procedure["max_body_ms"] = 15000
+        # The committed policy's energised envelope is 120000 ms with a
+        # 2000 ms transition: 121000 + 2000 violates it (the commissioned
+        # budgets of the #576 de-timing slice moved the envelope).
+        procedure["max_body_ms"] = 121000
 
     docs = readmit_with_procedure(tmp_path, mutate)
     with pytest.raises(AdmissionRejected, match=r"^energised_budget:"):
@@ -490,16 +493,17 @@ def test_semantics_timestamp_parse_is_eager_before_other_checks() -> None:
 
 def test_worst_case_bound_exact() -> None:
     steps = json.loads((FIXTURES / "procedure-voltage-check.json").read_text())["steps"]
-    # Hand computation from the fixture step list:
-    #   configure invoke 500 + enable invoke 500 + settle delay 100
-    #   + note write 200 + model read 200 + measure invoke 500 = 2000
+    # Hand computation from the fixture step list (the #576 de-timing
+    # slice commissioned every dispatch timeout to 10000 ms):
+    #   configure invoke 10000 + enable invoke 10000 + settle delay 100
+    #   + note write 10000 + model read 10000 + measure invoke 10000 = 50100
     #   voltage sample 0 + check assert 0 = 0
     #   branch if: max(then, else) = max(recheck sample 0 + check-current
     #   assert 0, 0) = 0
-    #   loop repeat: 3 x (remeasure invoke 500 + voltage-again sample 0
-    #   + check-again assert 0) = 1500
-    #   total = 2000 + 0 + 0 + 1500 = 3500
-    assert worst_case_body_ms(steps) == 3500
+    #   loop repeat: 3 x (remeasure invoke 10000 + voltage-again sample 0
+    #   + check-again assert 0) = 30000
+    #   total = 50100 + 0 + 0 + 30000 = 80100
+    assert worst_case_body_ms(steps) == 80100
 
 
 # --- Task 4: binding, resource closure, bench lease --------------------------

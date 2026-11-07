@@ -794,7 +794,7 @@ def test_body_deadline_expiry_times_out_but_protection_verifies(tmp_path: Path) 
 
     def advance_past_body_deadline(request: OperationRequest) -> None:
         if str(request.operation_id).startswith("op:"):  # body dispatches only
-            clock.advance(9_000_000_000)  # max_body_ms is 8000
+            clock.advance(101_000_000_000)  # max_body_ms is 100000
 
     fault.on_invoke = advance_past_body_deadline
 
