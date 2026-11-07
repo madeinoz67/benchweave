@@ -206,6 +206,7 @@ All notable changes to this project will be documented in this file.
 - Route the designer's code read through the Gortex card
 - Issue #501 docs-bounds design record
 - Close F4/F5 with their exact lines and evidence
+- Commit the demo-lattice de-timing design record
 
 ### Features
 
@@ -272,6 +273,8 @@ All notable changes to this project will be documented in this file.
 - The provider-connections document — loader, schema, presence rule
 - The FTDI provider runtime, the completed grant, the threading
 - The provider window gate, the seam pre-check, the provider_granted event
+- De-time the demo lattice control — clock seam + commissioned budgets
+- Commission the committed-fixture budgets with the CON-2 re-pin chain
 
 ### Miscellaneous
 
@@ -433,6 +436,7 @@ All notable changes to this project will be documented in this file.
 - Issue #450 narrow fold — the refute's five residuals (rows A-E)
 - The L11 refute findings F1-F4 — placement-aware A3 census, both cross-constraints rows, the record's corrections
 - Land the B2 review wave — the profiles seam, the plot-slot refusal, copy fidelity
+- Fold the refute wave into the de-timing record and pins
 
 ### Merge
 
