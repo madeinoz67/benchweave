@@ -78,6 +78,9 @@ All notable changes to this project will be documented in this file.
 - The bound tie keeps the exclusive end on both sides (#556 Track A)
 - The member modules drop the pytest fixture decorator — the name screen's empty-local email shape (#556 Track B B7)
 - Fold the B7 refute wave — the census carried, the fallback mirrored, the pin rows realigned (#556 Track B B7)
+- Bound the docs assembly's children and the Build Docs job (#501)
+- Register the guard test module in the win_core manifest
+- Fold the refute wave — reclaim on E1, correct the frame comment, disclose the setsid residual
 
 ### Documentation
 
@@ -201,6 +204,8 @@ All notable changes to this project will be documented in this file.
 - Fold the refute finding — record addendum, number corrections
 - The gateway commissioned provider runtime design record
 - Route the designer's code read through the Gortex card
+- Issue #501 docs-bounds design record
+- Close F4/F5 with their exact lines and evidence
 
 ### Features
 
