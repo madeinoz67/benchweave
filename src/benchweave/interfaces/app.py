@@ -37,7 +37,7 @@ from benchweave.content.provider_runtime import (
 from benchweave.content.provider_transport import declares_provider
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
-from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
+from benchweave.control.clocking import CompositionClock, MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import (
     _CONTRACTS,
@@ -778,6 +778,7 @@ def _build_run_factory(
     limits: dict[str, int],
     registry_session: RegistrySession | None = None,
     contracts: Path = _CONTRACTS,
+    clock: CompositionClock | None = None,
 ) -> Callable[[str, str, dict[str, Any], Store], RunCoordinator]:
     def build_run(
         run_id: str, principal_id: str, binding_ref: dict[str, Any], worker_store: Store
@@ -859,7 +860,10 @@ def _build_run_factory(
                     body_ms=docs.procedure.get("max_body_ms"),
                     protection_ms=docs.procedure.get("max_protection_ms"),
                 )
-        clock = SystemClock()
+        # The engine-clock seam (issue #576): the monotonic clock was the one
+        # engine port the composition never injected. Default-preserving —
+        # every production caller keeps the SystemClock behavior.
+        run_clock = clock if clock is not None else SystemClock()
         bench_id = str(docs.bench["id"])
         plans = _device_plans(content, docs, bench_id, run_id, registry_session)
         bridges = [plan for plan in plans.values() if isinstance(plan, _BridgePlan)]
@@ -882,7 +886,7 @@ def _build_run_factory(
         )
         simulated = _bench_declares_simulation(docs.commissioning)
         context_key = f"run:{run_id}"
-        stream_host = RunStreamHost(run_id=run_id, clock=clock)
+        stream_host = RunStreamHost(run_id=run_id, clock=run_clock)
         plugins: dict[str, DevicePlugin] = {}
         # F1: every exit path that leaves opened bridges behind closes them
         # through the host before the refusal propagates — a construction
@@ -911,7 +915,7 @@ def _build_run_factory(
                         # M2 timebase identity: seconds = nanoseconds / 1e9
                         # of the SAME clock the coordinator and poll engine
                         # slice on (the design's Decision-3/5 pin).
-                        clock=lambda: clock.now_ns() / 1e9,
+                        clock=lambda: run_clock.now_ns() / 1e9,
                         wall=now_iso,
                         quota=quota_limits,
                         context_key=context_key,
@@ -998,7 +1002,7 @@ def _build_run_factory(
                         stream_host.adopt(device_id, bridge)
                     continue
                 plugin = _load_sim_plugin(plan.name).create_plugin(
-                    now_fn=clock.now_iso, monotonic_ns_fn=clock.now_ns
+                    now_fn=run_clock.now_iso, monotonic_ns_fn=run_clock.now_ns
                 )
                 plugin.plugin_open(services)
                 plugins[device_id] = plugin
@@ -1014,8 +1018,8 @@ def _build_run_factory(
             return _RetainingCoordinator(
                 worker_store,
                 plugins,
-                clock,
-                clock,
+                run_clock,
+                run_clock,
                 docs,
                 # The monitor's retain hook is one-argument (the snapshot
                 # dict); RetainingServices keys evidence per context — one

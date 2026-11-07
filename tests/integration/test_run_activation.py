@@ -497,7 +497,13 @@ def _lattice(
         "roles": [
             {"id": "supply", "required_profiles": ["otdp.dc_psu/1.0.0"], "channels": ["output"]}
         ],
-        "max_body_ms": 8000,
+        # Commissioned budgets (issue #576 family A, riding the de-timing
+        # slice): these tests exercise the real activation path on
+        # SystemClock on purpose, so their authored envelopes carry venue
+        # headroom instead of 500 ms step bounds — worst case (enable_output)
+        # 3x10000 + 200 delay + 100 scheduling overhead = 30300 <= 45000
+        # max_body_ms; 45000 + 2000 transition <= 50000 max_energised_ms.
+        "max_body_ms": 45000,
         "max_protection_ms": 2000,
         "steps": steps if steps is not None else [
             {
@@ -506,7 +512,7 @@ def _lattice(
                 "role": "supply",
                 "parameter": "voltage_setpoint_v",
                 "value": write_value,
-                "timeout_ms": 500,
+                "timeout_ms": 10000,
             },
             *(
                 [
@@ -516,7 +522,7 @@ def _lattice(
                         "role": "supply",
                         "parameter": "output_enabled",
                         "value": True,
-                        "timeout_ms": 500,
+                        "timeout_ms": 10000,
                     }
                 ]
                 if enable_output
@@ -528,7 +534,7 @@ def _lattice(
                 "kind": "read",
                 "role": "supply",
                 "parameter": "output_voltage_v",
-                "timeout_ms": 500,
+                "timeout_ms": 10000,
             },
         ],
     }
@@ -546,7 +552,7 @@ def _lattice(
                 "max_abs_current_a": 1,
                 "max_power_w": 3,
                 "max_stored_energy_j": 0.01,
-                "max_energised_ms": 10000,
+                "max_energised_ms": 50000,
             }
         ],
         "allow_rules": allow_rules if allow_rules is not None else [

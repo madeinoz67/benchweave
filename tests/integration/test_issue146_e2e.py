@@ -207,9 +207,10 @@ def create_plugin():
 # publish+validate cost at fixture scale sits orders of magnitude under
 # the budget (disclosure line below), so the design record's risk-three
 # gate-placement fork is NOT triggered; these budgets only stop a starved
-# runner from failing the ship gate. The 1900 ms figure keeps the static
-# body-budget admission coherent: worst case 4x1900 + 200 delay + 100
-# scheduling overhead = 7900 <= the harness's 8000 max_body_ms.
+# runner from failing the ship gate. The 10000 ms figure (commissioned with
+# the issue #576 de-timing slice) keeps the static body-budget admission
+# coherent: worst case 4x10000 + 200 delay + 100 scheduling overhead =
+# 40300 <= the harness's 45000 max_body_ms.
 INVOKE_STEPS: list[dict[str, Any]] = [
     {
         "id": "configure",
@@ -224,7 +225,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
             "ovp_v": 6.0,
             "ocp_a": 1.0,
         },
-        "timeout_ms": 1900,
+        "timeout_ms": 10000,
     },
     {
         "id": "fetch",
@@ -232,7 +233,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "role": "supply",
         "action_id": "otdp.dc_psu.measure/1.0.0",
         "input": {"configuration_id": "conf-e2e", "channels": ["ch1"]},
-        "timeout_ms": 1900,
+        "timeout_ms": 10000,
     },
     {
         "id": "assert-voltage",
@@ -251,7 +252,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "role": "supply",
         "parameter": "voltage_setpoint_v",
         "value": 5.0,
-        "timeout_ms": 1900,
+        "timeout_ms": 10000,
     },
     {"id": "settle", "kind": "delay", "duration_ms": 200},
     {
@@ -259,7 +260,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "kind": "read",
         "role": "supply",
         "parameter": "output_voltage_v",
-        "timeout_ms": 1900,
+        "timeout_ms": 10000,
     },
 ]
 
