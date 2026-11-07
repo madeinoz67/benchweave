@@ -126,6 +126,20 @@ sys.stdout.write("partial output before failure\\n")
 sys.exit(7)
 """
 
+# F1's shape (adversary refute 2026-11-07): the child prints the banner,
+# spawns a sleeping grandchild that inherits the pipe, writes its group id and
+# exits 0 while the grandchild lives on. E1 honors the real code — but the
+# descendant must not outlive the step.
+_CHILD_CLEAN_EXIT_HOLDING_GRANDCHILD = f"""
+import os, subprocess, sys
+sys.stdout.reconfigure(encoding="utf-8")
+for line in ({BANNER_OK_HEAD!r}, {BANNER_TOTAL_TIME!r}, {BANNER_SITE_READY!r}):
+    sys.stdout.write(line + "\\n")
+subprocess.Popen([sys.executable, "-c", {GRANDCHILD!r}])
+sys.stdout.flush()
+open(sys.argv[1], "w").write(str(os.getpgrp()))
+"""
+
 _CHILD_NO_BANNER_HANG = f"""
 import os, subprocess, sys, time
 sys.stdout.reconfigure(encoding="utf-8")
@@ -311,6 +325,33 @@ def test_clean_exit_child_pays_no_grace_and_honors_the_real_code(
             grace=30.0,
             timeout=60.0,
         )
+
+
+@POSIX_ONLY
+def test_a_clean_exit_that_leaves_a_grandchild_still_reclaims_the_group(
+    tmp_path: Path,
+) -> None:
+    """F1 (adversary refute 2026-11-07): E1 honors the real exit code, and it
+    must ALSO leave the group empty. A child that exits 0 while a descendant
+    lives on holds the inherited pipe: pre-fix, E1 returned at once, the
+    reader join stalled its whole deadline, and the leak was disclosed as "a
+    pipe writer outside the child's group?" — false, because the survivor was
+    inside the group and merely alive. Reclaiming on E1 keeps the four
+    endings consistent and makes that warning mean what it says."""
+    mod = _load()
+    pgid_file = tmp_path / "clean-exit-grandchild-pgid"
+    out = mod.run(
+        [sys.executable, "-c", _CHILD_CLEAN_EXIT_HOLDING_GRANDCHILD, str(pgid_file)],
+        cwd=tmp_path,
+        done_marker=True,
+        grace=30.0,
+        timeout=60.0,
+    )
+    assert out == ""
+    assert _group_is_empty(pgid_file), (
+        "a grandchild outlived a clean child exit — E1 must reclaim the group, "
+        "not return with the child's descendants alive"
+    )
 
 
 @POSIX_ONLY

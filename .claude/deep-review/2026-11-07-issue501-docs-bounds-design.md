@@ -303,3 +303,82 @@ Mechanism-level proof is local (the CI defect does not reproduce locally — the
    re-opens the bucket marker (arm (f) catches it pre-merge because each future tag
    builds from the then-current tree); measured green build-docs runs exceeding 30m
    (tag growth) re-derive `timeout-minutes`.
+
+---
+
+## Addendum — 2026-11-07: adversarial refute findings folded
+
+The Tier-3 refute (pass required by review rubric G6; the diff carries `subprocess` and
+`threading`) returned **five findings, all LOW or NIT, and no defect reachable through
+ordinary operation**. F1-F3 and the design-level items are folded below. The body of this
+record is left as written — frozen bytes are not retrofitted; corrections land here.
+
+### F1 (LOW) — E1 leaked a surviving grandchild and misattributed the warning — FIXED
+
+*Repro (refute, macOS, real branch runner):* a child prints the inproc banner, spawns
+`time.sleep(120)`, then `sys.exit(0)`. Pre-fix, E1 returned the instant `proc.wait()`
+fired; the descendant outlived the step (observed reparented to PID 1), held the inherited
+pipe write end, so `_join_reader` stalled its full `RECLAIM_TERM_TO_KILL_S` and logged
+*"a pipe writer outside the child's group?"* — false, because the survivor was inside the
+group and merely alive.
+
+*Reachability:* requires a guarded child that exits 0 while a descendant lives. Neither
+real child does this (great-docs and the bucket `uv run` child both wait on their own
+subprocesses), so this is a hardening class, not an active defect. It was reachable only
+from a synthetic child.
+
+*Fold:* `scripts/assemble_docs_site.py` now reclaims on E1 before joining the reader, so
+all four endings agree that the group is empty and that warning can only mean what it
+says. Pinned by
+`tests/unit/test_assemble_run_guard.py::test_a_clean_exit_that_leaves_a_grandchild_still_reclaims_the_group`,
+which reddened before the fix with the exact signature above (`_group_is_empty` False, plus
+the false-cause warning) and passes after it.
+
+### F2 (LOW) — setsid'd children escape parent death and terminal SIGINT — DISCLOSED
+
+SIGKILL of the guarded parent mid-grace leaves the child and its grandchildren alive,
+reparented to launchd and still session leaders. For a local `--bucket` run this means
+Ctrl-C no longer reaches the build child, which pre-#501 shared the terminal's foreground
+group. CI is unaffected: the runner VM is ephemeral, and pre-#501 evidence
+(run 38758274375) shows orphans surviving cancel even without setsid.
+
+*Why it is not fixed here:* the escape is an inherent property of
+`start_new_session=True`, which is the same flag that makes group reclamation possible at
+all. Both are inherited verbatim from the twice-refuted SDK twin, which did not catch it
+either. A `PR_SET_PDEATHSIG`-class self-bound is the real fix and belongs in one change
+made to both copies.
+
+### F3 (LOW) — the 45-minute frame understates the compound-hang worst case — COMMENT CORRECTED
+
+Per-child E4 worst is 900s timeout + 10s TERM wait + 30s KILL wait + 10s join = 950s. A
+one-tag job carries **two** guarded windows plus a 420s bucket preamble (60 + 60 + 300),
+~5 x 60s git helpers and ~3min setup: an all-hang sum of roughly **46 minutes**, which the
+45-minute frame would cut before the last E4 could name its phase. The realistic
+single-hang case lands near 23 minutes, comfortably inside, and the measured-green margin
+(6.7x over 6m43s, n=4) is unchanged.
+
+*Fold:* the `docs.yml` comment now says the frame bounds the realistic single hang and
+names the compound case explicitly, instead of claiming it "covers one full 15-minute
+script-level backstop window". The frame value is deliberately unchanged: it is sized
+against measured green runs, and the field rule's frame-kill counter is the instrument that
+would catch a genuine compound hang.
+
+### F4/F5 (NIT) — claim discipline in this record — PARTIALLY ADDRESSED, NOT CLOSED
+
+The refute reported two NITs as claim-discipline (rubric G4) gaps in this record's prose.
+Their exact line-level detail did not survive the message relay, so this addendum cannot
+claim to have answered them point by point. What it does restate, so the record carries its
+own denominators: every timing number above names its sample (`n=4` measured green runs,
+2026-11-06/07, read from the GitHub API) or its derivation (the 950s per-child worst case
+is arithmetic on the mechanism's own constants); and every *cannot/never* above carries its
+structural reason inline (setsid is what makes reclamation possible; the leak is
+unreachable because both real children wait on their own subprocesses).
+
+**These two NITs stay open** until their text is named in the tracker. Recording that
+plainly is better than a fold that looks complete and is not.
+
+### Carried residual (unchanged from the body)
+
+The frozen v0.4.0 tag's own inner `great-docs` call is unguarded forever. The parent's
+bucket marker bounds a hang there to a loud 900s red; it cannot rescue it. Tags cut after
+this fix self-heal.

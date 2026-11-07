@@ -36,8 +36,11 @@ jobs:
     name: "Build Docs"
     runs-on: ubuntu-latest
     # Issue #501: measured green build-docs max 6m43s (n=4, 2026-11-06/07) — 45m is
-    # ~6.7x max, covers one full 15-minute script-level backstop window with margin,
-    # and matches the SDK twin's frame. A hang fails the job loudly here instead of
+    # ~6.7x max and matches the SDK twin's frame. It bounds a REALISTIC single hang
+    # (~23m: one guarded window's 15-minute backstop plus setup) with margin; a
+    # compound all-hang across BOTH guarded windows sums to ~46m (refute F3), so in
+    # that worst case the frame fires first and the kill reads as a job-level cancel
+    # rather than a named-phase exit. A hang fails the job loudly here instead of
     # sitting silent for the runner's 6h default.
     timeout-minutes: 45
     steps:

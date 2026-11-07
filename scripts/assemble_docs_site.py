@@ -474,6 +474,11 @@ def _run_marker_guarded(
             code = None
         now = time.monotonic()
         if code is not None:  # E1 — output was forwarded live; nothing to reprint
+            # F1 (adversary refute 2026-11-07): a clean exit can still leave a
+            # descendant alive holding the inherited pipe. Reclaim so all four
+            # endings agree the group is empty, and so the reader-join warning
+            # can only mean what it says. Empty group: one killpg, then out.
+            _reclaim_group(proc)
             _join_reader(reader)
             if code != 0:
                 raise SystemExit(f"command failed ({code}): {' '.join(cmd)}")

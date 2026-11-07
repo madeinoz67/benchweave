@@ -842,7 +842,7 @@
     },
     "tests/unit/test_assemble_run_guard.py": {
       "core": 0,
-      "total": 14
+      "total": 15
     },
     "tests/unit/test_bootstrap_admission.py": {
       "core": 0,
