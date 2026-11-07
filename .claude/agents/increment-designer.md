@@ -32,8 +32,10 @@ Read these before you theorize:
 5. `docs/internal/review-rubric.md` — Step 1's tier rules and the design-time tier call
    (#254): your design states its slice's tier and the keyword-scan result, so the tier
    is settled at design time, not rediscovered at review.
-6. The actual code paths you intend to change, and the tests that pin them. Cite
-   `file:line`. A design built on what you assume the code does is worthless here.
+6. The actual code paths you intend to change, and the tests that pin them, read
+   through the Gortex tools per the routing card. Cite `file:line`. Where the checkout
+   is not tracked by a daemon, fall back to native reads and name the fallback. A
+   design built on what you assume the code does is worthless here.
 
 ## What a design must contain
 
