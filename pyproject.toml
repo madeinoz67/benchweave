@@ -30,7 +30,11 @@ dependencies = [
   "click>=8.1",
   "cryptography>=50.0.1",
   "fastapi>=0.141.1",
-  "fastmcp[server]==4.1.6",
+  # fastmcp plain, no extra: the 4.1.x line publishes no `server` extra
+  # (checked 4.1.0 and 4.1.6 on PyPI, issue #602), so `fastmcp[server]` named a
+  # dependency that did not exist. uv only warns and installs the base package,
+  # which means the extra was never doing anything.
+  "fastmcp==4.1.6",
   "jsonschema>=4.23",
   "rfc3339-validator>=0.1.4",
   "rfc3987>=1.3.8",

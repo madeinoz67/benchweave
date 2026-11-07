@@ -225,7 +225,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "cryptography", specifier = ">=50.0.1" },
     { name = "fastapi", specifier = ">=0.141.1" },
-    { name = "fastmcp", extras = ["server"], specifier = "==4.1.6" },
+    { name = "fastmcp", specifier = "==4.1.6" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "pyftdi", marker = "extra == 'provider'", specifier = ">=0.56,<1" },
     { name = "rfc3339-validator", specifier = ">=0.1.4" },
