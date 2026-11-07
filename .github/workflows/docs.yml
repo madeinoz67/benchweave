@@ -35,6 +35,11 @@ jobs:
   build-docs:
     name: "Build Docs"
     runs-on: ubuntu-latest
+    # Issue #501: measured green build-docs max 6m43s (n=4, 2026-11-06/07) — 45m is
+    # ~6.7x max, covers one full 15-minute script-level backstop window with margin,
+    # and matches the SDK twin's frame. A hang fails the job loudly here instead of
+    # sitting silent for the runner's 6h default.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

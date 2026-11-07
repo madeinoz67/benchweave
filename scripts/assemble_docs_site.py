@@ -75,6 +75,17 @@ navbar link from every docs page back to the static front door.
 Any failure aborts non-zero — this runs in CI where a docs failure must fail
 the job. ``verify_tree`` is equally loud. Run from the repository root with
 ``great-docs`` on PATH (see .github/workflows/docs.yml).
+
+Subprocess bounds and completion markers (issue #501, ported from the SDK
+twin's #475/#476 runner): every child this script spawns is bounded — git
+helpers at ``GIT_TIMEOUT``, the bucket preamble's network submodule fetch at
+``SUBMODULE_TIMEOUT``, every great-docs build and the ``uv run`` bucket child
+at ``GREAT_DOCS_TIMEOUT`` — and the great-docs/bucket call sites end at the
+child's own work-done signal (``run(done_marker=...)``, per-call-site marker
+contract at the constants below) with whole-process-group reclamation, so a
+child that wedges after its last word fails loudly instead of holding the
+Build Docs job open (whose own ``timeout-minutes: 45`` frame is the outer
+backstop).
 """
 
 from __future__ import annotations
@@ -84,8 +95,11 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
 from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
@@ -113,6 +127,69 @@ GITHUB_TREE = "https://github.com/madeinoz67/benchweave/tree/main/"
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 RASTER_FAVICONS = ("favicon.ico", "favicon-16x16.png", "favicon-32x32.png", "apple-touch-icon.png")
 ALIASES = ("latest", "stable")
+
+# Subprocess bounds (issue #501, porting the SDK twin's #475/#476 runner): a
+# wedged git helper or great-docs build must fail fast and name itself, not
+# hold the Build Docs job open with no bound at all. 900s per great-docs
+# build sits well above any single build's share of the measured green
+# build-docs runs (max 6m43s whole-job, n=4, 2026-11-06/07); 60s covers the
+# local read-only git helpers (tag/cat-file/show/ls-files), which are
+# single-object lookups. The submodule update is the one NETWORK fetch in
+# the set (the SDK repo on a cold runner), so it gets its own 300s bound.
+GIT_TIMEOUT = 60
+SUBMODULE_TIMEOUT = 300
+GREAT_DOCS_TIMEOUT = 900
+
+# Issue #501 marker contract, pinned to great-docs 0.17.0 (like the markup
+# workarounds in .github/workflows/docs.yml — any pin bump re-derives these):
+# on CI the tool can print its completion banner and then never exit
+# (interpreter shutdown wedges with the work already done; local 0.17.0 runs
+# exit cleanly — root cause named upstream, evidence in the twin's design
+# record). The guarded call sites run with done_marker set, so the step ends
+# at the child's own work-done signal instead of waiting for a process exit
+# that never comes — and the marker is PER CALL SITE (the twin's fold F1):
+# - "inproc" (the three direct great-docs builds): the tool's own banner box
+#   — the conjunction of "[OK] Build complete" and a following "Site ready"
+#   line (a lone quoted string cannot complete it), "[FAIL] Build failed"
+#   outranks both. The banner is provably build()'s final statement on this
+#   path, so a reclaim after it discards nothing.
+# - "bucket" (the uv-run bucket child, the tag's own assembly script): the
+#   OUTER process's completion line "[assemble] assembled bucket <tag> at
+#   <path>", printed once by the child's own log() after verify_tree,
+#   immediately before it returns. The inner great-docs banner DOES appear
+#   here — the tag's script invokes the tool uncaptured, so it lands on the
+#   child's own pipe — with the whole assembly tail still ahead of it
+#   (staging cleanup, the replace_dir lift, the standards rename, the corpus
+#   copy, previews, favicons, llms.txt, verify_tree), so matching it would
+#   kill a healthy assembly mid-tail and report truncated output as success
+#   (the twin's fold F1 defect, one level up — this gateway has no
+#   --from-repo call site, the bucket child replaces it). The inner FAIL
+#   banner is ignored for the same reason: an inner failure makes the child
+#   exit non-zero (E1) or hang (E4), both loud already. The frozen v0.4.0
+#   tag words the line identically (its script :1435 — the only tag CI
+#   builds); a future tag that words it differently reds the marker
+#   tripwire in tests/unit/test_assemble_run_guard.py and degrades to the
+#   E4 bound meanwhile.
+# In every E2 the child's whole process group is reclaimed after the grace
+# period — the masked exit code is disclosed in the log, and the artifacts
+# are still gated downstream by bucket_source()/verify_tree().
+OK_BANNER_HEAD_RE = re.compile(r"\[OK\] Build complete")
+SITE_READY_RE = re.compile(r"Site ready")
+FAIL_BANNER_RE = re.compile(r"\[FAIL\] Build failed")
+BUCKET_DONE_RE = re.compile(r"^\[assemble\] assembled bucket \S+ at \S")
+# Reclaim timing, mechanism-shaped (the twin's second-addendum wording):
+# SIGKILL delivery is immediate; what remains after the signals is reap
+# latency of orphans (init/launchd scheduling — unbounded in principle,
+# short in practice). So the reclamation WAITS FOR THE PROPERTY (the group
+# is empty — no members, not even zombies) and returns the moment it holds;
+# these bounds are disclosure ceilings on that wait, never accuracy knobs:
+# SIGTERM gets RECLAIM_TERM_TO_KILL_S of politeness before SIGKILL, and
+# RECLAIM_GROUP_DEADLINE_S is how long a group may outlive the reclaim
+# signals before the warning names what remains. Both sit inside the
+# guarded run's own timeout frame.
+RECLAIM_TERM_TO_KILL_S = 10.0
+RECLAIM_GROUP_DEADLINE_S = 30.0
+
 # The front-door selector's scaffold token (CON-13 discipline: a token in the
 # website source, rows only in the assembly copy). Filled by
 # fill_selector_token from release_tags() BEFORE stamp_website runs — an
@@ -172,15 +249,254 @@ H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
 def log(msg: str) -> None:
-    print(f"[assemble] {msg}")
+    # flush: CI log viewers line-buffer at best; an unflushed print is exactly
+    # the invisible phase issue #475 chased (log ends, job still running) —
+    # and the "bucket" marker rides this flush: the bucket child's completion
+    # line must leave its stdio buffer at once or the parent can never sight
+    # it (the frozen pre-#501 tags lack the flush, so for them the marker
+    # degrades to the E4 bound — disclosed, R5).
+    print(f"[assemble] {msg}", flush=True)
 
 
-def run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
+def run(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: float | None = None,
+    stream: bool = False,
+    done_marker: bool | str = False,
+    grace: float = 30.0,
+) -> str:
+    """Run a subprocess loudly (issue #501: no silent phases, no unbounded
+    children — the SDK twin's #475/#476 runner).
+
+    ``stream=True`` leaves the child's stdout/stderr un-captured so build
+    output reaches the CI log as it happens — for callers that ignore
+    stdout. The default captures, for callers that parse it (git helpers).
+    A timeout aborts with the command named; a non-zero exit prints the
+    captured output first. ``env`` (the gateway's delta over the twin's
+    runner, which has none) is threaded into both paths — the bucket
+    child's UV_PROJECT_ENVIRONMENT and the help capture's constructed env.
+
+    ``done_marker`` (the guarded call sites only) ends the run at the
+    child's own work-done signal — the marker contract above, PER CALL
+    SITE: ``"inproc"`` (or ``True``) watches the tool's banner box,
+    ``"bucket"`` watches the bucket child's own completion line. The
+    guarded path reclaims the child's process group when the child hangs
+    past its last word; ``stream`` is superseded there (a reader thread
+    forwards output instead of inheriting the fds). ``timeout`` stays
+    mandatory in practice for a guarded run: with ``timeout=None`` the E4
+    backstop cannot fire, so a child that never exits and never markers
+    would hang forever — every guarded call site passes a real bound.
+    """
+    if done_marker:
+        marker = "inproc" if done_marker is True else done_marker
+        return _run_marker_guarded(
+            cmd, cwd=cwd, env=env, timeout=timeout, grace=grace, marker=marker
+        )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=not stream,
+            text=True,
+            env=env,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise SystemExit(f"command timed out after {exc.timeout}s: {' '.join(cmd)}") from exc
     if proc.returncode != 0:
-        sys.stderr.write(proc.stdout + proc.stderr)
+        if not stream:
+            sys.stderr.write(proc.stdout + proc.stderr)
         raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
-    return proc.stdout
+    return proc.stdout or ""
+
+
+def _forward_and_mark(
+    proc: subprocess.Popen[str], marked: dict[str, float], marker: str
+) -> None:
+    """Daemon reader: forward every child line to stdout, flushed (the live
+    build output issue #475 fought for), and time-stamp the first sight of
+    the call site's completion marker. "inproc": the FAIL banner is checked
+    first — a failure banner outranks any earlier success text — and the OK
+    marker is completed only by a "Site ready" line that follows the
+    "[OK] Build complete" head. "bucket": only the child's own
+    "[assemble] assembled bucket … at …" line completes the OK marker; the
+    inner great-docs banner and inner FAIL lines are deliberately not
+    watched (see the marker contract above — the twin's F1 rule, one level
+    up: the inner banner lands with the whole assembly tail still ahead)."""
+    out = proc.stdout
+    if out is None:  # stdout=PIPE by construction; the guard refuses loudly, never -O-silent
+        raise SystemExit("internal error: guarded child has no output pipe")
+    for line in out:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        if marker == "bucket":
+            if BUCKET_DONE_RE.search(line) and marked["ok"] == 0.0:
+                marked["ok"] = time.monotonic()
+            continue
+        if FAIL_BANNER_RE.search(line):
+            if marked["fail"] == 0.0:
+                marked["fail"] = time.monotonic()
+        elif OK_BANNER_HEAD_RE.search(line):
+            marked["head"] = 1.0
+        elif marked["head"] and SITE_READY_RE.search(line) and marked["ok"] == 0.0:
+            marked["ok"] = time.monotonic()
+
+
+def _wait_group_empty(pgid: int, proc: subprocess.Popen[str], timeout: float) -> bool:
+    """Poll until the group is genuinely EMPTY — no members, not even
+    reap-pending zombies — or the deadline passes. killpg(0) success and
+    EPERM both mean members-may-remain (a zombie answers success on Linux
+    and EPERM on macOS), so this waits FOR the property instead of sampling
+    one instant and guessing. The leader is our own child: poll() reaps it
+    the moment it exits, which is what lets an orphaned-group zombie drain
+    to ESRCH at all. Returns True when empty."""
+    deadline = time.monotonic() + timeout
+    while True:
+        proc.poll()  # reap the leader the instant it exits
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True  # empty
+        except PermissionError:
+            pass  # members exist but are unsignalable (macOS zombie window)
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def _reclaim_group(proc: subprocess.Popen[str]) -> None:
+    """Reclaim the child's whole process group and wait for the property the
+    reclamation claims: when this returns, the group is empty — or the R6
+    disclosure names what remains.
+
+    ``start_new_session=True`` made the child its own session and group
+    leader, so the group is its pid BY CONSTRUCTION (no getpgid probe — on
+    macOS that answers ESRCH for a zombie leader and would strand the
+    grandchildren), and the group kill cannot reach this script — setsid
+    first, group-kill second. Escalation is keyed to the GROUP, not the
+    leader: SIGTERM gets RECLAIM_TERM_TO_KILL_S of politeness; a member that
+    survives it (SIGTERM is ignorable) is SIGKILLed with the rest of the
+    group; SIGKILL delivery is immediate and what remains after it is reap
+    latency of orphans — so the final wait is wait-for-empty up to
+    RECLAIM_GROUP_DEADLINE_S, a disclosure ceiling, not an accuracy knob."""
+    if sys.platform == "win32":
+        # Loud by construction, never silently unprotected: CPython on
+        # Windows ignores start_new_session and there are no process groups
+        # to reclaim. Production exposure is nil — Build Docs runs on
+        # ubuntu-latest only (.github/workflows/docs.yml) — and the suite's
+        # process-group arms skip on win32; this refusal makes any other
+        # non-POSIX use fail loudly instead of no-op-ing.
+        raise SystemExit(
+            f"done_marker reclamation is unsupported on {sys.platform}: "
+            "the session/process-group mechanism is POSIX-only"
+        )
+    pgid = proc.pid  # start_new_session: the child leads its own group
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return  # already empty
+    except PermissionError:
+        pass  # unsignalable now (zombie window) — SIGKILL decides
+    if _wait_group_empty(pgid, proc, RECLAIM_TERM_TO_KILL_S):
+        return  # polite shutdown emptied the group
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        pass  # refused — the final wait reports whatever remains
+    if not _wait_group_empty(pgid, proc, RECLAIM_GROUP_DEADLINE_S):
+        log(
+            f"WARNING: process group {pgid} still has member processes "
+            f"{RECLAIM_GROUP_DEADLINE_S:.0f}s after the reclaim signals — "
+            "survivors or unreapable orphans may outlive this step"
+        )
+
+
+def _join_reader(reader: threading.Thread) -> None:
+    """Bounded join of the output reader. The pipe closes when its last write
+    end dies — the group kill closes them all — so this is normally instant;
+    daemon plus a loud note if not, never a hang."""
+    reader.join(timeout=RECLAIM_TERM_TO_KILL_S)
+    if reader.is_alive():
+        log("WARNING: output reader still open — a pipe writer outside the child's group?")
+
+
+def _run_marker_guarded(
+    cmd: list[str],
+    *,
+    cwd: Path | None,
+    env: dict[str, str] | None,
+    timeout: float | None,
+    grace: float,
+    marker: str = "inproc",
+) -> str:
+    """run() under the #501 marker contract — four endings, all loud:
+
+    E1 the child exits on its own (the normal case, and the only case seen
+       locally): its real exit code honored exactly as the unguarded path.
+    E2 the OK marker was seen and the child keeps running past the grace
+       period (the observed CI shape): the group is reclaimed and "" is
+       returned, the masked exit code disclosed in the log.
+    E3 the FAIL marker was seen and the child keeps running: reclaimed, then
+       a loud SystemExit — no code exists to report, and none is invented.
+       (The "bucket" kind never sights a FAIL marker — inner FAIL lines are
+       deliberately unwatched — so bucket runs end E1, E2 or E4.)
+    E4 no marker and no exit (a mid-build wedge): the outer timeout fires,
+       now reclaiming the group before the named-timeout SystemExit.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        # setsid first: the child leads its own process group, so the group
+        # kill in _reclaim_group reaches the lingering grandchildren and
+        # cannot signal this script.
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    marked: dict[str, float] = {"ok": 0.0, "fail": 0.0, "head": 0.0}
+    reader = threading.Thread(
+        target=_forward_and_mark, args=(proc, marked, marker), daemon=True
+    )
+    reader.start()
+    started = time.monotonic()
+    while True:
+        try:
+            code: int | None = proc.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            code = None
+        now = time.monotonic()
+        if code is not None:  # E1 — output was forwarded live; nothing to reprint
+            _join_reader(reader)
+            if code != 0:
+                raise SystemExit(f"command failed ({code}): {' '.join(cmd)}")
+            return ""
+        if marked["fail"] and now - marked["fail"] >= grace:  # E3, checked first
+            _reclaim_group(proc)
+            _join_reader(reader)
+            raise SystemExit(f"command failed (banner): {' '.join(cmd)}")
+        # F3: a sighted FAIL banner prohibits E2 outright — an earlier-sighted
+        # OK must not win the sight-time + grace race; the loop then waits out
+        # the fail grace above and ends E3.
+        if marked["ok"] and marked["fail"] == 0.0 and now - marked["ok"] >= grace:
+            _reclaim_group(proc)
+            _join_reader(reader)
+            log(
+                f"completion marker '{marker}' seen; process reclaimed after "
+                f"{time.monotonic() - marked['ok']:.0f}s — exit code masked by reclamation"
+            )
+            return ""
+        if timeout is not None and now - started >= timeout:  # E4 backstop
+            _reclaim_group(proc)
+            _join_reader(reader)
+            raise SystemExit(f"command timed out after {timeout:g}s: {' '.join(cmd)}")
 
 
 # ── site path map ────────────────────────────────────────────────────────────
@@ -346,6 +662,7 @@ def capture_standards_help() -> str:
         [sys.executable, "-m", "benchweave.standards", "--help"],
         cwd=REPO,
         env={"PATH": os.environ.get("PATH", ""), "COLUMNS": "100"},
+        timeout=GIT_TIMEOUT,
     )
     if not text.strip():
         raise SystemExit("standards_cli_capture_failed: empty --help output")
@@ -756,7 +1073,7 @@ def release_tags() -> list[str]:
     is the refusal pin's load-bearing transfer (tests/contract/
     test_docs_site_versioned.py arms N1-N4).
     """
-    tags = run(["git", "tag", "--list", "v*"], cwd=REPO).split()
+    tags = run(["git", "tag", "--list", "v*"], cwd=REPO, timeout=GIT_TIMEOUT).split()
     parsed = [t for t in tags if TAG_RE.match(t)]
     return sorted(parsed, key=lambda t: tuple(int(g) for g in TAG_RE.match(t).groups()))  # type: ignore[union-attr]
 
@@ -767,6 +1084,7 @@ def ref_has_config(ref: str) -> bool:
         ["git", "cat-file", "-e", f"{ref}:great-docs.yml"],
         cwd=REPO,
         capture_output=True,
+        timeout=GIT_TIMEOUT,
     )
     return proc.returncode == 0
 
@@ -1565,7 +1883,11 @@ def guard_dest(dest: Path) -> None:
     if dest == REPO or dest in REPO.parents:
         raise SystemExit(f"--dest {dest} is the repository root or an ancestor of it — refusing")
     if REPO in dest.parents and dest.exists():
-        tracked = run(["git", "ls-files", "--", str(dest.relative_to(REPO))], cwd=REPO).split()
+        tracked = run(
+            ["git", "ls-files", "--", str(dest.relative_to(REPO))],
+            cwd=REPO,
+            timeout=GIT_TIMEOUT,
+        ).split()
         if tracked:
             raise SystemExit(
                 f"--dest {dest} contains {len(tracked)} tracked file(s) — refusing to wipe them"
@@ -1621,9 +1943,11 @@ def run_bucket_build(great_docs: str, tag: str, dest: Path) -> None:
         if path.exists():
             shutil.rmtree(path)
     log(f"bucket {tag}: cloning tag tree (shared)")
-    run(["git", "clone", "--shared", str(REPO), str(tree)], cwd=REPO)
-    run(["git", "checkout", "--detach", tag], cwd=tree)
-    run(["git", "submodule", "update", "--init"], cwd=tree)
+    run(["git", "clone", "--shared", str(REPO), str(tree)], cwd=REPO, timeout=GIT_TIMEOUT)
+    run(["git", "checkout", "--detach", tag], cwd=tree, timeout=GIT_TIMEOUT)
+    # The one network fetch in the bucket preamble (the SDK repo on a cold
+    # runner) — not a local single-object lookup, so not GIT_TIMEOUT.
+    run(["git", "submodule", "update", "--init"], cwd=tree, timeout=SUBMODULE_TIMEOUT)
     venv = tree / ".bucket-venv"
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = str(venv)
@@ -1651,6 +1975,8 @@ def run_bucket_build(great_docs: str, tag: str, dest: Path) -> None:
         ],
         cwd=tree,
         env=env,
+        timeout=GREAT_DOCS_TIMEOUT,
+        done_marker="bucket",
     )
     # The tool emits alias stubs (v/latest, v/stable with url=/ — origin-root
     # redirects) inside the version output; the REAL aliases are the parent's
@@ -1725,11 +2051,12 @@ def main() -> None:
             cache = REPO / ".great-docs-cache"
             if cache.exists():
                 shutil.rmtree(cache)
-            proc = subprocess.run(
-                [args.great_docs, "build", "--versions", args.bucket], cwd=REPO
+            run(
+                [args.great_docs, "build", "--versions", args.bucket],
+                cwd=REPO,
+                timeout=GREAT_DOCS_TIMEOUT,
+                done_marker="inproc",
             )
-            if proc.returncode != 0:
-                raise SystemExit(f"docs build failed ({proc.returncode})")
         finally:
             if not args.keep_staging:
                 for d in (staging, standards_staging):
@@ -1758,6 +2085,7 @@ def main() -> None:
             cwd=REPO,
             capture_output=True,
             text=True,
+            timeout=GIT_TIMEOUT,
         )
         # None (not "") for the unreadable case: an absent yml at the ref is a
         # different refusal from a yml that does not list the tag (PR #415
@@ -1786,15 +2114,21 @@ def main() -> None:
         if tags:
             # Tagged regime: the in-process current-tree render becomes the
             # dev bucket (SDK invocation shape, :627-629).
-            proc = subprocess.run(
-                [args.great_docs, "build", "--versions", "dev"], cwd=REPO
+            run(
+                [args.great_docs, "build", "--versions", "dev"],
+                cwd=REPO,
+                timeout=GREAT_DOCS_TIMEOUT,
+                done_marker="inproc",
             )
         else:
             # Zero-tag regime: byte-for-byte today's build — no versions
             # filter, no v/ tree, no aliases (design §1.1).
-            proc = subprocess.run([args.great_docs, "build"], cwd=REPO)
-        if proc.returncode != 0:
-            raise SystemExit(f"docs build failed ({proc.returncode})")
+            run(
+                [args.great_docs, "build"],
+                cwd=REPO,
+                timeout=GREAT_DOCS_TIMEOUT,
+                done_marker="inproc",
+            )
     finally:
         if not args.keep_staging:
             for d in (staging, standards_staging):
