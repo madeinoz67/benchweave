@@ -342,3 +342,55 @@ poison:`, so a record that appeared claiming anything but honest uncertainty
 still fails the test it has always failed. The lesson for §9's shape: a
 "only existing pin in the tree" claim is a tree-wide grep, not a
 neighborhood sample.
+
+---
+
+## Addendum — 2026-11-08: adversarial refute findings folded
+
+The Tier-3 refute (review rubric G6) could not break the mechanism. **No CRITICAL, HIGH or
+MEDIUM finding**; the full battery was green on its own run (4745 / 0 / 0 / 11, exit 0). Five
+of six claims survived as written. Two LOW items and one NIT are folded here.
+
+### L1 (LOW) — "byte-identical" was the wrong phrase
+
+§5.2 said the frozen interface surface is byte-identical for this path. Measured by capturing
+both wire bodies on the same run: with the record, `terminal_record` is `{"id","version","sha256"}`;
+with the durable record nulled in place, `terminal_record` is `null`. `outcome`, `safe_state`
+and `state` are identical either way.
+
+So the sentence was true of `outcome`/`safe_state` and of the no-record cohort, and false of
+`terminal_record` on the judgeable cohort — which is the entire point of the change. The
+contract permits `null` "only for" `outcome_unknown`/`interrupted`; it never mandates it, so
+the new shape is legal. Corrected statement: **this keeps `outcome`/`safe_state` identical,
+and `terminal_record` legitimately moves from null to an object for the judgeable cohort.**
+
+G4 note: the original sentence would have read the same if it were false, which is exactly
+the test the rubric applies.
+
+### L2 (LOW) — the audit answer is durable, not served
+
+"the audit answer rides `reasons[0]`" is true at rest and only at rest. No REST, MCP, UI or CLI
+surface serves the record body: `run_get`'s `terminal_record` is a content-address triple, and
+the report/evidence CLIs read verdicts rather than reasons. An auditor reads
+`runs.terminal_json` directly.
+
+That is not a defect — the design claims durability and greppability, and both hold. It is a
+scope statement the PR body now carries, so nobody expects an API read path that does not exist.
+
+### N1 (NIT) — a `BaseException` raised by `finalize_poisoned_run` itself would escape
+
+The guard around the call is `Exception`-width, so a `BaseException` thrown by the new call
+would escape and kill the worker. This is the arm's pre-existing posture — the projection and
+emit guards are the same width — and CPython does not deliver `KeyboardInterrupt` to a worker
+thread. It is therefore not widened by this change, and it is recorded rather than fixed, so a
+future reader does not mistake the width for a decision made here.
+
+### Confirmation of the licence
+
+The claim the whole design rests on — that the judge classifies the disputed fixture as
+judgeable — was reproduced independently on the real fixtures: the integration `POISON_REF`
+row yields `record_version=None, containment=None, access_failure=None` through the
+retained-bytes probe's `version_unknown:` branch, and a recorder around
+`_recovery_record_version` showed the identical live decision under the real tests. The judge
+is not the defect; the poison path was the only writer refusing a class the rest of the
+composition terminalises normally.
