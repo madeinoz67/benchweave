@@ -330,6 +330,8 @@ All notable changes to this project will be documented in this file.
 - Bump ruff from 0.17.1 to 0.17.3
 - Advance the pointer to v0.24.0 — the #585 package-dir pairing
 - Bump pytest from 9.1.1 to 9.2.0
+- Bump mypy from 2.4.0 to 2.4.1
+- Bump fastmcp[server] from 4.1.4 to 4.1.6
 
 ### Refactoring
 
