@@ -200,6 +200,7 @@ All notable changes to this project will be documented in this file.
 - STE register pass on the member-surfaces passage, and the dialect key
 - Fold the refute finding — record addendum, number corrections
 - The gateway commissioned provider runtime design record
+- Route the designer's code read through the Gortex card
 
 ### Features
 
