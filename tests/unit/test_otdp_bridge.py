@@ -102,6 +102,34 @@ def test_expired_deadline_does_not_execute() -> None:
     plugin.plugin_close()
 
 
+def test_adapter_bound_reads_the_injected_clock_seconds() -> None:
+    """Issue #576 fold: the real-time preemption at ``_run``'s bound
+    (``asyncio.timeout``) receives seconds computed ONLY from the injected
+    monotonic — deadline 11.0 s minus injected now 10.0 s = 1.0 s, never the
+    event loop's clock. Pins the commissioning lever: a later "fix" that
+    derives the bound virtually has no real seconds left to cut a blocking
+    adapter on and would hang a real bench — this reds first."""
+    adapter = Adapter()
+    plugin = bridge(adapter)
+    plugin.plugin_open(object())
+    captured: list[float] = []
+    real_timeout = asyncio.timeout
+
+    def spy(delay: float | None) -> asyncio.Timeout:
+        assert delay is not None  # max(0, remaining) is always a finite float
+        captured.append(delay)
+        return real_timeout(delay)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(asyncio, "timeout", spy)
+        result = plugin.dispatch(
+            OperationRequest.identify("op"), deadline_ns=11_000_000_000
+        )
+        assert result.status is OperationStatus.OK
+    assert captured == [1.0]
+    plugin.plugin_close()
+
+
 @pytest.mark.parametrize("mode", ["raise", "late", "wrong_identity"])
 def test_uncertain_results_never_claim_not_dispatched(mode: str) -> None:
     class Bad(Adapter):

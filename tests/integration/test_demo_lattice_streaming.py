@@ -41,12 +41,12 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from benchweave.content.store import ContentStore
-from benchweave.control.clocking import SystemClock
+from benchweave.control.clocking import TestClock
 from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.interfaces.app import _build_run_factory
 from benchweave.interfaces.bootstrap import (
@@ -167,7 +167,7 @@ def _build_run_lattice(root: Path) -> Path:
                 "max_abs_current_a": 1,
                 "max_power_w": 3,
                 "max_stored_energy_j": 0.01,
-                "max_energised_ms": 10000,
+                "max_energised_ms": 50000,
             }
         ],
         "allow_rules": [
@@ -256,7 +256,14 @@ def _build_run_lattice(root: Path) -> Path:
         "roles": [
             {"id": "supply", "required_profiles": [], "channels": ["output"]}
         ],
-        "max_body_ms": 8000,
+        # Commissioned budgets (issue #576 de-timing): under TestClock the
+        # only residual real-clock enforcement is the bridge's asyncio.timeout
+        # (virtual deadline value, real seconds), so the step/body/domain
+        # envelopes carry venue-scale headroom — worst case 3x10000 + 400
+        # delay + 100 scheduling overhead = 30500 <= 45000 max_body_ms, and
+        # 45000 + 2000 transition <= 50000 max_energised_ms. Virtual
+        # deadlines are never waited out, so this costs zero test wall-time.
+        "max_body_ms": 45000,
         "max_protection_ms": 2000,
         "steps": [
             {
@@ -265,7 +272,7 @@ def _build_run_lattice(root: Path) -> Path:
                 "role": "supply",
                 "parameter": "voltage_setpoint_v",
                 "value": 5.0,
-                "timeout_ms": 500,
+                "timeout_ms": 10000,
             },
             {
                 "id": "enable",
@@ -273,7 +280,7 @@ def _build_run_lattice(root: Path) -> Path:
                 "role": "supply",
                 "parameter": "output_enabled",
                 "value": True,
-                "timeout_ms": 500,
+                "timeout_ms": 10000,
             },
             {"id": "settle", "kind": "delay", "duration_ms": 400},
             {
@@ -281,7 +288,7 @@ def _build_run_lattice(root: Path) -> Path:
                 "kind": "read",
                 "role": "supply",
                 "parameter": "output_voltage_v",
-                "timeout_ms": 500,
+                "timeout_ms": 10000,
             },
         ],
     }
@@ -389,13 +396,19 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
     psu's bridge with its stream controller, and during the settle delay the
     sim's telemetry lands as ``event_log`` evidence under ``run:{run_id}``.
 
-    Wall-clock sensitivity (disclosed): this control is timing-sensitive
-    under CPU load -- 1 of 27 load runs landed ``outcome_unknown``
-    honestly (no ``signal_invalid``, no subscribe refusal; the §5
-    mapping minted in ``terminal_outcome`` at coordinator.py:107-108 and
-    documented at executor.py:49). Disposition: accepted flake,
-    disclosed; the N×-under-load CI lane is deferred (design record
-    deferral table, trigger: a second under-load D-R1 flake).
+    De-timed (issue #576, replacing the former wall-clock-sensitivity
+    disclosure): one ``TestClock`` threads both factory ports, so every
+    timebase in the run — executor deadlines, monitor freshness, poll-engine
+    slicing, the sim's emission cadence, every observed_at/host_received_at
+    stamp — derives from one virtual clock. The former under-load races
+    (1-of-27 ``outcome_unknown``; the no-``ended`` presentation of #532)
+    were real-clock budget/ordering artifacts this removes structurally. The
+    timebase pin below reddens any real-clock reintroduction in the path;
+    the residual real-clock enforcement (the bridge's ``asyncio.timeout``
+    with virtual deadline values) carries commissioned headroom — 10 s on
+    dispatch steps; the 50 ms poll slice and the 500 ms safe-transition
+    action stay bench/policy-authored and are bounded by the design's 6.2
+    acceptance rule, not by this pin.
     """
     session = _demo_session(tmp_path / "registry-work")
     lattice = _build_run_lattice(tmp_path)
@@ -419,15 +432,19 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
     content = ContentStore(store)
     try:
         admit_startup_bench(store, content, lattice, now=NOW_ISO)
+        tc = TestClock(wall_start=NOW_ISO)
         factory = _build_run_factory(
             lattice,
-            # Real wall time: the monitor's freshness verdict compares each
-            # reading's observed_at against the coordinator's clock, so the
-            # run's services must stamp readings with live wall time (the
-            # frozen NOW_ISO is the registry/bootstrap clock only).
-            SystemClock().now_iso,
+            # One clock through both ports (the M2 timebase-identity pin at
+            # the composition seam): the monitor's freshness verdict compares
+            # each reading's observed_at against the coordinator's clock, so
+            # readings stamp from the SAME virtual clock the deadlines slice
+            # on. wall_start matches the registry freeze NOW_ISO so every
+            # fixture validity window holds.
+            tc.now_iso,
             limits=QUOTA_LIMITS,
             registry_session=session,
+            clock=tc,
         )
         run_id = "run-demo-stream"
         coordinator = factory(run_id, "demo-lattice-principal", _binding_ref(lattice), store)
@@ -456,6 +473,16 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
             by_subscription.setdefault(str(reference["subscription_id"]), []).append(reference)
         assert len(by_subscription) == 2, sorted(by_subscription)
         for subscription_id, references in by_subscription.items():
+            # Poison-red signature (design addendum F1, §6.2-amended): one of
+            # the four real-clock residuals that survive the de-timing (the
+            # ≤50 ms poll slice, the 500 ms policy disable write, the 5 s
+            # teardown unsubscribe budget, the 2 s protection verify budget)
+            # tripping under load poisons the bridge session
+            # (`otdp_bridge.py` `_failed=True` + `_stream_clear()`); the
+            # sweep's `host_ended` marker rows carry no `sequence` field, so
+            # the run reds HERE as ``KeyError: 'sequence'`` — before the
+            # ``ended`` assert below. That red is a family-signature failure
+            # for the acceptance rule, not a new streaming bug.
             sequences = sorted(int(row["sequence"]) for row in references)
             kinds = {row["kind"] for row in references}
             assert len(sequences) == len(set(sequences)), subscription_id
@@ -482,6 +509,26 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
             and event["reading"]["parameter"] == "output_voltage_v"
         ]
         assert voltage_values and all(value == 5.0 for value in voltage_values), voltage_values
+
+        # Timebase pin (the RED discriminator, design §6.1): every stamp the
+        # run minted — the record's own, every landed event's receipt, every
+        # telemetry reading's observation — falls inside the TestClock's
+        # virtual window. A run on any real clock stamps the actual date and
+        # reds here, so a mixed-timebase regression (a real-clock stamp
+        # reintroduced anywhere in the path) self-reddens the same pin.
+        window_start = datetime.fromisoformat(NOW_ISO.replace("Z", "+00:00"))
+        window_end = window_start + timedelta(minutes=10)
+        stamps = [str(record["started_at"]), str(record["ended_at"])]
+        stamps += [str(reference["host_received_at"]) for reference in landed]
+        stamps += [
+            str(event["reading"]["observed_at"])
+            for event in payloads
+            if event["kind"] == "telemetry"
+        ]
+        assert stamps, "timebase pin requires at least one landed stamp"
+        for stamp in stamps:
+            moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            assert window_start <= moment <= window_end, stamp
     finally:
         store.close()
 

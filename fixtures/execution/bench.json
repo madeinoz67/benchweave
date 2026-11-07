@@ -13,7 +13,7 @@
   "policy": {
     "id": "sim-policy",
     "version": "0.1.0",
-    "sha256": "1b7cf86ce04223e514d4abefd860d97b4d9024ec65160e19f8ace52b26eaebfc"
+    "sha256": "190f75a0ac1e65166e25aa5a61902d4dc22b1ca9c84f55008e52fef20ecd566b"
   },
   "package_lock": {
     "id": "sim-lock",

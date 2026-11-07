@@ -693,7 +693,7 @@ def _take_lease(
 def test_gw56_refuses_the_arm_when_the_bound_exceeds_attention(
     energise_rig: Any,
 ) -> None:
-    """Manual mode, bound (max_body_ms + max_protection_ms = 10 000 ms)
+    """Manual mode, bound (max_body_ms + max_protection_ms = 102 000 ms)
     vs attention remaining: with a live held lease with 5 000 ms
     remaining (session hours), the bound exceeds the attention remainder
     — the arm refuses PRE-SEND (no mutating seam call), rendering the
@@ -708,7 +708,7 @@ def test_gw56_refuses_the_arm_when_the_bound_exceeds_attention(
     response = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
     assert response.status_code == 403, response.text[:800]
     assert 'data-bw-failure="policy_denied"' in response.text
-    assert "10000" in response.text
+    assert "102000" in response.text
     assert "5000" in response.text
     assert "benchweave ui-login" in response.text
     assert not calls_start
@@ -720,7 +720,7 @@ def test_gw56_arm_boundary_equal_is_allowed(energise_rig: Any) -> None:
     allowed — the arm composes (the seam still decides the start)."""
     rig = energise_rig
     generation = _generation(rig, rig.record)
-    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _take_lease(rig, rig.record, duration_ms=102_000, generation=generation)
     _stage(rig, rig.record)
     _check(rig, rig.record)
     response = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
@@ -765,7 +765,7 @@ def test_e_two_identical_confirms_start_exactly_one_run(energise_rig: Any) -> No
     instead of being refused by the guards)."""
     rig = energise_rig
     generation = _generation(rig, rig.record)
-    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _take_lease(rig, rig.record, duration_ms=102_000, generation=generation)
     _stage(rig, rig.record)
     _check(rig, rig.record)
     arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
@@ -890,7 +890,7 @@ def test_g_a_trip_while_armed_refuses_the_confirm_without_a_seam_call(
     flag survives (a departing guard re-enables on the next render)."""
     rig = energise_rig
     generation = _generation(rig, rig.record)
-    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _take_lease(rig, rig.record, duration_ms=102_000, generation=generation)
     _stage(rig, rig.record)
     _check(rig, rig.record)
     arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
@@ -935,7 +935,7 @@ def test_f_a_transport_shaped_failure_renders_no_response(energise_rig: Any) -> 
     resolving to run_find's view."""
     rig = energise_rig
     generation = _generation(rig, rig.record)
-    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _take_lease(rig, rig.record, duration_ms=102_000, generation=generation)
     _stage(rig, rig.record)
     _check(rig, rig.record)
     arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
@@ -1090,7 +1090,7 @@ def _confirm(rig: Any, generation: int) -> Any:
 
 def test_j_gw56_at_fire_the_renewed_shorter_lease_refuses(energise_rig: Any) -> None:
     """Arm J, lease leg (§6.J): armed under a long lease, then renewed
-    down to 5 000 ms — at fire the bound (10 000 ms) exceeds the
+    down to 5 000 ms — at fire the bound (102 000 ms) exceeds the
     attention remainder: pre-send refusal (no seam run_start call)
     naming the bound and the figures."""
     rig = energise_rig
@@ -1114,7 +1114,7 @@ def test_j_gw56_at_fire_the_renewed_shorter_lease_refuses(energise_rig: Any) -> 
     response = _confirm(rig, generation)
     assert response.status_code == 403, response.text[:800]
     assert 'data-bw-failure="policy_denied"' in response.text
-    assert "10000" in response.text
+    assert "102000" in response.text
     assert "5000" in response.text
     assert "benchweave ui-login" in response.text
     assert not calls_start
@@ -1137,7 +1137,7 @@ def test_j_gw56_at_fire_the_clock_advanced_session_refuses(energise_rig: Any) ->
     response = _confirm(rig, generation)
     assert response.status_code == 403, response.text[:800]
     assert 'data-bw-failure="policy_denied"' in response.text
-    assert "10000" in response.text
+    assert "102000" in response.text
     assert "5000" in response.text
     assert "benchweave ui-login" in response.text
     assert not calls_start
@@ -1149,7 +1149,7 @@ def test_j_gw56_fire_boundary_equal_is_allowed(energise_rig: Any) -> None:
     (here: it accepts, the run starts)."""
     rig = energise_rig
     generation = _generation(rig, rig.record)
-    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _take_lease(rig, rig.record, duration_ms=102_000, generation=generation)
     _stage(rig, rig.record)
     _check(rig, rig.record)
     arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})

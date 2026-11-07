@@ -257,7 +257,7 @@ class _DeadlineCrossing:
         if request.verb is OperationVerb.INVOKE and str(
             request.arguments.get("action_id", "")
         ).startswith("otdp.dc_psu.configure"):
-            self._clock.advance(9_000_000_000)  # body budget is 8000 ms
+            self._clock.advance(101_000_000_000)  # body budget is 100000 ms (#576)
             if self._clock.now_ns() >= deadline_ns:
                 return OperationResult.failure(
                     request.operation_id,

@@ -10,7 +10,7 @@
       "max_abs_current_a": 1,
       "max_power_w": 3,
       "max_stored_energy_j": 0.01,
-      "max_energised_ms": 10000
+      "max_energised_ms": 120000
     }
   ],
   "allow_rules": [

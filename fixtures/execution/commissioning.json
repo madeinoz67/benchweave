@@ -6,12 +6,12 @@
   "bench": {
     "id": "sim-bench",
     "version": "0.1.0",
-    "sha256": "2c32914488a17cb4c99e4505047c1fbde3dff3fef72d0e213a30c2e35e259ad7"
+    "sha256": "9368b1a704f52678ff10ccd4075b42dc056aa9d6adc02d2aa93f855d40fd2ed4"
   },
   "policy": {
     "id": "sim-policy",
     "version": "0.1.0",
-    "sha256": "1b7cf86ce04223e514d4abefd860d97b4d9024ec65160e19f8ace52b26eaebfc"
+    "sha256": "190f75a0ac1e65166e25aa5a61902d4dc22b1ca9c84f55008e52fef20ecd566b"
   },
   "package_lock": {
     "id": "sim-lock",
@@ -22,7 +22,7 @@
     {
       "id": "voltage-check",
       "version": "0.1.0",
-      "sha256": "b4bfdec98e7b6f381e64c63f4ca5466fddf4ccdc9d5bd579623e2fd73ff3ad13"
+      "sha256": "2f1c62ae4ed1654a728f845f2568d9d9c2f1c6d93ee819034be76016dc93b1e3"
     }
   ],
   "dut_class": "low_voltage_embedded",

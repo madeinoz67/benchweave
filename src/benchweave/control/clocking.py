@@ -49,6 +49,18 @@ class WallClock(Protocol):
     def now_iso(self) -> str: ...
 
 
+class CompositionClock(MonotonicClock, Protocol):
+    """One object serving both ports — the M2 timebase identity, typed.
+
+    The run composition hands a single clock object to the coordinator's
+    monotonic AND wall ports and to the sim plugins' ``now_fn`` (the F6
+    shared-base fact, made a signature guarantee at the #576 seam).
+    ``SystemClock`` and ``TestClock`` both satisfy it structurally.
+    """
+
+    def now_iso(self) -> str: ...
+
+
 def _zero_cell() -> list[int]:
     return [0]
 

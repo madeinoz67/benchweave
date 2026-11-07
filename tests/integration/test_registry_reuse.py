@@ -421,7 +421,9 @@ def test_control_stack_run_on_cached_plugin(
         ACTION_MEASURE,
     ]
     assert all(
-        run_start_ns <= deadline_ns <= run_start_ns + 10_000_000_000
+        # The window cap is the commissioned body budget (max_body_ms is
+        # 100000 — the #576 de-timing slice).
+        run_start_ns <= deadline_ns <= run_start_ns + 100_000_000_000
         for _request, deadline_ns in psu_calls.calls
     )
 
