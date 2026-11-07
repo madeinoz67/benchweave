@@ -473,6 +473,16 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
             by_subscription.setdefault(str(reference["subscription_id"]), []).append(reference)
         assert len(by_subscription) == 2, sorted(by_subscription)
         for subscription_id, references in by_subscription.items():
+            # Poison-red signature (design addendum F1, §6.2-amended): one of
+            # the four real-clock residuals that survive the de-timing (the
+            # ≤50 ms poll slice, the 500 ms policy disable write, the 5 s
+            # teardown unsubscribe budget, the 2 s protection verify budget)
+            # tripping under load poisons the bridge session
+            # (`otdp_bridge.py` `_failed=True` + `_stream_clear()`); the
+            # sweep's `host_ended` marker rows carry no `sequence` field, so
+            # the run reds HERE as ``KeyError: 'sequence'`` — before the
+            # ``ended`` assert below. That red is a family-signature failure
+            # for the acceptance rule, not a new streaming bug.
             sequences = sorted(int(row["sequence"]) for row in references)
             kinds = {row["kind"] for row in references}
             assert len(sequences) == len(set(sequences)), subscription_id

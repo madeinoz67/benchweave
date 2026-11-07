@@ -341,3 +341,112 @@ fixture budgets), that slice is **Tier 3** by the `sha256` re-pin hunks alone.
    than their arithmetic comments (e.g. a pinned expected-duration assert), those
    rows split out into their own slice rather than dragging this one — the
    acceptance rule covers the named control regardless.
+
+## 10. Addendum — 2026-11-07, the adversarial refute fold
+
+The body above is the frozen pre-build design record; this addendum records the
+refute-wave dispositions and their evidence. The refuter confirmed all five of
+the build's claims and found no CRITICAL or HIGH defect; the five items below
+(1 MEDIUM, 3 LOW, 1 INFO) are folded here.
+
+### 10.1 F1 (MEDIUM) — §5 overstated: four real-clock residuals survive
+
+§5's sentence "Post-fix, the named control has no load-sensitive surface left
+for the lane to catch" is **false**. Four real-clock enforcement surfaces remain
+in the named control's path, each verified in tip source this date:
+
+1. **The 50 ms poll slice**: `bench.json` signals `poll_ms: 50`
+   (`fixtures/execution/bench.json:100,114`) → `bench_poll_ns`
+   (`protection.py:63-77`) → `_MonitoringClock.wait_ns`
+   (`coordinator.py:845-861`) → `poll_slice` (`stream_host.py:245-258`) →
+   `poll_deadline` (`stream_polling.py:132`) → `asyncio.timeout(max(0,
+   remaining))` — real seconds, ≤ 50 ms per poll.
+2. **The 500 ms policy disable write**: the committed safety policy's `disable`
+   action `timeout_ms: 500` (`fixtures/execution/safety-policy.json:119`),
+   dispatched under the protective transition (`protection.py:155`).
+3. **The 5 s teardown unsubscribe budget**: `_DISPATCH_BUDGET_S = 5.0`
+   (`stream_host.py:62`), applied at the stream-end dispatch
+   (`stream_host.py:302`).
+4. **The 2 s protection envelope over the verify reads**: the committed policy's
+   `safe_transition.max_duration_ms: 2000` (`safety-policy.json:108`;
+   `coordinator.py:1503`).
+
+**Poison-red signature.** A residual trip — the poll slice is the likeliest —
+poisons the session (`otdp_bridge.py:1108-1130`: `_failed = True` +
+`_stream_clear()` → sweep writes `host_ended` marker rows that carry no
+`sequence` field, `stream_services.py:377-399`), the poll engine latches
+`session_failed` (`stream_polling.py:134-138`), the terminal `ended` never
+lands, and the named control reds at its row unpack as **`KeyError:
+'sequence'`** (`test_demo_lattice_streaming.py`, the `sequences = sorted(...)`
+line — a comment there names this signature). The frozen §1.2 already recorded
+the same `KeyError` shape for the sweep path; the addendum extends it to the
+poison path.
+
+**§6.2 amendment (dated, superseding the frozen signature definition):** a
+family-signature failure now ALSO includes the named control redding as
+`KeyError: 'sequence'` at that row unpack with the timebase pin green — a
+real-clock residual trip, counted by this acceptance rule, not misread as a new
+streaming bug.
+
+**§5, corrected:** the de-timing removed the *authored-budget* surface (family
+A's 500 ms step window, now 10 s commissioned) and family B's *ordering*
+surface (virtual arithmetic). The four residuals above are load-sensitive by
+construction, and the N-lane decline no longer rests on "no surface left"; it
+rests on the standing guards — the timebase pin plus the §6.2 measurement
+(which now counts residual trips via the amended signature) — with the reopen
+trigger unchanged: a post-fix load red with the family signature.
+
+### 10.2 F2 (LOW) — dead constant removed
+
+`tests/control/test_provider_grant_window.py` carried
+`PROCEDURE_WINDOW_MS = 10_000` beneath the accurate 100000 + 2000 = 102 s
+budget note, with zero readers tree-wide (grep this date: the definition was
+the only hit). Deleted; the note stays, now a plain comment.
+
+### 10.3 F3 (LOW) — §4.1's caller census was stale
+
+§4.1 said "all five existing callers". The tip census of `_build_run_factory`
+is **18 call sites: 1 production (`app.py:1093`) + 17 test sites across 8 test
+files** (refuter-enumerated and independently re-checked). The mechanism claim
+(default-preserving seam) is unaffected — the refuter verified it — so this is
+documentation only. The same 17 test sites already exist on `origin/main` (the
+design's own base; `git grep -c` against `origin/main` this date), so the
+"five" was an undercount at design time — the design enumerated only the files
+it traced — not drift the build introduced.
+
+### 10.4 F4 (LOW) — Tier-3 evidence, now on record
+
+§8 pre-committed that a slice taking the committed-fixture budgets is Tier 3 by
+its sha256 hunks; commit 2 (`ed487297`) took them. The Tier-3 lane has run
+(performed by the refuter against the pushed tip, this date):
+
+- Every digest re-derived from file bytes; the re-pin order verified.
+- Enforcement proven live: one byte mutated in a committed fixture → the
+  focused 12-test suite red `8/12 failed` → byte restored → `12/12, exit 0`.
+- The caller census (10.3) enumerated independently.
+- The timebase pin neutralised (test clock args reverted to `SystemClock`) →
+  the pin red for the right reason; restored → green.
+- All fifteen moved tests audited for weakened assertions: none found.
+
+### 10.5 F5 (INFO) — the central claim is unfalsifiable at this venue
+
+Both the builder and the refuter independently **failed to reproduce the
+pre-fix flake**: 60 pre-fix serial iterations under `-n 10` load → 0 failures;
+44 post-fix load executions → 0 failures. With the pre-fix rate p ≈ 3.7%/run,
+P(0 failures in 60) ≈ 10% — the reproduction probe cannot discriminate. The
+central claim ("the de-timing removed the races") therefore rests on structure
+(the pinned timebase, the source-verified chains of §1) plus the §6.2
+post-merge measurement, and is NOT a reproduced-then-fixed flake. Recorded
+plainly; do not cite the 60-iteration run as reproduction evidence.
+
+### 10.6 Machine pins added by this fold
+
+- The poison-red signature comment at the named control's row unpack (10.1).
+- `tests/unit/test_otdp_bridge.py::test_adapter_bound_reads_the_injected_clock_seconds`:
+  proves the seconds handed to `asyncio.timeout` at the `_run` bound derive
+  from the INJECTED monotonic (deadline 11.0 s − injected now 10.0 s = 1.0 s),
+  not the event loop's clock. RED-verified by neutralising the arithmetic to
+  `asyncio.get_running_loop().time()` → `assert [0] == [1.0]` → restored →
+  green. This pin exists so a later "virtual" rewrite of the bound — which
+  would leave no real seconds to cut a blocking adapter on — reds before it
+  can hang a real bench.

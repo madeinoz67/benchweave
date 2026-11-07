@@ -48,10 +48,9 @@ FIXTURES = ROOT / "fixtures" / "execution"
 EXAMPLES = ROOT / "standards" / "otdp" / "0.2.2" / "examples"
 NOW = "2026-10-28T00:00:00Z"
 BENCH_ID = "sim-bench"
-#: The fixture procedure's budgets: 100000 + 2000 = the 102 s run window the
-#: approval must cover (max_body_ms/max_protection_ms read from the
-#: committed fixture, never retyped).
-PROCEDURE_WINDOW_MS = 10_000
+# The fixture procedure's budgets: 100000 + 2000 = the 102 s run window the
+# approval must cover (max_body_ms/max_protection_ms read from the
+# committed fixture, never retyped).
 
 QUOTA_LIMITS: dict[str, int] = {
     "max_json_bytes": 1048576,
