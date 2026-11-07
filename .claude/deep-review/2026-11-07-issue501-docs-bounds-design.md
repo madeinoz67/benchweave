@@ -363,19 +363,53 @@ script-level backstop window". The frame value is deliberately unchanged: it is 
 against measured green runs, and the field rule's frame-kill counter is the instrument that
 would catch a genuine compound hang.
 
-### F4/F5 (NIT) — claim discipline in this record — PARTIALLY ADDRESSED, NOT CLOSED
+### F4 (NIT) — the port is three deltas, not two — CORRECTED HERE
 
-The refute reported two NITs as claim-discipline (rubric G4) gaps in this record's prose.
-Their exact line-level detail did not survive the message relay, so this addendum cannot
-claim to have answered them point by point. What it does restate, so the record carries its
-own denominators: every timing number above names its sample (`n=4` measured green runs,
-2026-11-06/07, read from the GitHub API) or its derivation (the 950s per-child worst case
-is arithmetic on the mechanism's own constants); and every *cannot/never* above carries its
-structural reason inline (setsid is what makes reclamation possible; the leak is
-unreachable because both real children wait on their own subprocesses).
+The body's §4 says "verbatim ports (SDK :207-384) with **two** deltas — the `bucket` marker
+kind and `env` pass-through." The mechanism carries a third: the SDK twin's
+`assert out is not None` becomes a loud guard at gateway
+`scripts/assemble_docs_site.py:330-332`:
 
-**These two NITs stay open** until their text is named in the tracker. Recording that
-plainly is better than a fold that looks complete and is not.
+```python
+if out is None:  # stdout=PIPE by construction; the guard refuses loudly, never -O-silent
+    raise SystemExit("internal error: guarded child has no output pipe")
+```
+
+This is an improvement, not a regression: under `python -O` the twin's assert vanishes and
+its reader thread would die on `for line in None`, silently degrading every guarded run to
+E4-only. The gateway guard is `-O`-proof and loud. But a set named in prose must be
+regenerable from the mechanism, and "two" was not. The third delta is named here so the
+enumeration and the diff agree.
+
+### F5 (NIT) — two missing surfaces, and a "holds" that outran its evidence — CORRECTED HERE
+
+**(a)** §6's "Surfaces that move" lists five; the diff moves seven. Unlisted:
+`tests/contract/test_docs_site_versioned.py` (two `fake_run` stubs widened from
+`(cmd, *, cwd=None, env=None) -> str` to `(cmd, **_kwargs: Any) -> str` so they do not
+`TypeError` on the new keyword arguments; the stubs pin the command literal, not the
+bounds) and `tests/win_core_manifest.json` (registers the new module).
+
+**(b)** §3 says the marker contract "holds against the frozen tag bytes CI actually
+builds". Measured against the tag itself: `git show v0.4.0:scripts/assemble_docs_site.py`
+gives `log()` as `print(f"[assemble] {msg}")`, with **no flush**. The gateway's own `log()`
+comment states the consequence — the completion line must leave the child's stdio buffer at
+once or the parent can never sight it, "so for them the marker degrades to the E4 bound
+(disclosed, R5)". The wording of the sentence was true of the *wording*: the regex matches
+the tag's line, which was verified against the bytes. It was not true of the *sighting*.
+
+Corrected statement: **the wording holds; sighting degrades to the E4 timeout bound on
+frozen tags whose `log()` lacks the flush.** For v0.4.0, which is the only tag CI builds
+today, E2-for-bucket is therefore not established and the working protection is E4 alone —
+which is why the 900s bound is not a belt-and-braces extra but the primary defence on the
+frozen path. Tags cut after this fix carry the flush and get both.
+
+### Note on F1's fix shape
+
+The refute's suggested fix reclaimed only when `reader.is_alive()` after the join. The fold
+reclaims unconditionally instead, because a descendant that closed its own stdout would not
+hold the pipe, so the conditional version would leave exactly that leak in place. The
+unconditional `killpg` is one syscall on an empty group and cannot reach outside the child's
+own session, so the cost is nil and the coverage is strictly wider.
 
 ### Carried residual (unchanged from the body)
 
