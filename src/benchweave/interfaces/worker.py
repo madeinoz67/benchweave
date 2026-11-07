@@ -25,10 +25,12 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
+from benchweave.control.coordinator import _CONTRACTS, finalize_poisoned_run
 from benchweave.interfaces.operations import append_bench_event
 from benchweave.state.store import Store
 
@@ -43,10 +45,14 @@ class RunWorker:
     """Drains the accepted-run queue FIFO; exactly one run is ever active.
 
     A job whose construction or execution raises is contained per job
-    (Task 11 poison guard): the queue state closes terminal without a
-    terminal record — honest ``outcome_unknown`` through the projection —
-    a ``run_changed`` event and a gateway-log ERROR line carry the
-    failure (D4: the event pins the binding document; the error text
+    (Task 11 poison guard): the queue state closes terminal, and — since
+    issue #513 — a judgeable poison first attempts a recovery-shaped
+    terminal record (``outcome_unknown``, the poison line durable in its
+    reasons; never over a record the run's own machinery already landed);
+    when no record is judgeable, or the write fails, the projection alone
+    closes terminal — honest ``outcome_unknown`` through the frozen
+    contract. A ``run_changed`` event and a gateway-log ERROR line carry
+    the failure (D4: the event pins the binding document; the error text
     rides the log), and the drain continues with the next queued run.
     Completion bookkeeping is contained the same way (issue #156): a
     projection or completion-emit failure on a successful run is logged
@@ -62,12 +68,17 @@ class RunWorker:
         build_run: Callable[[str, str, dict[str, Any], Store], Any],
         now_iso: Callable[[], str] | None = None,
         limits: dict[str, int] | None = None,
+        contracts: Path = _CONTRACTS,
     ) -> None:
         self._store = store
         # ``content`` stays on the landed constructor surface; build_run
         # derives its ContentStore from the worker-thread Store it receives.
         del content
         self._build_run = build_run
+        # Issue #513: the poison record judges and validates against the
+        # SAME contracts the run factory admits through — app.py threads
+        # its composition local, so a dev-head composition stays coherent.
+        self._contracts = contracts
         self._now_iso = now_iso if now_iso is not None else SystemClock().now_iso
         # Task 6: retention window for drain-side bench events. None = the
         # worker appends untrimmed; the seam's next emit re-trims the stream
@@ -254,14 +265,37 @@ class RunWorker:
             except BaseException as error:
                 # Task 11 poison guard: one poisoned job must never kill the
                 # worker (a dead thread hangs every later run). Truth stays
-                # with the run's own lifecycle: the queue state closes
-                # terminal WITHOUT a terminal record, so the projection
-                # reports outcome_unknown — honest uncertainty, never a
-                # fabricated outcome. The bench stream carries the state
-                # change (D4: the event pins the run's binding document;
-                # the worker error itself rides the gateway log), and the
-                # drain continues. The emit is itself guarded: a raising
-                # call inside the poison handler would defeat the guard.
+                # with the run's own lifecycle. Since issue #513 the DURABLE
+                # record is attempted first — judgeable cohort only, never
+                # over a record the run's own machinery already landed
+                # (`_finish_run` re-raises a non-Exception pending AFTER
+                # `finalize_run`, so this arm fires with a record present
+                # whenever that shape escapes) — and when no record is
+                # judgeable, or the write fails, the queue state alone
+                # closes terminal and the projection reports
+                # outcome_unknown: honest uncertainty, never a fabricated
+                # outcome. Record BEFORE projection close — a crash between
+                # the two leaves durable terminal + live projection, which
+                # the next boot heals; the opposite window is unhealable.
+                # The record attempt is itself contained (A07): evidence
+                # storage is a dependency of neither the containment nor
+                # the drain. The bench stream carries the state change (D4:
+                # the event pins the run's binding document; the worker
+                # error itself rides the gateway log), and the drain
+                # continues. The emit is itself guarded: a raising call
+                # inside the poison handler would defeat the guard.
+                try:
+                    finalize_poisoned_run(
+                        store,
+                        run_id,
+                        error=error,
+                        now=self._now_iso(),
+                        contracts=self._contracts,
+                    )
+                except Exception:
+                    _LOG.exception(
+                        "run_worker poison record failed run_id=%s", run_id
+                    )
                 try:
                     store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
                 except Exception:

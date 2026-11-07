@@ -118,6 +118,18 @@ rather than rewriting the history — that is how this file earns trust.
   a PLAIN stop over any live run is a typed refusal naming the run. Pinned by
   `tests/cli/test_lifecycle.py` (L2's refusal-is-never-a-terminal-write, L3b's
   one-writer-per-run) and `tests/faults/test_lifecycle_faults.py`.
+  Amendment (2026-11-08, issue #513): the worker's poison guard is a third
+  terminal-record writer — recovery-shaped (`finalize_poisoned_run`: the #260/#534
+  judge, the run's own version's schema, the recovery evidence refs), written on the
+  worker thread BEFORE the terminal projection close, judgeable cohort only
+  (containment and access failure write nothing — the #507 boundary holds), never over
+  a record that already exists (`_finish_run` re-raises a non-Exception pending after
+  `finalize_run`, so the poison arm regularly fires with the true record landed; the
+  no-write return is load-bearing, not defensive), `outcome_unknown`/`unknown` with the
+  `run_worker poison:` reason first — the restart-scoped `interrupted` vocabulary stays
+  the sweeps' own. A record-write failure changes nothing about the outcome, the
+  projection close or the drain (A07). Pinned by
+  `tests/faults/test_worker_poison_record.py`.
   Amendment (2026-10-21, issue #506): no exception class skips the ending's own
   protection half either — `engine.enter` in `_finish_run` carries a
   BaseException-width belt in the body belt's exact shape (monitor teardown in a

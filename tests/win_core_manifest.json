@@ -328,6 +328,10 @@
       "core": 0,
       "total": 3
     },
+    "tests/faults/test_worker_poison_record.py": {
+      "core": 0,
+      "total": 4
+    },
     "tests/integration/test_adapter_configuration_loading.py": {
       "core": 0,
       "total": 7
