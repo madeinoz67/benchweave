@@ -131,9 +131,9 @@ def _release_tags_with_listing(monkeypatch: pytest.MonkeyPatch, tags: list[str])
     """
     seen: list[list[str]] = []
 
-    def fake_run(
-        cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
-    ) -> str:
+    def fake_run(cmd: list[str], **_kwargs: Any) -> str:
+        # **_kwargs: run() grew the issue-#501 bounds kwargs (timeout et al.);
+        # this stub pins the command literal, not the bounds.
         seen.append(cmd)
         return "".join(f"{tag}\n" for tag in tags)
 
@@ -605,9 +605,10 @@ def test_row6_relative_great_docs_is_resolved_absolute_for_the_child(
 
     seen: list[list[str]] = []
 
-    def fake_run(
-        cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
-    ) -> str:
+    def fake_run(cmd: list[str], **_kwargs: Any) -> str:
+        # **_kwargs: run() grew the issue-#501 bounds/marker kwargs (the uv-run
+        # child now carries done_marker="bucket"); this stub pins the child's
+        # argv, not the bounds.
         seen.append(cmd)
         return ""
 
