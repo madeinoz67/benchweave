@@ -228,3 +228,29 @@ def serve_env_file_keys() -> frozenset[str]:
     from benchweave.interfaces.app_entry import _QUOTA_ENV_KEYS
 
     return frozenset(ENV_FILE_HAND_NAMED_KEYS) | {env for _, env in _QUOTA_ENV_KEYS}
+
+
+def bridge_env_file(path: Path) -> list[str]:
+    """Parse the credential file, refuse a set-but-empty process shadow, apply
+    set-if-not-set into ``os.environ``, and return the applied key names.
+
+    Extracted verbatim from ``serve``'s block (issue #625) so there is ONE reader
+    of the file: the refusal wording and the set-if-not-set semantics are the
+    contract both ``serve`` and ``token`` obey, and duplicating them would let the
+    two drift. Key NAMES only ever leave here — the file carries a live secret.
+
+    The empty-shadow refusal runs BEFORE anything is applied (fold R6): a
+    present-but-empty process value would otherwise shadow the file's real value
+    and silently disarm e.g. the production posture, and a refusal that fired
+    after applying would leave partial residue.
+    """
+    entries = parse_env_file(path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS)
+    for _lineno, key, _value in entries:
+        current = os.environ.get(key)
+        if current is not None and not current.strip():
+            raise EnvFileError(
+                f"{ENV_FILE_REFUSAL_PREFIX} {path}: {key} is set but empty in the"
+                " process environment and shadows the value this file"
+                " carries — unset it or set it to a real value"
+            )
+    return apply_env_entries(entries)
