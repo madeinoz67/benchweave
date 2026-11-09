@@ -71,6 +71,7 @@ from jsonschema import Draft202012Validator
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
 from benchweave.content.dataset_services import (
+    DatasetServiceRejected,
     dataset_evidence_originated,
 )
 from benchweave.content.store import EvidenceQuotaExceeded
@@ -97,13 +98,6 @@ from benchweave.host.types import (
     ReadingSource,
     WriteReceipt,
 )
-
-
-def canonical_json(value: Any) -> str:
-    """Canonical JSON text for the invoke dataset cross-check's byte
-    equality (sorted keys, tight separators — the manifest-bytes
-    discipline)."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
 class _Context:
@@ -186,6 +180,7 @@ class OTDPBridge:
         capture: Any = None,
         stream: Any = None,
         dataset: Any = None,
+        dataset_admission: Any = None,
     ) -> None:
         if not isinstance(simulation, SimulationInfo):
             raise TypeError("explicit SimulationInfo required")
@@ -208,8 +203,12 @@ class OTDPBridge:
         # the controller exists iff the descriptor declares the invoke
         # capability AND §2.1's resolution produced the complete
         # catalog+measurement pair — None is structural (verb-level
-        # UNSUPPORTED at the invoke gate), never a runtime flag.
+        # UNSUPPORTED at the invoke gate), never a runtime flag. The
+        # admission core is the ruled result-side entrance (GW-1, #589
+        # D10): None when no factory armed it, and a dataset-shaped result
+        # then refuses honestly ("lane not armed") rather than pretending.
         self._dataset = dataset
+        self._dataset_admission = dataset_admission
         self._simulation = simulation
         self._lifecycle_timeout = lifecycle_timeout
         self._runner: asyncio.Runner | None = None
@@ -1460,23 +1459,24 @@ class OTDPBridge:
                     f"{first.json_path}: {first.message}"
                 )
             if self._dataset.is_dataset_shaped(payload):
-                # The dataset-publication cross-check (§2.3; strict from
-                # day one — the design's slice-2 posture): a dataset-shaped
-                # result must be an admitted manifest THIS operation
-                # published through the dataset services. Bridge-side
-                # state, never adapter cooperation.
-                admitted = self._dataset.admitted_for(request.operation_id)
-                if admitted is None or canonical_json(admitted) != canonical_json(
-                    payload
-                ):
-                    note = self._dataset.dataset_shape_note(payload)
-                    refusal = (
-                        "invoke returned a dataset-shaped result that was never "
-                        "admitted through dataset_publish"
+                # The ruled path (#589 §4 / #604): the host admits the
+                # dataset-shaped result itself — identity, idempotency, the
+                # pinned schema, the M-checks, then the staged-writer
+                # routing and the evidence row. Bridge-side validation,
+                # never adapter cooperation; admission failure is the
+                # honest invalid-result refusal.
+                if self._dataset_admission is None:
+                    raise InvalidInvokeResult(
+                        "invoke returned a dataset-shaped result but the "
+                        "dataset admission lane is not armed"
                     )
-                    if note is not None:
-                        refusal = f"{refusal} ({note})"
-                    raise InvalidInvokeResult(refusal)
+                try:
+                    self._dataset_admission.admit(payload, context)
+                except DatasetServiceRejected as exc:
+                    raise InvalidInvokeResult(
+                        "invoke returned a dataset-shaped result the host "
+                        f"refused to admit: {exc}"
+                    ) from exc
             value = {"action_id": request.arguments["action_id"], "result": payload}
         else:
             if (

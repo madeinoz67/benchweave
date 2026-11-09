@@ -418,20 +418,50 @@ The amendment (in place, no version bump — grounds below):
 - a dated amendment note (the `invariants.md` amendment pattern) citing the
   ruling and #604.
 
-**Governance call, made explicitly:** in-place prose amendment, NO version bump.
-Grounds: `corpus-manifest.json` carries zero `.md` rows (verified — 36 rows for
-0.2.4, none prose), so no digest can move; GOVERNANCE's change table treats
-companion prose as not digest-pinned ("keep it truthful"); consumers resolve
-MACHINE bytes by pin (R-2 multi-version serving), so prose motion breaks no pin;
-and a 0.2.5 whose machine files are byte-identical to 0.2.4 would be a phantom
-bump — version ladder motion with no consumer-visible machine change — while
-churning the full two-repo release pipeline (SDK sync, release, pointer, the #408
-order). The standards-governor lane (mandatory for any `standards/` touch) and
-the single-human-reviewer rule apply regardless. **Contingency, named:** if the
-governor lane rules the normative-prose reversal requires a bump, the same PR
-grows the copy step (0.2.4 → 0.2.5 per GOVERNANCE's bump mechanics — a shape this
-tree has run repeatedly); the SDK leg then follows per #408. The edit text is
-identical either way; only the packaging differs.
+**Governance call — RESOLVED, not contingent (ruling folded 2026-11-09).** The
+standards-governor lane reviewed this question and ruled the in-place prose
+amendment **PERMITTED with no version bump**. The contingency paragraph that
+stood here is retired: the no-bump call is settled, and the copy-step branch does
+not run.
+
+**Authority:** GOVERNANCE's change-class table, row "Prose clarification
+(companion docs)", bump class **none** (`standards/GOVERNANCE.md:41`). That row
+is the authority; the reasoning below is rationale, not authority.
+
+Rationale, with one ground corrected by the governor review:
+
+- `corpus-manifest.json` carries zero `.md` rows (verified — 36 rows for 0.2.4,
+  none prose), so no corpus digest can move. **CORRECTED:** the earlier draft
+  said "consumers resolve MACHINE bytes by pin, so prose motion breaks no pin".
+  That is wrong as written. Retained-version prose IS consumer-pinnable:
+  `plugins/fnirsi/dps150/contracts/lock.json` pins `extension-contract.md`'s
+  sha256 at the 0.2.2 directory, and its fetcher verifies every pinned file. The
+  true statement is narrower: **no consumer lock pins 0.2.4 prose bytes**, which
+  is why this change breaks nothing today. The conclusion survives; the ground as
+  written would have misled whoever next touches a consumer-pinned version.
+- A 0.2.5 whose machine files are byte-identical to 0.2.4 would be a phantom bump
+  — version-ladder motion with no consumer-visible machine change — while
+  churning the full two-repo release pipeline (SDK sync, release, pointer, the
+  #408 order). **LOW:** this is cost reasoning, not authority; it is kept here as
+  rationale under the table row above.
+
+**Conditions the governor attached, binding on the build:**
+
+1. **Active version only.** Do not touch prose in any retained directory. 0.1.0
+   through 0.2.3 keep teaching the historical rule, correctly.
+2. **Zero machine-byte motion in the same change.** No non-`.md` file under
+   `standards/otdp/0.2.4/` changes. `corpus-manifest.json` and
+   `standards-manifest.json` do not change. Mixing prose with same-version
+   machine edits is what forced the 0.2.2 heal, and the gate caught it only
+   afterwards.
+3. **No gate evidence that cannot see the change.** `standards check` and
+   `matrix --check` are byte-blind to prose. Real prose coverage is the devices
+   validator suite, the documents-suite link checker, and pytest. The PR must not
+   cite the byte gates as prose evidence.
+4. **No SDK leg and no pointer motion.** The export bundle is built from
+   corpus-manifest rows only, so prose never vendors.
+
+The single-human-reviewer rule applies regardless.
 
 ### 4.5 Published prose (`docs/device-developer-guide.md`, ASD-STE100 — dispatch the `document-writer` agent)
 

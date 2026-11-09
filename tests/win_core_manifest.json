@@ -910,7 +910,7 @@
     },
     "tests/unit/test_otdp_bridge.py": {
       "core": 0,
-      "total": 141
+      "total": 148
     },
     "tests/unit/test_performance.py": {
       "core": 0,

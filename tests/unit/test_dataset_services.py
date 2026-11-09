@@ -763,13 +763,14 @@ def test_r7_builder_permission_table(tmp_path: Path) -> None:
                 writer=harness.writer,
             )
             digest = _pin_descriptor(harness, permissions)
-            composed = build_dataset_services(
+            composed, admission = build_dataset_services(
                 controller=harness.controller,
                 services=base,
                 descriptor_digest=digest,
                 content=harness.content,
                 writer=harness.writer,
             )
+            assert admission is not None, permissions
             assert hasattr(composed, "dataset_publish"), permissions
             assert hasattr(composed, "dataset_lookup"), permissions
             assert hasattr(composed, "payload_create") is payload, permissions
@@ -782,6 +783,60 @@ def test_r7_builder_permission_table(tmp_path: Path) -> None:
             assert hasattr(composed, "artifact_finalise"), permissions
             assert hasattr(composed, "artifact_abort"), permissions
             assert composed.monotonic() == 0.0  # the base's state carried
+    finally:
+        harness.close()
+
+
+def test_one_core_publish_and_admit_are_identical(tmp_path: Path) -> None:
+    """GW-1 (#589 D10): ``dataset_publish`` delegates to the host's
+    admission core, so the adapter entrance and the ruled result-side
+    entrance run the same validation and persistence. Two operations, two
+    host-minted ids: each route admits its manifest and leaves one
+    ``art-<sha256>`` row and one dataset-kind evidence row."""
+    from benchweave.content.dataset_services import DatasetAdmission
+
+    harness = DatasetHarness(tmp_path)
+    try:
+        # The adapter entrance.
+        published_manifest = a_valid_manifest("ds:op-a")
+        published = run(
+            harness.bundle.dataset_publish(published_manifest, harness.context("op-a"))
+        )
+        assert published == published_manifest
+        # The ruled result-side entrance: the same core, reached directly
+        # (the bridge holds this object; the bundle's publish is a
+        # delegation to one of the same shape).
+        harness.controller.mint_dataset_id(
+            "op-b",
+            action_id="demo.act/1.0.0",
+            input={"x": 1, "configuration_id": "conf-1"},
+        )
+        admission = DatasetAdmission(
+            controller=harness.controller,
+            writer=harness.writer,
+            content=harness.content,
+            context_key="dataset-harness-session",
+            quota_evidence=50,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            channels=("ch1",),
+        )
+        admitted_manifest = a_valid_manifest("ds:op-b")
+        admitted = admission.admit(admitted_manifest, harness.context("op-b"))
+        assert admitted == admitted_manifest
+        assert harness.controller.admitted_by_dataset_id("ds:op-a") == published_manifest
+        assert harness.controller.admitted_by_dataset_id("ds:op-b") == admitted_manifest
+        artifact_rows = int(
+            harness.store.connection.execute(
+                "SELECT COUNT(*) FROM artifacts WHERE artifact_id LIKE 'art-%'"
+            ).fetchone()[0]
+        )
+        evidence_rows = int(
+            harness.store.connection.execute(
+                "SELECT COUNT(*) FROM evidence WHERE kind = 'dataset'"
+            ).fetchone()[0]
+        )
+        assert artifact_rows == 2
+        assert evidence_rows == 2
     finally:
         harness.close()
 
@@ -801,24 +856,6 @@ def test_retention_quota_is_derived_from_one_source() -> None:
         "once (the _retention_quota helper); consumers derive from it"
     )
     assert "def _retention_quota(" in source
-
-
-def test_dataset_shape_note_names_the_schema_finding(tmp_path: Path) -> None:
-    """Rider (c): a dataset-shaped result that also fails the pinned
-    schema carries the validator's own finding in the refusal note (a
-    `kind` outside the corpus's nine dataset kinds names the enum) — and
-    a schema-clean unpublished dataset carries no note (the publication
-    lie stands alone)."""
-    harness = DatasetHarness(tmp_path)
-    try:
-        bogus = a_valid_manifest()
-        bogus["kind"] = "not-a-kind"
-        note = harness.controller.dataset_shape_note(bogus)
-        assert note is not None and "not-a-kind" in note and "kind" in note
-        assert harness.controller.dataset_shape_note(a_valid_manifest()) is None
-        assert harness.controller.dataset_shape_note({"not": "shaped"}) is None
-    finally:
-        harness.close()
 
 
 # --- wave 2: the publish leak, M02 narrowing, the epilogue floor -------------------

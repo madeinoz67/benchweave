@@ -63,6 +63,8 @@ class HostServices:
 
 `dataset_publish` validates a measurement manifest, referenced payloads, M01–M14, ownership and quotas; assigns/validates the host-scoped dataset ID and returns the immutable admitted manifest. The submitted dataset_id is a host-reserved ID derived from the current operation/acquisition; it is not chosen as an arbitrary global path by the adapter. The host provides `context.dataset_id: str | None` for data-producing invoke calls. The manifest must use that ID; a null value forbids publishing a new dataset. An idempotent repeated fetch may return the already published manifest for the acquisition.
 
+The host also admits a dataset-shaped invoke **result** itself. When an invoke action's `result` is a measurement dataset, the host runs the same admission validation on it — the host-minted `context.dataset_id`, idempotency, the pinned measurement schema, the implemented M-checks, artifact routing through the staged writer, and the dataset-kind evidence row — and persists it. An adapter that returns a dataset-shaped result need not call `dataset_publish`. Admission failure is the typed invalid-result refusal (a protocol violation); an admission failure caused by a resource condition (an exhausted dataset or evidence budget) is the classified lane refusal, and the session survives. `dataset_publish` remains available for actions that inspect or reference a dataset before reading payloads, for publication before the result is returned, and for the idempotent re-admission of a manifest that is then returned as the result.
+
 `dataset_lookup` returns a validated manifest the current principal is authorised to use. It does not trust a caller-supplied manifest or URL. Upload actions use it to inspect the dataset's variables, shapes, units and quota requirements before reading any payload.
 
 `artifact_read` reads a positive bounded length at a nonnegative offset from an authorised input artifact; it cannot read beyond its recorded length. It requires artifact_reader permission. It cannot access paths or arbitrary artifact IDs. Only upload-capable or other explicitly approved data-consuming integrations receive that permission.
@@ -82,7 +84,9 @@ class HostServices:
 
 These methods require artifact_writer. Create reserves a bounded output artifact belonging to the current operation/acquisition and a recognised encoding. Append enforces that reservation. Finalise computes and returns the artifact object (ID, encoding, byte length, SHA-256); dataset_publish then validates element/shape meaning. Abort is idempotent local cleanup and remains permitted after deadline; no partial unpublished artifact becomes a successful dataset automatically.
 
-All new methods use the existing context deadlines, cancellation, exception classes and scoped ownership model. Publishing/looking up datasets does not grant device I/O permission. Inline datasets also go through dataset_publish; small data is not exempt from semantic validation.
+All new methods use the existing context deadlines, cancellation, exception classes and scoped ownership model. Publishing/looking up datasets does not grant device I/O permission. Inline datasets go through the same admission validation; whether the manifest arrives through `dataset_publish` or as the invoke result itself, small data is not exempt from semantic validation.
+
+Amendment (2026-11-09, gateway issue #604; the ruling on SDK issue #589): the host admits a dataset-shaped invoke result itself. This is the standard's rule, not one plugin's preference. The `dataset_publish` path is unchanged and remains available; this amendment removes the requirement that a dataset-shaped result be published through it before being returned.
 
 ## 4. Required plugin authoring output
 
