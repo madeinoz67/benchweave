@@ -92,6 +92,9 @@ _KNOWN_PUBLIC_SECRETS = frozenset(
         b"issue85-startup-admission-secret",  # tests/integration/test_startup_admission_refusal.py
         b"test-issuer-secret",  # tests/unit/test_seam_admin.py
         b"g2a-ui-suite-secret",  # tests/interfaces_ui/ui_gateway_support.py (G2a)
+        # tests/cli/test_629_refusal_value_echo.py — the key-shaped value the
+        # #629 arms drive through serve's boot refusals
+        b"a1B2c3D4e5F6g7H8_9I0jKlMnOpQrStUvWxYz012345",
     }
 )
 #: The env value that arms the production secret posture.
@@ -158,8 +161,13 @@ def _ui_enabled_from_env() -> bool:
         return True
     if lowered in _UI_FALSY:
         return False
+    # The VALUE is never printed (#629). These refusals fire on a value that
+    # may have come from the credential env file, and a mangled line can put a
+    # secret in value position — the same "corrupt file" precondition #626
+    # accepted for a secret in KEY position. The key name is enough to find the
+    # setting, and the accepted words are a public constant.
     raise RuntimeError(
-        f"refusing to boot: {_UI_ENV_KEY}={raw!r} must be one of "
+        f"refusing to boot: {_UI_ENV_KEY} must be one of "
         f"{sorted(_UI_TRUTHY | _UI_FALSY)} — the UI is enabled by default"
     )
 
@@ -187,13 +195,15 @@ def _limits_from_env() -> dict[str, int]:
             try:
                 value = int(raw)
             except ValueError:
+                # Value never printed, for the reason given at
+                # _ui_enabled_from_env (#629).
                 raise RuntimeError(
-                    f"refusing to boot: {env}={raw!r} must be an integer >= 1"
+                    f"refusing to boot: {env} must be an integer >= 1"
                 ) from None
             floor = 1000 if key in _MS_FLOOR_KEYS else 1
             if value < floor:
                 raise RuntimeError(
-                    f"refusing to boot: {env}={raw!r} must be an integer"
+                    f"refusing to boot: {env} must be an integer"
                     f" >= {floor}"
                     + (
                         " (a sub-second TTL is a misconfiguration, not a"
@@ -275,15 +285,25 @@ def build(*, supervision_armed: bool = False) -> FastAPI:
     variable — a deploy must not be able to arm the doorbell on a
     composition that was not spawned as the serve command."""
     db_path = os.environ["BENCHWEAVE_DB"]
-    fixtures = Path(os.environ.get("BENCHWEAVE_FIXTURES", str(_DEFAULT_FIXTURES)))
+    fixtures_raw = os.environ.get("BENCHWEAVE_FIXTURES")
+    fixtures = Path(fixtures_raw if fixtures_raw is not None else str(_DEFAULT_FIXTURES))
     if not fixtures.is_dir():
         # In a wheel install the repo-relative default resolves into the
         # environment's site-packages parent, where no lattice exists (the
         # execution fixtures are deliberately not vendored — they are
         # operator-supplied input). Fail fast naming the knob instead of
         # booting toward a cryptic downstream error.
+        #
+        # The path is printed ONLY when it is our own default: when the knob
+        # was set, the path is env-file content and can carry a secret in value
+        # position (#629). Naming the knob is what the operator needs anyway.
+        shown = (
+            f"the built-in path {fixtures} does not exist"
+            if fixtures_raw is None
+            else "BENCHWEAVE_FIXTURES does not name a directory"
+        )
         raise RuntimeError(
-            f"benchweave: fixtures directory not found: {fixtures} — set "
+            f"benchweave: fixtures directory not found: {shown} — set "
             "BENCHWEAVE_FIXTURES to your bench/procedure/policy lattice"
         )
     secret = os.environ.get("BENCHWEAVE_SECRET", _DEFAULT_SECRET.decode()).encode()

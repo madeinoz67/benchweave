@@ -26,7 +26,12 @@ def test_build_names_the_fixtures_knob_when_lattice_is_absent(
 def test_explicit_missing_fixtures_is_also_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The knob was SET, so the value is env-file content and is not echoed
+    (#629 — a mangled line can put a secret in value position). The key name is
+    what finds the setting; the built-in-path case above keeps its path, because
+    that path is our own default rather than file content."""
     monkeypatch.setenv("BENCHWEAVE_DB", str(tmp_path / "state.db"))
     monkeypatch.setenv("BENCHWEAVE_FIXTURES", str(tmp_path / "nowhere"))
-    with pytest.raises(RuntimeError, match="nowhere"):
+    with pytest.raises(RuntimeError, match="BENCHWEAVE_FIXTURES") as refused:
         app_entry.build()
+    assert str(tmp_path / "nowhere") not in str(refused.value)
