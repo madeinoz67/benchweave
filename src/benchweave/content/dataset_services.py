@@ -202,16 +202,36 @@ class DatasetController:
         for the publish path's M10-correlation cross-check. The recorded
         dataset id is the admission identity's authority (#606):
         ``DatasetAdmission`` reads it back through ``dispatch_state``,
-        never the adapter-held ``context.dataset_id`` attribute."""
+        never the adapter-held ``context.dataset_id`` attribute.
+
+        Re-mint MERGES rather than replaces (#610). The reachable re-mint is
+        the protective transition's stable name — ``protect:<action id>``,
+        dispatched once per run over a controller that outlives runs — so a
+        replacing assignment discarded the previous run's live payload
+        registry and finalise records. Merging keeps those and refreshes the
+        correlation (action, resolved input), which is the pair the M10
+        check cross-checks. The cost is that a genuinely fresh dispatch
+        reusing a live id inherits the registries: no in-tree caller does
+        that, because executor operation ids are occurrence-keyed and the
+        protective re-mint passes byte-identical policy-declared action and
+        input. Refusing instead was rejected on A04 grounds — a raise exits
+        the bridge's dispatch before ``execute``, so the physical safe action
+        would never run, deterministically, from the second run onward."""
         dataset_id = f"ds:{operation_id}"
-        self._operations[operation_id] = {
-            "dataset_id": dataset_id,
-            "action_id": action_id,
-            "input": input,
-            "payload_ids": {},
-            "finalise_records": {},
-            "admitted": None,
-        }
+        state = self._operations.get(operation_id)
+        if state is None:
+            self._operations[operation_id] = {
+                "dataset_id": dataset_id,
+                "action_id": action_id,
+                "input": input,
+                "payload_ids": {},
+                "finalise_records": {},
+                "admitted": None,
+            }
+        else:
+            state["dataset_id"] = dataset_id
+            state["action_id"] = action_id
+            state["input"] = input
         return dataset_id
 
     # --- the payload-id registry (Amendment 1 HIGH-1's load-bearing set) ----

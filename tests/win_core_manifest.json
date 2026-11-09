@@ -870,7 +870,7 @@
     },
     "tests/unit/test_dataset_services.py": {
       "core": 0,
-      "total": 35
+      "total": 36
     },
     "tests/unit/test_derivation.py": {
       "core": 0,
