@@ -83,6 +83,10 @@ All notable changes to this project will be documented in this file.
 - Fold the refute wave — reclaim on E1, correct the frame comment, disclose the setsid residual
 - #513 poison guard writes a recovery-shaped terminal record
 
+### Design
+
+- GW-1 admits the dataset-shaped invoke result on the host side (#604)
+
 ### Documentation
 
 - The gateway line's release blast radius and tag discipline
@@ -278,6 +282,10 @@ All notable changes to this project will be documented in this file.
 - The provider window gate, the seam pre-check, the provider_granted event
 - De-time the demo lattice control — clock seam + commissioned budgets
 - Commission the committed-fixture budgets with the CON-2 re-pin chain
+
+### GW-1
+
+- The host admits the dataset-shaped invoke result (#604)
 
 ### Miscellaneous
 
