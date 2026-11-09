@@ -183,8 +183,9 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
      `tests/win_core_manifest.json`, add its ~6 s check to this lane** —
      `uv run python scripts/ci/win_core_manifest.py --refresh` then the same script's
      `--check`, so count motion is caught at your commit instead of at the end of the
-     battery. Note exit 2 means the collection itself was noisy locally (untracked
-     duplicate files can do it); exit 1 is the drift you must refresh.
+     battery. Exit 1 is the drift you must refresh; exit 2 is fail-closed for everything
+     else — a noisy collection (untracked duplicates can do it), or a manifest that is
+     absent, malformed or schema-mismatched.
    - **Full battery — once, immediately before push.** The fast triple plus the full
      suite and both standards tripwires. A batch (a row-call fold) lands as ONE commit
      carrying per-row RED evidence in its message, with one battery.

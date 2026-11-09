@@ -751,7 +751,14 @@ and remain the reviewer's job.
     auto-refresh would launder exactly the silent drop the ratchet exists to catch.
     The signal is edit-time: `drift-guard.mjs`'s `win-core-manifest-motion` rule keys on
     this manifest's own file set, so it warns on a pinned file and stays quiet on an
-    unrelated edit, and it self-maintains as the manifest grows. This row exists because
+    unrelated edit, and it self-maintains as the manifest grows. **Its trigger is
+    manifest-key edits, which is a strict SUBSET of the causes of count motion**, and the
+    boundary is worth knowing: a parametrized test whose item list comes from a source the
+    manifest does not pin can move a pinned total with the signal silent — `tests/ui_html/
+    test_browser_patterns.py` parametrizes `list(patterns.pages())` from
+    `packages/ui-html/src/benchweave_ui_html/patterns.py`, so adding a pattern page moves
+    that row without touching a pinned file. `--check` still refuses it at commit time; the
+    hook shortens the feedback loop, it does not close the class. This row exists because
     the obligation previously lived only in the CI-map TABLE below — a surface the
     numbered walk and the hook both read past — and four motions landed that way in one
     night, three of them discovered by a red `--check` at the end of a battery.
