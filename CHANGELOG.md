@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### ARM-2d
+
+- The selection sense is open — a minted-but-unadmitted id is honored (#608)
+
 ### Bug Fixes
 
 - Fold adversary findings F1-F9 (#420) — RED evidence per row
