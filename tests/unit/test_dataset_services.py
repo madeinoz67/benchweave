@@ -671,6 +671,42 @@ def test_r8_idempotent_republish_and_divergent_refusal(tmp_path: Path) -> None:
         harness.close()
 
 
+def test_gw1_arm_610a_remint_preserves_the_operation_registries(tmp_path: Path) -> None:
+    """#610: a re-mint of an operation id that already has a record must not
+    discard that record's live registries. Today `mint_dataset_id` assigns a
+    fresh dict, so a still-open payload id vanishes from `live_payload_ids`
+    (the R10 discriminator's membership source, and what `abort_open` reclaims
+    through) and every `finalise_records` row M11 cross-checks is dropped.
+
+    RED on 70b6f527 at the two preservation assertions."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        still_open = harness.controller.mint_payload_id("op-a")
+        finalised = harness.controller.mint_payload_id("op-a")
+        harness.controller.note_payload_finalised(
+            "op-a", finalised, {"artifact_id": "art-610"}
+        )
+        assert harness.controller.live_payload_ids("op-a") == (still_open,)
+        assert "art-610" in harness.controller.finalise_records("op-a")
+
+        harness.controller.mint_dataset_id(
+            "op-a",
+            action_id="demo.act/1.0.0",
+            input={"x": 1, "configuration_id": "conf-1"},
+        )
+
+        assert harness.controller.live_payload_ids("op-a") == (still_open,), (
+            "#610 OPEN: the re-mint discarded a LIVE payload registry entry — "
+            "a staging row still open under this operation has no reclaim path"
+        )
+        assert "art-610" in harness.controller.finalise_records("op-a"), (
+            "#610 OPEN: the re-mint dropped the finalise records M11 reads, so "
+            "an artifact this operation genuinely finalised will refuse"
+        )
+    finally:
+        harness.close()
+
+
 def test_r15_prior_operation_artifact_refuses(tmp_path: Path) -> None:
     """R15 (M11 operation-scoped): a manifest referencing an artifact
     finalised during a PRIOR operation of the same session refuses at
