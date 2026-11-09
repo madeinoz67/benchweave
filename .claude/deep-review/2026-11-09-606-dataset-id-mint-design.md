@@ -274,3 +274,35 @@ late.
   gateway issue stream.
 - Nothing here changes capture-lane identity (capture ids are host-minted through a
   different controller); no claim is made about it.
+
+## 11. Addendum (2026-11-09, post-refute): §4's residual argument is FALSE — executed end-to-end
+
+The refute lane (gateway issue #606, finding HIGH-1) executed the sequence §4 argued was
+structurally blocked, and the build lane reproduced it first-hand on the fix of record
+(`656114f8`/`a2be59f9`; ARM-2c, quoted in the lane report). §4 claimed: *"sequential
+dispatch means a future operation has no mint when an earlier `execute` runs, so theft of
+a not-yet-dispatched id refuses."* That argument assumed the only way a mint comes to
+exist is the host's invoke dispatch. It is not: `mint_payload_id`'s out-of-dispatch
+fallback — §3's own completeness note — CREATES per-operation state under any operation
+id a member call names. An adapter that rewrites `context.operation_id`, then calls
+`payload_create` (an ordinary artifact-writer member), mints the "future" operation's
+state itself; a manifest carrying `ds:<forged-op-id>` then admits and dispatch returns
+OK. The fix of record rerouted the `dataset_id` READ to the mint record and left the
+`operation_id` KEY — the mint's lookup key — on the same adapter-held object
+(`admit`'s first line). The forge was moved, not closed; §10's "the cross-operation
+theft sequence was not re-run" reservation is now moot: the D1/D2 consequence arrives
+through the front door.
+
+§3's completeness note conflated two things: a **host-computed value** (`ds:{operation_id}`
+is host-formatted) and a **host-chosen key** (the `operation_id` it is computed from was
+adapter-named). The same correction bounds the CTL-13 amendment of `656114f8`: its "the
+mint record is the admission identity's only source" holds for the record's VALUE, not
+for the KEY the record is looked up by.
+
+Closing the residual is design work for its own slice, not a patch here; the shape the
+refute lane's finding forces: the identity key must be **dispatch-bound** — taken from
+the dispatch the HOST performed (`request.operation_id` at the bridge; a host-side
+current-dispatch record on the controller for the member path), never an attribute of
+the adapter-held context object. ARM-2b stays as the `dataset_id`-read pin; ARM-2c (the
+`operation_id` rewrite, RED on the fix of record and landing with the mechanism) is the
+machine check that keeps this closed.
