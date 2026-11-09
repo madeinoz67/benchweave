@@ -369,3 +369,34 @@ test('a hostile git cannot stall an edit past the budget', () => {
   assert.equal(res.status, 0, 'a slow git must not break the exit-0 contract')
   assert.ok(elapsed < 5000, `edits must stay inside the git budget, took ${elapsed}ms`)
 })
+
+// --- The win_core trigger set belongs to the edited file's checkout (#623) ---------------
+//
+// The set was read once from the hook's own checkout, so a lane worktree with a different
+// manifest judged primary edits by the lane's key set. Both directions are pinned here.
+
+function checkoutPinning(paths) {
+  const dir = tempDir('drift-manifest-')
+  initRepo(dir)
+  const files = Object.fromEntries(paths.map((p) => [p, { total: 1, core: 1 }]))
+  mkdirSync(join(dir, 'tests'), { recursive: true })
+  writeFileSync(join(dir, 'tests', 'win_core_manifest.json'), JSON.stringify({ files }))
+  return dir
+}
+
+test("a checkout's own manifest decides the ratchet, not the running hook's", () => {
+  // A path the real manifest does not pin. Judged by the hook's own checkout, it is silent;
+  // judged by this fixture's manifest, it warns.
+  const pinned = 'tests/unit/zz_fixture_only_arm.py'
+  const dir = checkoutPinning([pinned])
+  const note = runAt('own-manifest', dir, put(dir, pinned))
+  assert.ok(note?.includes('Drift 32'), `expected the ratchet warning from the checkout's own manifest, got: ${note}`)
+})
+
+test('a path another checkout pins stays silent here', () => {
+  // The reverse direction, and the one a lane hits: a path the REAL manifest pins, in a
+  // checkout whose manifest does not. Read from the hook's own checkout this warns.
+  const dir = checkoutPinning([])
+  const note = runAt('foreign-manifest', dir, put(dir, 'tests/unit/test_dataset_services.py'))
+  assert.equal(note, null, 'a checkout that does not pin the path must stay silent')
+})
