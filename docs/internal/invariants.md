@@ -1207,6 +1207,32 @@ carries no inline date on its face; this amendment carries its own
   (2026-10-03, G2a, issue #303: anchored on the module contract of the new
   session store; first enforcement is the G2 design's login-code refusal
   matrix — the replay/expired/narrowing/restart acceptance arms.)
+  **Amendment (2026-11-10, #625):** the validated Identity a session projects
+  comes from a bearer token, and that token now has a shipped issuer —
+  `benchweave token`, whose own obligations are CON-16. Before #625 the only
+  issuer in the tree was documented as a test utility, so this row's premise
+  ("a validated Identity") was reachable only by writing Python.
+
+
+- **[CON-16]** An operator bearer token is minted from the data directory's
+  signing secret and from nothing else, and that secret is never printed — the
+  token is the only credential `benchweave token` emits, the secret stays on
+  disk in `benchweave.env`, and it is read through the same bridge `serve` uses,
+  so there is one reader of the file rather than two that can drift. The process
+  environment wins over the file (set-if-not-set, as for `serve`) and that is
+  disclosed as `secret_source` rather than left silent, because a stray exported
+  secret mints a token the data-directory gateway rejects. The default scope is
+  observe, so a default token reaches the read-only UI and nothing that mutates,
+  leases or administers. The default lifetime STRICTLY exceeds the session
+  ceiling, because `sessions.mint_login_code` refuses rather than clamps when
+  `now + ttl > token.expires_at` — a ceiling-equal default would fail the
+  no-flag `ui-login` path one second after minting — `src/benchweave/cli/commands.py`
+  (`token`), `src/benchweave/cli/env_file.py` (`bridge_env_file`).
+  (2026-11-10, issue #625: anchored on the printed-credential contract
+  `setup --show-secret` already established, and on `identity.issue` as the one
+  signer. First enforcement is `tests/cli/test_token.py` A1–A10; the arms that
+  prove each claim can fail are A1's foreign-secret twin, A3's `--show-secret`
+  positive control, and A5's short-token twin.)
 
 
 ## Registry & plugin invariants
