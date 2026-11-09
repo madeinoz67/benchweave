@@ -29,22 +29,32 @@ const gitDeadline = Date.now() + GIT_BUDGET_MS
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
 
-// Obligation 32 — the win_core ratchet's pinned-file set, read once so the trigger
-// self-maintains as the manifest grows. Keyed on the manifest itself, not a guessed path
-// pattern: `docs/internal/ui-contract.md` is pinned, an unrelated docs edit is not. A
-// missing or unreadable manifest degrades to an empty set (a broken guard must not break
-// the session); the check's own failure to run is `--check`'s to report, not this hook's.
-const WINCORE_FILES = (() => {
+// Obligation 32 — the win_core ratchet's pinned-file set, keyed on the manifest itself rather
+// than a guessed path pattern: `docs/internal/ui-contract.md` is pinned, an unrelated docs edit
+// is not. A missing or unreadable manifest degrades to an empty set (a broken guard must not
+// break the session); the check's own failure to run is `--check`'s to report, not this hook's.
+//
+// Read from the checkout that holds the EDITED file, cached per root. It used to be read once
+// from the hook's own checkout, which is the wrong manifest whenever the two differ — and a
+// lane worktree differing from the primary is what a lane is for, since a count-moving change
+// refreshes the manifest in the lane. Both directions were measured: a key the lane removed
+// left a genuinely manifested primary edit silent, and a key the lane added fired on a file
+// the primary does not pin.
+const WINCORE_CACHE = new Map()
+
+function winCoreFiles(root) {
+  const cached = WINCORE_CACHE.get(root)
+  if (cached !== undefined) return cached
+  let files
   try {
-    const manifest = readFileSync(
-      join(import.meta.dirname, '..', '..', 'tests', 'win_core_manifest.json'),
-      'utf-8',
-    )
-    return new Set(Object.keys(JSON.parse(manifest).files ?? {}))
+    const manifest = readFileSync(join(root, 'tests', 'win_core_manifest.json'), 'utf-8')
+    files = new Set(Object.keys(JSON.parse(manifest).files ?? {}))
   } catch {
-    return new Set()
+    files = new Set()
   }
-})()
+  WINCORE_CACHE.set(root, files)
+  return files
+}
 
 const RULES = [
   {
@@ -210,7 +220,7 @@ const RULES = [
     // numbered walk and this hook both read past. Four motions landed that way in one night;
     // three were discovered by a red --check at the end of a battery.
     id: 'win-core-manifest-motion',
-    triggers: (p) => WINCORE_FILES.has(p),
+    triggers: (p, context) => context.winCore.has(p),
     satisfies: (p) => p === 'tests/win_core_manifest.json',
     message: [
       '**[Drift 32] A win_core-manifested file was edited — did its collected count move?**',
@@ -254,6 +264,10 @@ try {
   const stateDir = join(tmpdir(), 'benchweave-drift-guard', String(input.session_id || 'nosession'))
   mkdirSync(stateDir, { recursive: true })
 
+  // Rules are path-shaped except obligation 32, which needs the edited file's checkout to know
+  // which manifest applies. One context object, computed once, passed to every trigger.
+  const context = { root, winCore: winCoreFiles(root) }
+
   const notes = []
   for (const rule of RULES) {
     const satisfied = join(stateDir, `${rule.id}.satisfied`)
@@ -265,7 +279,7 @@ try {
       appendFileSync(satisfied, `${rel}\n`)
       continue
     }
-    if (!rule.triggers(rel)) continue
+    if (!rule.triggers(rel, context)) continue
     if (existsSync(satisfied) || existsSync(fired)) continue
 
     appendFileSync(fired, `${rel}\n`)
