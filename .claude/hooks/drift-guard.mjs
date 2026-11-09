@@ -11,12 +11,29 @@
 // the session already touched the surface it would ask about. Add a rule by appending to
 // RULES — nothing else here is rule-specific.
 
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
+
+// Obligation 32 — the win_core ratchet's pinned-file set, read once so the trigger
+// self-maintains as the manifest grows. Keyed on the manifest itself, not a guessed path
+// pattern: `docs/internal/ui-contract.md` is pinned, an unrelated docs edit is not. A
+// missing or unreadable manifest degrades to an empty set (a broken guard must not break
+// the session); the check's own failure to run is `--check`'s to report, not this hook's.
+const WINCORE_FILES = (() => {
+  try {
+    const manifest = readFileSync(
+      join(import.meta.dirname, '..', '..', 'tests', 'win_core_manifest.json'),
+      'utf-8',
+    )
+    return new Set(Object.keys(JSON.parse(manifest).files ?? {}))
+  } catch {
+    return new Set()
+  }
+})()
 
 const RULES = [
   {
@@ -174,6 +191,25 @@ const RULES = [
       'surface this rule also sweeps) — never a verb enumeration. The site page regenerates; the',
       'tables and the verb pin (`tests/contract/test_docs_site_standards_cli.py`) sweep in the',
       'same change.',
+    ],
+  },
+  {
+    // Obligation 32 — the win_core ratchet. Count motion needs a same-commit refresh, and
+    // until this rule existed the obligation lived only in the CI-map TABLE row, which the
+    // numbered walk and this hook both read past. Four motions landed that way in one night;
+    // three were discovered by a red --check at the end of a battery.
+    id: 'win-core-manifest-motion',
+    triggers: (p) => WINCORE_FILES.has(p),
+    satisfies: (p) => p === 'tests/win_core_manifest.json',
+    message: [
+      '**[Drift 32] A win_core-manifested file was edited — did its collected count move?**',
+      '',
+      '`tests/win_core_manifest.json` pins per-file (total, core) counts; ANY motion (a new or',
+      'removed test, a docs contract row) refuses `--check` until refreshed:',
+      '  `uv run python scripts/ci/win_core_manifest.py --refresh`  (~6 s)',
+      '',
+      'Commit the refresh diff WITH the count-moving change — the diff is the review surface,',
+      'which is why the manifest is not self-updating.',
     ],
   },
 ]
