@@ -111,6 +111,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-freshness.mjs\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-preflight.mjs\""
+          }
+        ]
       }
     ]
   }
