@@ -12,8 +12,9 @@
 // RULES — nothing else here is rule-specific.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join, relative, sep } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
@@ -221,7 +222,18 @@ try {
   const filePath = input?.tool_input?.file_path
   if (!filePath) process.exit(0)
 
-  const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
+  // Rules match against the edited file's own repository root, not the session's. They
+  // differ whenever an edit crosses checkouts of this repo family, which is the documented
+  // way work happens here: a lane worktree edited from a session anchored at the primary
+  // (the computed path carries a `.wt/<lane>/` prefix, so no rule's prefix matches), or the
+  // primary edited from a session anchored in a worktree (the path resolves through `..`
+  // and used to return early). Either way every rule went silent, and a silent guard reads
+  // exactly like a clean session. A path with no repository gets no file context and stays
+  // silent as before; the session root is the fallback, so a git-less environment keeps the
+  // previous behaviour.
+  let root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
+  const fileToplevel = gitToplevel(filePath)
+  if (fileToplevel !== null) root = fileToplevel
   const rel = relative(root, filePath).split(sep).join('/')
   // Edits outside the repo are not our business.
   if (!rel || rel.startsWith('..')) process.exit(0)
@@ -261,6 +273,21 @@ try {
   // Swallow. A guard that fails closed would be worse than one that misses a warning.
 }
 process.exit(0)
+
+// The edited file's own repository root, or null when it is not in one. Best-effort: a
+// missing git, an unknown directory or any failure means "not a repo", and the hook keeps
+// its warn-never-block contract by staying silent.
+function gitToplevel(filePath) {
+  try {
+    const res = spawnSync('git', ['-C', dirname(filePath), 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf-8',
+    })
+    if (res.status !== 0) return null
+    return res.stdout.trim() || null
+  } catch {
+    return null
+  }
+}
 
 async function readStdin() {
   const chunks = []

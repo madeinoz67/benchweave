@@ -168,3 +168,62 @@ test('a win_core-manifested file warns Drift 32; an unmanifested one does not', 
     'a file the manifest does not pin must not trigger the ratchet warning',
   )
 })
+
+test('a crossed-checkout edit still warns, both directions', () => {
+  // RED before the fix: rules matched a path computed from the SESSION root, so an edit
+  // crossing checkouts of this repo family matched nothing — the path either carried a
+  // `.wt/<lane>/` prefix (no rule's prefix matches) or resolved through '..' and returned
+  // early. Every rule went silent exactly where the documented working method puts edits,
+  // and a silent guard reads like a clean session.
+  const session = 'drift-guard-test-crosscheckout-' + process.pid
+  // One session per direction: the hook fires each rule at most once per session, so
+  // sharing an id would make the second direction silent for the wrong reason.
+  const runIn = (suffix, cwd, filePath) =>
+    spawnSync('node', [HOOK], {
+      input: JSON.stringify({
+        session_id: `${session}-${suffix}`,
+        cwd,
+        tool_input: { file_path: filePath },
+      }),
+      encoding: 'utf-8',
+    })
+  const note = (res) =>
+    res.stdout.trim()
+      ? (JSON.parse(res.stdout).hookSpecificOutput?.additionalContext ?? null)
+      : null
+  // Direction 1: session anchored in this worktree, edit landing in the primary checkout.
+  const fromWorktree = runIn(
+    'wt',
+    process.cwd(),
+    join(process.cwd(), '..', '..', 'src/benchweave/cli/report.py'),
+  )
+  // Direction 2: session anchored at the repo root, edit landing in this worktree.
+  const fromRoot = runIn(
+    'root',
+    join(process.cwd(), '..', '..'),
+    join(process.cwd(), 'src/benchweave/cli/report.py'),
+  )
+  assert.equal(fromWorktree.status, 0)
+  assert.equal(fromRoot.status, 0)
+  assert.ok(
+    note(fromWorktree)?.includes('Drift 4'),
+    `expected the warning when the session is in a worktree and the edit is in the primary, got: ${note(fromWorktree)}`,
+  )
+  assert.ok(
+    note(fromRoot)?.includes('Drift 4'),
+    `expected the warning when the session is at the root and the edit is in a worktree, got: ${note(fromRoot)}`,
+  )
+})
+
+test('a path genuinely outside any repository still stays silent', () => {
+  const res = spawnSync('node', [HOOK], {
+    input: JSON.stringify({
+      session_id: 'drift-guard-test-outside-' + process.pid,
+      cwd: process.cwd(),
+      tool_input: { file_path: join(tmpdir(), 'not-a-repo', 'file.py') },
+    }),
+    encoding: 'utf-8',
+  })
+  assert.equal(res.status, 0)
+  assert.equal(res.stdout.trim(), '', 'an out-of-repo edit must produce no warning')
+})
