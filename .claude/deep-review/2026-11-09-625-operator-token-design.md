@@ -552,3 +552,39 @@ Return **DON'T-BUILD** if any of these is shown:
   is the diagnostic for this case, not a fix for it.
 - The value cannot be measured: rejected — every arm above is deterministic and each has a
   twin that can fail.
+
+
+---
+
+## Addendum A — refute fold (2026-11-10)
+
+Dated and appended; the sections above are not edited.
+
+- **F1 (MEDIUM, introduced).** The blank-secret guard was unpinned: A9(f) tests the
+  empty-process-shadow path, where the bridge refuses BEFORE the guard is consulted,
+  so deleting the guard left the suite green. That combination — file lacks the key,
+  process env blank or unset — then minted a token signed with an EMPTY key. New arm
+  `test_f1…`, mutation-verified: deleting the guard reds it.
+- **F2 (LOW, introduced).** `secret_source` reports which KEY won, not where the value
+  came from, so exporting the same value the file holds reported
+  `process-environment` while the token was valid against the file secret — and the
+  stderr sentence asserted a rejection that would not happen. The sentence now says
+  "if those two values differ"; the field is asserted in both directions. No arm
+  asserted it before, so hardcoding it also left the suite green.
+- **F3 (MEDIUM, contract).** A7 read the static `_LIMITS`; a deployment that raises
+  `BENCHWEAVE_UI_SESSION_TTL_MS` above the token default re-opens the trap and A7
+  could not see it. A7 now reads `_limits_from_env()`.
+- **F4 (LOW, inherited; the over-claim was mine).** A corrupt line whose secret text
+  lands in key position is echoed whole by the loader's `key name … does not match`
+  refusal — in `serve` too. §3.2's "no refusal path can print the secret" was
+  therefore an over-claim, and CON-16's "never printed" is now scoped to this
+  command's own paths. The loader defect is filed separately: its wording is pinned
+  verbatim by twin suites in two repos, so it is not a one-repo edit.
+- **F5.** A mutation table showed the posture gate also unpinned; new arm
+  `test_f5…`, mutation-verified.
+
+Null list worth keeping: the secret never appeared in stdout, stderr or `--json`
+across quoting, control characters, non-UTF-8, unreadable and mode-refusal paths; an
+observe token got 403 on all ten gated routes and on the UI's lease route; issuance
+opened no file, spawned nothing and touched no store; the `bridge_env_file`
+extraction kept `serve` byte-identical (52 tests).

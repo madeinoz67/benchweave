@@ -1233,6 +1233,13 @@ carries no inline date on its face; this amendment carries its own
   signer. First enforcement is `tests/cli/test_token.py` A1–A10; the arms that
   prove each claim can fail are A1's foreign-secret twin, A3's `--show-secret`
   positive control, and A5's short-token twin.)
+  **Amendment (2026-11-10, #625 refute F4):** "never printed" is scoped to THIS
+  command's own paths — stdout, stderr, `--json`, refusals and the traceback path —
+  which A3 pins. It is not a claim about the credential-file loader: a corrupt file
+  whose secret text lands in KEY position is echoed whole by the loader's existing
+  `key name … does not match` refusal, in `serve` as well as here, and that refusal's
+  wording is pinned verbatim by the twin suites in two repositories. Filed as its own
+  defect rather than reworded here.
 
 
 ## Registry & plugin invariants

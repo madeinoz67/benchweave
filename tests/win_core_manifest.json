@@ -58,7 +58,7 @@
     },
     "tests/cli/test_token.py": {
       "core": 0,
-      "total": 17
+      "total": 20
     },
     "tests/cli/test_ui_login_cmd.py": {
       "core": 0,

@@ -23,7 +23,7 @@ from benchweave.cli import atrest
 from benchweave.cli.commands import _TOKEN_DEFAULT_TTL_S, cli
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
-from benchweave.interfaces.app_entry import _LIMITS
+from benchweave.interfaces.app_entry import _LIMITS, _limits_from_env
 from benchweave.interfaces.errors import OperationFailure
 from benchweave.interfaces.identity import IdentityRejected, issue, validate
 from benchweave.interfaces.operations import require_permission
@@ -256,10 +256,18 @@ def test_a6_expiry_matches_the_payload_and_is_enforced(tmp_path: Path) -> None:
 # --- A7: the default is pinned above the session ceiling ----------------------
 
 
-def test_a7_the_default_lifetime_exceeds_the_session_ceiling() -> None:
-    """A drift guard: raising the gateway ceiling without raising the default reds
-    here, instead of at an operator's terminal as a 403."""
-    ceiling_s = _LIMITS["ui_session_ttl_ms"] // 1000
+def test_a7_the_default_lifetime_exceeds_the_session_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drift guard, read from the EFFECTIVE limits rather than the static default.
+
+    A deployment that raises ``BENCHWEAVE_UI_SESSION_TTL_MS`` above the token default
+    re-opens the trap for its own operators, and pinning only ``_LIMITS`` cannot see
+    it. Reading the env-derived table makes the pin red in the environment where it
+    actually matters.
+    """
+    monkeypatch.delenv("BENCHWEAVE_UI_SESSION_TTL_MS", raising=False)
+    ceiling_s = _limits_from_env()["ui_session_ttl_ms"] // 1000
     assert ceiling_s < _TOKEN_DEFAULT_TTL_S, (
         f"the default token lifetime ({_TOKEN_DEFAULT_TTL_S}s) must exceed the session"
         f" ceiling ({ceiling_s}s) or ui-login with no --ttl-mins refuses"
@@ -356,3 +364,94 @@ def test_a10_a_malformed_line_never_echoes_the_secret(tmp_path: Path) -> None:
     assert result.exit_code != 0, combined
     assert "env_file:" in combined, combined
     assert secret not in combined, "a refusal must never echo the line it refuses"
+
+
+# --- Refute fold (2026-11-10): three guards the mutation table showed unpinned ---
+
+
+def test_f1_a_file_without_the_key_and_no_process_secret_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one combination the blank-secret guard uniquely covers.
+
+    A9(f) looks like this arm but tests a different one: there the file HAS the key,
+    so the bridge's empty-shadow refusal fires before the guard is consulted. Removing
+    the guard left the whole suite green, and that combination then minted a token
+    signed with an EMPTY key — forgeable by anyone.
+    """
+    data = _data_dir(tmp_path)
+    env = data / atrest.CREDENTIAL_FILE
+    kept = [
+        line
+        for line in env.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("BENCHWEAVE_SECRET=")
+    ]
+    env.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    env.chmod(0o600)
+
+    for blank in (None, "", "   "):
+        if blank is None:
+            monkeypatch.delenv("BENCHWEAVE_SECRET", raising=False)
+        else:
+            monkeypatch.setenv("BENCHWEAVE_SECRET", blank)
+        result = CliRunner().invoke(cli, ["token", "--data-dir", str(data)])
+        combined = _combined(result)
+        assert result.exit_code != 0, f"minted with {blank!r}: {combined}"
+        assert "no BENCHWEAVE_SECRET" in combined, combined
+
+
+def test_f2_secret_source_is_pinned_and_the_note_is_honest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`secret_source` reports which KEY won, not where the value came from.
+
+    Exporting the SAME value the file holds makes it report process-environment while
+    the token is still valid against the file secret, so the old stderr sentence —
+    "a gateway using the file's secret will reject this token" — was false exactly
+    when it fired. The field is now asserted in both directions.
+    """
+    data = _data_dir(tmp_path)
+    secret = atrest.read_secret(data)
+    runner = CliRunner()
+
+    from_file = json.loads(
+        runner.invoke(cli, ["token", "--data-dir", str(data), "--json"]).stdout
+    )
+    assert from_file["secret_source"] == "env-file"
+
+    monkeypatch.setenv("BENCHWEAVE_SECRET", secret)
+    shadowed = runner.invoke(cli, ["token", "--data-dir", str(data), "--json"])
+    assert shadowed.exit_code == 0, _combined(shadowed)
+    payload = json.loads(shadowed.stdout)
+    assert payload["secret_source"] == "process-environment"
+    # The claim the note now makes: the token is valid either way when the values agree.
+    validate(
+        secret.encode(), payload["token"], audience=AUDIENCE, now=int(time.time())
+    )
+    # The note is a PLAIN-mode stderr line; --json returns before it is written.
+    plain = _combined(
+        CliRunner().invoke(cli, ["token", "--data-dir", str(data)])
+    )
+    assert "if they are equal the token is valid either way" in plain, plain
+
+
+def test_f5_the_production_posture_gate_is_pinned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Removing the posture gate also left the suite green.
+
+    The inventory of publicly-known secrets is imported rather than re-spelled here,
+    for the same reason the command imports the gate instead of copying it.
+    """
+    from benchweave.interfaces.app_entry import _KNOWN_PUBLIC_SECRETS
+
+    raw = next(iter(sorted(_KNOWN_PUBLIC_SECRETS)))
+    known = raw.decode() if isinstance(raw, bytes) else raw
+    data = _data_dir(tmp_path)
+    monkeypatch.setenv("BENCHWEAVE_SECRET", known)
+    monkeypatch.setenv("BENCHWEAVE_ENV", "production")
+    result = CliRunner().invoke(cli, ["token", "--data-dir", str(data)])
+    combined = _combined(result)
+    assert result.exit_code != 0, combined
+    assert "refusing to boot" in combined, combined
+    assert known not in combined.replace("refusing to boot", ""), "never echo it"

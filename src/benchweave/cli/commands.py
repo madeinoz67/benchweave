@@ -1522,8 +1522,9 @@ def token(
         # data-dir gateway rejects with bad_signature.
         click.echo(
             "benchweave: the secret came from the process environment, not from"
-            f" {secret_file} — a gateway using the file's secret will reject this"
-            " token (bad_signature)",
+            f" {secret_file}. If those two values differ, a gateway using the"
+            " file's secret will reject this token (bad_signature); if they are"
+            " equal the token is valid either way.",
             err=True,
         )
 
