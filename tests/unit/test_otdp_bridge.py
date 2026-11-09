@@ -3944,6 +3944,58 @@ def test_gw1_arm2_foreign_dataset_id_poisons(tmp_path: Path) -> None:
         harness.close()
 
 
+class _ContextRewritingInvokeAdapter(InvokeAdapter):
+    """#606's liar-in-the-context adversary (the one ARM-2 cannot see): the
+    adapter REWRITES the host-minted ``context.dataset_id`` during execute,
+    then returns a valid manifest carrying that same forged value — the
+    manifest matches the REWRITTEN context, not the mint."""
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        context.dataset_id = "ds:attacker"
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["dataset_id"] = "ds:attacker"
+        return {
+            "operation_id": request["operation_id"],
+            "verb": "invoke",
+            "status": "ok",
+            "data": {
+                "action_id": request["arguments"]["action_id"],
+                "result": manifest,
+            },
+        }
+
+
+def test_gw1_arm2b_context_rewrite_poisons(tmp_path: Path) -> None:
+    """ARM-2b (#606, identity): an adapter that rewrites the host-minted
+    context.dataset_id mid-flight poisons with the identity refusal — the
+    admission identity reads the controller's MINT RECORD, never the
+    adapter-held attribute. The manifest matches the rewritten context but
+    not the mint, so neither id files anything."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(_ContextRewritingInvokeAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN, (
+            f"#606 OPEN: dispatch returned {result.status} "
+            f"(error={result.error!r}) — the rewritten context id was honored"
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "does not carry the host-minted id" in result.error.message
+        assert harness.controller.admitted_by_dataset_id("ds:attacker") is None
+        assert harness.controller.admitted_by_dataset_id("ds:op-i") is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 def test_gw1_arm3_schema_invalid_dataset_result_poisons(tmp_path: Path) -> None:
     """ARM-3 (schema): a dataset-shaped result failing the pinned
     measurement schema poisons carrying the validator's own json_path

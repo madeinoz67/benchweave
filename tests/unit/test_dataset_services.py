@@ -425,8 +425,7 @@ def test_publish_admits_validates_and_records(tmp_path: Path) -> None:
 
 def test_r2_identity_refusals(tmp_path: Path) -> None:
     """R2's publish identity arms: a manifest whose dataset_id is not the
-    host-minted context id refuses; a null context.dataset_id forbids
-    publishing."""
+    host-minted id refuses; an operation with no mint forbids publishing."""
     harness = DatasetHarness(tmp_path)
     try:
         with pytest.raises(DatasetServiceRejected, match="does not carry the host-minted"):
@@ -435,10 +434,36 @@ def test_r2_identity_refusals(tmp_path: Path) -> None:
                     a_valid_manifest("ds:somewhere-else"), harness.context()
                 )
             )
-        null_context = harness.context()
-        null_context.dataset_id = None
-        with pytest.raises(DatasetServiceRejected, match="null value forbids publishing"):
-            run(harness.bundle.dataset_publish(a_valid_manifest(), null_context))
+        unminted = harness.context("op-unminted")
+        with pytest.raises(
+            DatasetServiceRejected, match="unminted operation forbids publishing"
+        ):
+            run(
+                harness.bundle.dataset_publish(
+                    a_valid_manifest("ds:op-unminted"), unminted
+                )
+            )
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_r2b_identity_reads_the_mint_not_the_context(tmp_path: Path) -> None:
+    """R2b (#606): the admission identity is the controller's MINT RECORD for
+    the operation, never the adapter-held context attribute — a manifest that
+    matches a rewritten context.dataset_id but not the mint refuses, and
+    nothing is admitted under either id."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        forged = "ds:attacker"
+        rewritten = harness.context()
+        rewritten.dataset_id = forged
+        with pytest.raises(
+            DatasetServiceRejected, match="does not carry the host-minted"
+        ):
+            run(harness.bundle.dataset_publish(a_valid_manifest(forged), rewritten))
+        assert harness.controller.admitted_by_dataset_id(forged) is None
+        assert harness.controller.admitted_by_dataset_id("ds:op-a") is None
         assert evidence_rows(harness) == 0
     finally:
         harness.close()
@@ -879,7 +904,14 @@ def test_w2_publish_evidence_quota_refusal_charges_nothing(tmp_path: Path) -> No
         assert first["dataset_id"] == "ds:op-a"
         after_first = harness.writer.used_bytes("dataset-harness-session")
         # The second publish, under a fresh operation and dataset id, hits
-        # the evidence quota (quota=1 is already consumed).
+        # the evidence quota (quota=1 is already consumed). The identity
+        # check reads the controller's mint record (#606), so op-b must be
+        # minted to reach the quota path at all.
+        harness.controller.mint_dataset_id(
+            "op-b",
+            action_id="demo.act/1.0.0",
+            input={"x": 1, "configuration_id": "conf-1"},
+        )
         second = a_valid_manifest()
         second["dataset_id"] = "ds:op-b"
         with pytest.raises(EvidenceQuotaExceeded):

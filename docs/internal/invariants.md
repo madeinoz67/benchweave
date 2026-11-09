@@ -246,7 +246,12 @@ rather than rewriting the history — that is how this file earns trust.
   of the adapter boundary initiated it. The guard proves validation-and-persistence
   provenance, not measurement authenticity: a schema-valid manifest of invented
   values passes both entrances, exactly as a published one did before — adapter
-  values were never verified against the physical world.*
+  values were never verified against the physical world.* *Amendment (2026-11-09,
+  gateway issue #606): the identity term is enforced against the controller's mint
+  record for the operation (`dispatch_state(operation_id)["dataset_id"]`), never
+  the `context.dataset_id` attribute the adapter holds and can rewrite; the mint
+  record is the admission identity's only source, and a manifest matching a
+  rewritten context attribute but not the mint refuses.*
 
 ## State & persistence invariants
 

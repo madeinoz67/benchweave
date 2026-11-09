@@ -172,7 +172,10 @@ class DatasetController:
     ) -> str:
         """Mint and record the host-reserved dataset id for one dispatch
         (gate I6), with the dispatch's action and resolved input recorded
-        for the publish path's M10-correlation cross-check."""
+        for the publish path's M10-correlation cross-check. The recorded
+        dataset id is the admission identity's authority (#606):
+        ``DatasetAdmission`` reads it back through ``dispatch_state``,
+        never the adapter-held ``context.dataset_id`` attribute."""
         dataset_id = f"ds:{operation_id}"
         self._operations[operation_id] = {
             "dataset_id": dataset_id,
@@ -341,8 +344,9 @@ class DatasetAdmission:
     re-admission) and the HOST admits a dataset-shaped invoke result
     itself; the standard does not require adapter cooperation.
 
-    The order is load-bearing: identity against the host-minted
-    ``context.dataset_id`` → idempotency → the pinned measurement schema →
+    The order is load-bearing: identity against the host's mint record for
+    the operation (``dispatch_state``, #606 — never the adapter-held
+    ``context.dataset_id``) → idempotency → the pinned measurement schema →
     the implemented M-check subset → the staged-writer routing and the
     dataset-kind evidence row. A refusal raises
     :class:`DatasetServiceRejected`; an evidence-quota refusal raises the
@@ -385,8 +389,10 @@ class DatasetAdmission:
     def admit(self, manifest: dict[str, Any], context: Any) -> dict[str, Any]:
         """Validate and admit one measurement manifest for this operation
         (spec §3; design §2.2 steps 1–6). The submitted ``dataset_id`` is
-        host-reserved — it must equal ``context.dataset_id``, non-null (a
-        null value forbids publishing). The order is load-bearing: identity
+        host-reserved — it must equal the dataset id the host minted for
+        this operation (the controller's dispatch-state record, not the
+        adapter-rewritable ``context.dataset_id``; an unminted operation
+        forbids publishing). The order is load-bearing: identity
         first, then IDEMPOTENCY (a byte-identical manifest under a used
         dataset id returns the admitted manifest with no new rows — never
         re-routed, never double-charged), then the pinned schema, the
@@ -400,13 +406,14 @@ class DatasetAdmission:
         with the run's retention rows and the monitor's per-tick retention,
         disclosed (Amendment 1 LOW-3)."""
         operation_id = str(getattr(context, "operation_id", ""))
-        dataset_id = getattr(context, "dataset_id", None)
+        state = self._controller.dispatch_state(operation_id)
+        dataset_id = state["dataset_id"] if state is not None else None
         if not isinstance(manifest, dict):
             raise DatasetServiceRejected("dataset_publish manifest must be an object")
         if not isinstance(dataset_id, str) or not dataset_id:
             raise DatasetServiceRejected(
-                "dataset_publish requires the host-minted context.dataset_id "
-                "(a null value forbids publishing)"
+                "dataset_publish requires the host-minted dataset id for this "
+                "operation (an unminted operation forbids publishing)"
             )
         if manifest.get("dataset_id") != dataset_id:
             raise DatasetServiceRejected(
