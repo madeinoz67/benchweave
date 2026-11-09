@@ -136,3 +136,35 @@ test('verb-set drift: all three trigger shapes fire Drift 23; a pre-touched surf
   )
   cleanup(silentSession)
 })
+
+test('a win_core-manifested file warns Drift 32; an unmanifested one does not', () => {
+  // RED on main tonight: the ratchet's obligation lives in a CI-map TABLE row, so
+  // nothing told a session that editing a manifested file moves its pinned count.
+  // Four motions landed this way; three were discovered by a red --check at the end.
+  const session = 'drift-guard-test-wincore-' + process.pid
+  const runIn = (relPath) => {
+    const res = spawnSync('node', [HOOK], {
+      input: JSON.stringify({
+        session_id: session,
+        cwd: process.cwd(),
+        tool_input: { file_path: join(process.cwd(), relPath) },
+      }),
+      encoding: 'utf-8',
+    })
+    assert.equal(res.status, 0, `hook must always exit 0 (stderr: ${res.stderr})`)
+    if (!res.stdout.trim()) return null
+    return JSON.parse(res.stdout).hookSpecificOutput?.additionalContext ?? null
+  }
+  const fired = runIn('tests/unit/test_dataset_services.py')
+  assert.ok(fired?.includes('Drift 32'), `expected the win_core warning, got: ${fired}`)
+  assert.ok(
+    fired.includes('win_core_manifest.py --refresh'),
+    'the warning must name the refresh command, since the refresh diff is the review surface',
+  )
+  assert.equal(runIn('tests/unit/test_otdp_bridge.py'), null, 'once per session')
+  assert.equal(
+    runIn('README.md'),
+    null,
+    'a file the manifest does not pin must not trigger the ratchet warning',
+  )
+})

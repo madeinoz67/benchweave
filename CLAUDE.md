@@ -179,7 +179,12 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
      config-driven** — explicit path args silently drop `packages/sdk/src` from the
      build; fresh cache = `rm -rf .mypy_cache` or `--no-incremental`), and the focused
      `uv run pytest` for the touched modules plus `tests/faults/` for anything touching
-     `state/`, `control/`, or concurrency.
+     `state/`, `control/`, or concurrency. **If you touched a file pinned in
+     `tests/win_core_manifest.json`, add its ~6 s check to this lane** —
+     `uv run python scripts/ci/win_core_manifest.py --refresh` then the same script's
+     `--check`, so count motion is caught at your commit instead of at the end of the
+     battery. Note exit 2 means the collection itself was noisy locally (untracked
+     duplicate files can do it); exit 1 is the drift you must refresh.
    - **Full battery — once, immediately before push.** The fast triple plus the full
      suite and both standards tripwires. A batch (a row-call fold) lands as ONE commit
      carrying per-row RED evidence in its message, with one battery.

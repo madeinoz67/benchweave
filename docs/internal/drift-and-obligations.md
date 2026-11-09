@@ -742,6 +742,20 @@ and remain the reviewer's job.
     path is outside them by design, and no wiring reads a repo-relative
     path.
 
+32. **The win_core count ratchet** (issue #459's slice 1; the #609/#612 gap) 🪝 → a file
+    pinned in `tests/win_core_manifest.json` (its `files` keys, 254 rows today) has a
+    pinned collected count, and ANY motion refuses `--check` until the manifest is
+    refreshed. Refresh in the SAME commit as the count-moving change:
+    `uv run python scripts/ci/win_core_manifest.py --refresh` (~6 s) — the refresh diff
+    is the review surface, which is why the manifest is not self-updating and why
+    auto-refresh would launder exactly the silent drop the ratchet exists to catch.
+    The signal is edit-time: `drift-guard.mjs`'s `win-core-manifest-motion` rule keys on
+    this manifest's own file set, so it warns on a pinned file and stays quiet on an
+    unrelated edit, and it self-maintains as the manifest grows. This row exists because
+    the obligation previously lived only in the CI-map TABLE below — a surface the
+    numbered walk and the hook both read past — and four motions landed that way in one
+    night, three of them discovered by a red `--check` at the end of a battery.
+
 ## CI map
 
 | Job | What it catches |
