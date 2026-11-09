@@ -292,7 +292,15 @@ rather than rewriting the history — that is how this file earns trust.
   dispatch reusing a live id inherits the registries, and no in-tree caller
   does that (executor ids are occurrence-keyed; the protective re-mint passes
   byte-identical policy-declared action and input). Pinned by
-  `test_gw1_arm_610a_remint_preserves_the_operation_registries`.*
+  `test_gw1_arm_610a_remint_preserves_the_operation_registries`. Second cost,
+  disclosed by the refute pass rather than by this amendment's first draft: the
+  R10 payload classification now reaches across runs — an exception stamped with
+  a PRIOR run's payload id classifies as payload-originated during a later run's
+  dispatch, so it takes the contained abort path where it previously poisoned the
+  session. Contained rather than poisoned is the safer direction, and the stamp
+  cannot be forged from outside trusted Python (the boundary `capture_store`'s
+  own docstring declares), but the widening is named here rather than left to be
+  discovered later.*
 
 ## State & persistence invariants
 
