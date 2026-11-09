@@ -11,10 +11,18 @@
 // the session already touched the surface it would ask about. Add a rule by appending to
 // RULES — nothing else here is rule-specific.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+
+// Every git call here is bounded: a wedged `git rev-parse` under a stalled checkout would
+// otherwise hold this PostToolUse hook until the harness's own timeout, once per edit.
+// Declared above the work below rather than beside its users: this file runs its top-level
+// block before reaching the helper functions, so a `const` down there would be in the
+// temporal dead zone on first use — and because every git helper swallows its own failures,
+// that reads as "no repository" instead of a crash.
+const GIT_TIMEOUT_MS = 2000
 
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
@@ -222,19 +230,26 @@ try {
   const filePath = input?.tool_input?.file_path
   if (!filePath) process.exit(0)
 
-  // Rules match against the edited file's own repository root, not the session's. They
-  // differ whenever an edit crosses checkouts of this repo family, which is the documented
-  // way work happens here: a lane worktree edited from a session anchored at the primary
-  // (the computed path carries a `.wt/<lane>/` prefix, so no rule's prefix matches), or the
-  // primary edited from a session anchored in a worktree (the path resolves through `..`
-  // and used to return early). Either way every rule went silent, and a silent guard reads
-  // exactly like a clean session. A path with no repository gets no file context and stays
-  // silent as before; the session root is the fallback, so a git-less environment keeps the
-  // previous behaviour.
-  let root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
-  const fileToplevel = gitToplevel(filePath)
-  if (fileToplevel !== null) root = fileToplevel
-  const rel = relative(root, filePath).split(sep).join('/')
+  // Rules match against the root of the edited file's own checkout within THIS repo family,
+  // not the session's. They differ whenever an edit crosses checkouts, which is the
+  // documented way work happens here: a lane worktree edited from a session anchored at the
+  // primary (the computed path carried a `.wt/<lane>/` prefix, so no rule's prefix matched),
+  // or the primary edited from a worktree-anchored session (the path resolved through `..`
+  // and returned early). Either way every rule went silent, and a silent guard reads exactly
+  // like a clean session.
+  //
+  // The root must be scoped to the family, not merely to "some repository". Two shapes break
+  // the naive version, and both were measured: resolving inside the SDK submodule strips the
+  // `packages/sdk/` prefix that Drift 8's literals need (so the routine two-commit SDK
+  // workflow went silent), while resolving in an unrelated repository makes its identically
+  // named paths fire BenchWeave obligations that are none of its business.
+  const sessionRoot = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
+  const root = familyRoot(sessionRoot, filePath) ?? sessionRoot
+  // Realpath the PARENT and rejoin the leaf: the leaf may not exist yet (a hook runs on a
+  // path whose write has just landed or is about to), and a fallback to the logical spelling
+  // there reintroduces the symlink mismatch this resolves.
+  const realFile = join(realpathOr(dirname(filePath)), basename(filePath))
+  const rel = relative(root, realFile).split(sep).join('/')
   // Edits outside the repo are not our business.
   if (!rel || rel.startsWith('..')) process.exit(0)
 
@@ -274,19 +289,63 @@ try {
 }
 process.exit(0)
 
-// The edited file's own repository root, or null when it is not in one. Best-effort: a
-// missing git, an unknown directory or any failure means "not a repo", and the hook keeps
-// its warn-never-block contract by staying silent.
-function gitToplevel(filePath) {
+// Best-effort git, warn-never-block: a missing git, an unknown directory, a timeout or any
+// non-zero exit all mean "no answer" and the caller degrades.
+function gitOut(dir, args) {
   try {
-    const res = spawnSync('git', ['-C', dirname(filePath), 'rev-parse', '--show-toplevel'], {
+    const res = spawnSync('git', ['-C', dir, ...args], {
       encoding: 'utf-8',
+      timeout: GIT_TIMEOUT_MS,
     })
     if (res.status !== 0) return null
     return res.stdout.trim() || null
   } catch {
     return null
   }
+}
+
+// Logical and physical spellings of the same path must compare equal, or a session anchored
+// through a symlink (macOS `/tmp`, `$TMPDIR`) resolves one side against the other and
+// silently computes a `..` path. Falls back to the resolved spelling for a path that does
+// not exist yet.
+function realpathOr(p) {
+  try {
+    return realpathSync(p)
+  } catch {
+    return resolve(p)
+  }
+}
+
+// Worktrees of one repository share a common git dir; unrelated clones and nested repos do
+// not. That is the family identity, and it is what tells a sibling worktree (same family)
+// from a foreign repository that happens to contain identically named files.
+function gitCommonDir(dir) {
+  const p = gitOut(dir, ['rev-parse', '--git-common-dir'])
+  return p === null ? null : realpathOr(resolve(dir, p))
+}
+
+// The edited file's checkout root, but only when that checkout belongs to the session's repo
+// family. Walks up from the file so a checkout nested inside the family (the SDK submodule)
+// resolves to its superproject — which restores the `packages/sdk/…` prefix the rules match
+// on — while a foreign repository finds no family ancestor and yields null, leaving the
+// caller's session root in place (and the file out of scope).
+function familyRoot(sessionRoot, filePath) {
+  const family = gitCommonDir(sessionRoot)
+  if (family === null) return null
+  const seen = new Set()
+  let dir = realpathOr(dirname(filePath))
+  while (dir && !seen.has(dir)) {
+    seen.add(dir)
+    const top = gitOut(dir, ['rev-parse', '--show-toplevel'])
+    if (top !== null) {
+      const topReal = realpathOr(top)
+      if (gitCommonDir(topReal) === family) return topReal
+      dir = dirname(topReal)
+      continue
+    }
+    dir = dirname(dir)
+  }
+  return null
 }
 
 async function readStdin() {
