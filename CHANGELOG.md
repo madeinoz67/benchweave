@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - The selection sense is open — a minted-but-unadmitted id is honored (#608)
 
+### Addendum
+
+- #605's probes ran — A reds at 436.5 ms, B cannot express the rig
+
 ### Bug Fixes
 
 - Fold adversary findings F1-F9 (#420) — RED evidence per row
