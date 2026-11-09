@@ -56,6 +56,10 @@
       "core": 0,
       "total": 27
     },
+    "tests/cli/test_token.py": {
+      "core": 0,
+      "total": 17
+    },
     "tests/cli/test_ui_login_cmd.py": {
       "core": 0,
       "total": 25

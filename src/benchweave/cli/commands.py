@@ -37,8 +37,8 @@ from __future__ import annotations
 
 import json
 import os
-import time
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
@@ -1385,13 +1385,13 @@ _TOKEN_DEFAULT_TTL_S = 12 * 3600
 #: the REST/UI/MCP sub-builders all default to this value, so a flag would be
 #: decoration on something the gateway cannot change; the end-to-end arm reds if
 #: the gateway default ever moves away from it.
-_TOKEN_AUDIENCE = "stg"
+_TOKEN_AUDIENCE = "stg"  # noqa: S105 — an audience label, not a credential
 
 #: A label, not an identity claim: no authorization decision reads ``principal``
 #: (permissions read scopes), so a shared label has no security effect. A
 #: ``--principal`` flag would add a place to write a real name into a token
 #: without changing any decision, so it is deferred.
-_TOKEN_PRINCIPAL = "operator"
+_TOKEN_PRINCIPAL = "operator"  # noqa: S105 — a label no decision reads as a secret
 
 #: The least privilege that still reaches the read-only UI: every route the UI
 #: index calls requires the observe tier, and this scope grants nothing that
@@ -1517,7 +1517,7 @@ def token(
         f" expires {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expires_at))}",
         err=True,
     )
-    if secret_source == "process-environment":
+    if secret_source == "process-environment":  # noqa: S105 — a source label
         # The surprising case, and the one that silently produces a token the
         # data-dir gateway rejects with bad_signature.
         click.echo(

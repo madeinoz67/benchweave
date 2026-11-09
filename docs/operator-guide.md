@@ -300,10 +300,31 @@ stays silent when the file is absent.
 
 ### The browser UI
 
-Use `benchweave ui-login` to get a login URL. Open the URL in a
-browser. The URL expires after 60 s and it works one time only. The
-session ends when you log out, when it expires, or when the gateway
-restarts.
+First make a bearer token. The token is the credential that the UI login
+needs:
+
+```
+benchweave token --data-dir <data-dir>
+```
+
+The command prints the token. It reads the signing secret from the data
+directory and it never prints the secret. By default the token holds the
+observe scope, which reaches every page in the UI, and it expires after
+12 hours. Use `--scope` to add a scope. Use `--ttl-mins` to change the
+expiry.
+
+Keep the token out of logs and shell history. A token that leaks is a
+token that another person can use until it expires.
+
+Then use `benchweave ui-login` to get a login URL. Give it the token:
+
+```
+benchweave ui-login --gateway-url http://127.0.0.1:8125 --token <token>
+```
+
+Open the URL in a browser. The URL expires after 60 s and it works one
+time only. The session ends when you log out, when it expires, or when
+the gateway restarts.
 
 The UI shows this data:
 
@@ -1321,7 +1342,7 @@ Every directive's threat rationale lives in
 
 ## 10. Command reference
 
-Eighteen commands — `benchweave --help` is the full surface:
+Nineteen commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
@@ -1334,6 +1355,7 @@ Eighteen commands — `benchweave --help` is the full surface:
 | `service` | Render the service-manager files (`install`) | `install --data-dir` (req), `--unit-output`, `--plist-output` |
 | `doctor` | Read-only triage over the data directory: seven check rows, exit 0 only when every row passes (an `unknown` row also exits 1); triage, not a lock; a gateway can start between the check and a gated action | `--data-dir` (req), `--json` |
 | `logs` | Tail the named log destination (a file, or the journal via `journalctl`; the post-mortem `<dir>.log` when no pidfile; the env file is refused as a destination) | `--data-dir` (req), `--lines` (default 50), `--json` |
+| `token` | Mint an operator bearer token from the data directory's signing secret (the secret stays on disk and is never printed) | `--data-dir` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `ui-login` | Mint a one-use browser login URL (the URL expires in 60 s; the session is at most as wide as the token) | `--gateway-url` (req), `--token` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
