@@ -163,6 +163,16 @@ class DatasetHarness:
             action_id="demo.act/1.0.0",
             input={"x": 1, "configuration_id": "conf-1"},
         )
+        # #608: the host binds the operation it is dispatching, and the member
+        # entrance reads that binding rather than the adapter-held context. The
+        # bracket stays open for op-a so the direct member calls below speak for
+        # it; an arm that switches operations calls enter() (or end_dispatch()
+        # for the out-of-dispatch refusal).
+        self.controller.begin_dispatch("op-a")
+
+    def enter(self, operation_id: str) -> None:
+        """Open the host binding for ``operation_id`` (#608)."""
+        self.controller.begin_dispatch(operation_id)
 
     def context(self, operation_id: str = "op-a") -> Any:
         return SimpleNamespace(
@@ -454,16 +464,66 @@ def test_r2_identity_refusals(tmp_path: Path) -> None:
                     a_valid_manifest("ds:somewhere-else"), harness.context()
                 )
             )
-        unminted = harness.context("op-unminted")
+        # #608: the no-mint refusal is now reached by the HOST binding an
+        # operation it never minted — the context names nothing authoritative.
+        harness.enter("op-unminted")
         with pytest.raises(
             DatasetServiceRejected, match="unminted operation forbids publishing"
         ):
             run(
                 harness.bundle.dataset_publish(
-                    a_valid_manifest("ds:op-unminted"), unminted
+                    a_valid_manifest("ds:op-unminted"), harness.context()
                 )
             )
+        harness.enter("op-a")
         assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_gw1_arm2f_member_cannot_select_a_minted_operation(tmp_path: Path) -> None:
+    """ARM-2f (#608, the selection sense at the member entrance): with the
+    host dispatching op-a, a member call whose CONTEXT names a different
+    minted operation (op-b, minted but never admitted) must not be believed.
+    The manifest carries ds:op-b, the host's binding says op-a, so the
+    identity refusal fires and nothing files under either id — the same
+    property ARM-2d pins at the bridge, independent of bridge wiring."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        harness.controller.mint_dataset_id(
+            "op-b",
+            action_id="demo.act/1.0.0",
+            input={"x": 1, "configuration_id": "conf-1"},
+        )
+        with pytest.raises(DatasetServiceRejected, match="does not carry the host-minted"):
+            run(
+                harness.bundle.dataset_publish(
+                    a_valid_manifest("ds:op-b"), harness.context("op-b")
+                )
+            )
+        assert harness.controller.admitted_by_dataset_id("ds:op-a") is None
+        assert harness.controller.admitted_by_dataset_id("ds:op-b") is None
+    finally:
+        harness.close()
+
+
+def test_gw1_arm2e_out_of_dispatch_publication_refuses(tmp_path: Path) -> None:
+    """ARM-2e (#608, consequence c): the host binding is identity's only
+    source AND it is cleared when the dispatch ends. A publish after
+    ``end_dispatch()`` refuses with the typed no-live-dispatch message
+    rather than inheriting the finished dispatch's id — a stale slot would
+    reopen the selection hole wearing a different coat. The mid-dispatch
+    publish above it is the positive control: sanctioned publication inside
+    the bracket still admits."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        published = run(harness.bundle.dataset_publish(a_valid_manifest(), harness.context()))
+        assert published["dataset_id"] == "ds:op-a"
+        harness.controller.end_dispatch()
+        with pytest.raises(DatasetServiceRejected, match="no live dispatch"):
+            run(harness.bundle.dataset_publish(a_valid_manifest(), harness.context()))
+        # Nothing moved: the admitted record is untouched by the refusal.
+        assert harness.controller.admitted_by_dataset_id("ds:op-a") == published
     finally:
         harness.close()
 
@@ -873,7 +933,8 @@ def test_one_core_publish_and_admit_are_identical(tmp_path: Path) -> None:
             channels=("ch1",),
         )
         admitted_manifest = a_valid_manifest("ds:op-b")
-        admitted = admission.admit(admitted_manifest, harness.context("op-b"))
+        # #608: the second argument is the HOST-named operation, not a context.
+        admitted = admission.admit(admitted_manifest, "op-b")
         assert admitted == admitted_manifest
         assert harness.controller.admitted_by_dataset_id("ds:op-a") == published_manifest
         assert harness.controller.admitted_by_dataset_id("ds:op-b") == admitted_manifest
@@ -941,8 +1002,11 @@ def test_w2_publish_evidence_quota_refusal_charges_nothing(tmp_path: Path) -> No
         )
         second = a_valid_manifest()
         second["dataset_id"] = "ds:op-b"
+        # #608: the member speaks for the operation the host is dispatching.
+        harness.enter("op-b")
         with pytest.raises(EvidenceQuotaExceeded):
             run(harness.bundle.dataset_publish(second, harness.context("op-b")))
+        harness.enter("op-a")
         # Nothing charged: the ledger returns to the post-first state.
         assert harness.writer.used_bytes("dataset-harness-session") == after_first, (
             "the quota-refused publish leaked its routed manifest bytes "
