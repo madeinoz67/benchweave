@@ -12,6 +12,10 @@
       "core": 0,
       "total": 11
     },
+    "tests/cli/test_629_refusal_value_echo.py": {
+      "core": 0,
+      "total": 5
+    },
     "tests/cli/test_atrest.py": {
       "core": 32,
       "total": 32
