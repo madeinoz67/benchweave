@@ -4060,6 +4060,97 @@ def test_gw1_arm2c_operation_rewrite_poisons(tmp_path: Path) -> None:
         harness.close()
 
 
+class _SelectionRewritingInvokeAdapter(InvokeAdapter):
+    """The SELECTION residual's adversary (#608). It cannot invent an
+    operation — the mint door is shut — so it names one the host ALREADY
+    minted: during op-2's dispatch it rewrites ``context.operation_id`` to
+    ``op-1`` (minted by the previous dispatch, never admitted) and returns a
+    manifest carrying ``ds:op-1``. ARM-2c cannot see this: every id here was
+    host-minted, so only the *selection* is adapter-chosen."""
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        if self.calls == 1:
+            return {
+                "operation_id": request["operation_id"],
+                "verb": "invoke",
+                "status": "ok",
+                "data": {
+                    "action_id": request["arguments"]["action_id"],
+                    "result": {"ok": True},
+                },
+            }
+        context.operation_id = "op-1"
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["dataset_id"] = "ds:op-1"
+        return {
+            "operation_id": request["operation_id"],
+            "verb": "invoke",
+            "status": "ok",
+            "data": {
+                "action_id": request["arguments"]["action_id"],
+                "result": manifest,
+            },
+        }
+
+
+def test_gw1_arm2d_selection_across_dispatches_poisons(tmp_path: Path) -> None:
+    """ARM-2d (#608, the selection sense): an adapter may publish under a
+    PAST, minted-but-unadmitted operation of the same run by naming it on
+    its own context. Identity must follow the dispatch the host is running
+    (op-2), not a name the adapter selects, so a manifest carrying
+    ``ds:op-1`` refuses and nothing files under the stolen id.
+
+    RED on the #606 B head: both ids were host-minted, so the mint-record
+    read finds op-1's record, the manifest matches it, and the result is
+    admitted under ``ds:op-1`` while the host is dispatching op-2."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = OTDPBridge(
+            _SelectionRewritingInvokeAdapter(),
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=_invoke_dataset_bundle(harness),
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+            dataset_admission=harness.admission,
+        )
+        plugin.plugin_open(object())
+        first = plugin.dispatch(
+            OperationRequest(
+                "op-1",
+                OperationVerb.INVOKE,
+                {"action_id": "demo.raw/1.0.0", "input": {}},
+            ),
+            deadline_ns=11_000_000_000,
+        )
+        assert first.status is OperationStatus.OK, (
+            f"op-1 must succeed so its id is minted: {first.error!r}"
+        )
+        second = plugin.dispatch(
+            OperationRequest(
+                "op-2",
+                OperationVerb.INVOKE,
+                {"action_id": "demo.raw/1.0.0", "input": {}},
+            ),
+            deadline_ns=11_000_000_000,
+        )
+        assert second.status is OperationStatus.UNKNOWN, (
+            f"#608 SELECTION OPEN: dispatch returned {second.status} "
+            f"(error={second.error!r}) — an id the adapter SELECTED from the "
+            "run's own mint set was honored instead of the dispatch's own"
+        )
+        assert second.error is not None
+        assert second.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "does not carry the host-minted id" in second.error.message
+        assert harness.controller.admitted_by_dataset_id("ds:op-1") is None
+        assert harness.controller.admitted_by_dataset_id("ds:op-2") is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 def test_gw1_arm3_schema_invalid_dataset_result_poisons(tmp_path: Path) -> None:
     """ARM-3 (schema): a dataset-shaped result failing the pinned
     measurement schema poisons carrying the validator's own json_path
