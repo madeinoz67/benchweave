@@ -1,10 +1,10 @@
 // Tests for drift-guard.mjs — the path-shaped cross-surface warning hook.
 // Runs the real script end-to-end with a private session-id state dir.
 
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -169,61 +169,203 @@ test('a win_core-manifested file warns Drift 32; an unmanifested one does not', 
   )
 })
 
-test('a crossed-checkout edit still warns, both directions', () => {
-  // RED before the fix: rules matched a path computed from the SESSION root, so an edit
-  // crossing checkouts of this repo family matched nothing — the path either carried a
-  // `.wt/<lane>/` prefix (no rule's prefix matches) or resolved through '..' and returned
-  // early. Every rule went silent exactly where the documented working method puts edits,
-  // and a silent guard reads like a clean session.
-  const session = 'drift-guard-test-crosscheckout-' + process.pid
-  // One session per direction: the hook fires each rule at most once per session, so
-  // sharing an id would make the second direction silent for the wrong reason.
-  const runIn = (suffix, cwd, filePath) =>
-    spawnSync('node', [HOOK], {
-      input: JSON.stringify({
-        session_id: `${session}-${suffix}`,
-        cwd,
-        tool_input: { file_path: filePath },
-      }),
-      encoding: 'utf-8',
-    })
-  const note = (res) =>
-    res.stdout.trim()
-      ? (JSON.parse(res.stdout).hookSpecificOutput?.additionalContext ?? null)
-      : null
-  // Direction 1: session anchored in this worktree, edit landing in the primary checkout.
-  const fromWorktree = runIn(
-    'wt',
-    process.cwd(),
-    join(process.cwd(), '..', '..', 'src/benchweave/cli/report.py'),
+// --- Cross-checkout resolution (#617, family-scoped per the #618 refute findings) ---------
+//
+// Every arm builds its own repository family, so the suite asserts a PROPERTY rather than
+// the author's topology. The first version of this arm hardcoded `../..` as the primary
+// checkout: it passed only inside a `.wt/` worktree and failed in a standalone clone, and it
+// could not see the submodule or foreign-repo shapes by construction.
+
+const scratchDirs = []
+const sessionIds = []
+
+function tempDir(prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  scratchDirs.push(dir)
+  return dir
+}
+
+function initRepo(dir) {
+  mkdirSync(dir, { recursive: true })
+  execFileSync('git', ['-C', dir, 'init', '-q', '-b', 'main'], { encoding: 'utf-8' })
+  execFileSync('git', ['-C', dir, 'config', 'user.email', 't@example.com'])
+  execFileSync('git', ['-C', dir, 'config', 'user.name', 'T'])
+  writeFileSync(join(dir, 'seed.txt'), 'seed')
+  execFileSync('git', ['-C', dir, 'add', '.'])
+  execFileSync('git', ['-C', dir, 'commit', '-q', '-m', 'seed'])
+}
+
+// A family: a primary checkout, a linked worktree of it, and a checkout nested inside it.
+// The nested repo reproduces the SDK submodule's shape — its own toplevel, with the family
+// root above it — without needing submodule protocol config.
+function family() {
+  const root = tempDir('drift-family-')
+  initRepo(root)
+  const wt = tempDir('drift-family-wt-')
+  execFileSync('git', ['-C', root, 'worktree', 'add', '-q', '--detach', wt])
+  // A REAL submodule registration, not an embedded repo: only a registered submodule has a
+  // superproject, and the chain is what keeps Drift 8 alive for a submodule-anchored session.
+  const seedRepo = tempDir('drift-seed-')
+  initRepo(seedRepo)
+  put(seedRepo, 'src/benchweave_sdk/interfaces.py', '')
+  execFileSync('git', ['-C', seedRepo, 'add', '.'])
+  execFileSync('git', ['-C', seedRepo, 'commit', '-q', '-m', 'sdk'])
+  execFileSync(
+    'git',
+    ['-C', root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', seedRepo, 'packages/sdk'],
+    { encoding: 'utf-8' },
   )
-  // Direction 2: session anchored at the repo root, edit landing in this worktree.
-  const fromRoot = runIn(
-    'root',
-    join(process.cwd(), '..', '..'),
-    join(process.cwd(), 'src/benchweave/cli/report.py'),
-  )
-  assert.equal(fromWorktree.status, 0)
-  assert.equal(fromRoot.status, 0)
-  assert.ok(
-    note(fromWorktree)?.includes('Drift 4'),
-    `expected the warning when the session is in a worktree and the edit is in the primary, got: ${note(fromWorktree)}`,
-  )
-  assert.ok(
-    note(fromRoot)?.includes('Drift 4'),
-    `expected the warning when the session is at the root and the edit is in a worktree, got: ${note(fromRoot)}`,
-  )
+  execFileSync('git', ['-C', root, 'commit', '-q', '-m', 'add submodule'])
+  return { root, wt, sub: join(root, 'packages', 'sdk') }
+}
+
+// A real edit lands in an existing directory, so the fixtures create the parents and the
+// file itself. Realpath resolution needs something on disk to resolve through.
+function put(dir, relPath, body = 'x') {
+  const full = join(dir, relPath)
+  mkdirSync(dirname(full), { recursive: true })
+  writeFileSync(full, body)
+  return full
+}
+
+function runAt(suffix, cwd, filePath) {
+  const session = `drift-guard-fam-${suffix}-${process.pid}`
+  sessionIds.push(session)
+  const res = spawnSync('node', [HOOK], {
+    input: JSON.stringify({ session_id: session, cwd, tool_input: { file_path: filePath } }),
+    encoding: 'utf-8',
+  })
+  assert.equal(res.status, 0, `hook must always exit 0 (stderr: ${res.stderr})`)
+  if (!res.stdout.trim()) return null
+  return JSON.parse(res.stdout).hookSpecificOutput?.additionalContext ?? null
+}
+
+test.after(() => {
+  for (const id of sessionIds) {
+    rmSync(join(tmpdir(), 'benchweave-drift-guard', id), { recursive: true, force: true })
+  }
+  for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true })
+})
+
+test('an edit crossing checkouts of the family warns in both directions', () => {
+  // RED before #617: rules matched a path computed from the SESSION root, so an edit
+  // crossing checkouts matched nothing — it either carried a `.wt/<lane>/` prefix or
+  // resolved through `..` and returned early.
+  const { root, wt } = family()
+  const fromWorktree = runAt('wt', wt, put(root, 'src/benchweave/cli/report.py'))
+  const fromRoot = runAt('root', root, put(wt, 'src/benchweave/cli/report.py'))
+  assert.ok(fromWorktree?.includes('Drift 4'), `worktree session, primary edit: ${fromWorktree}`)
+  assert.ok(fromRoot?.includes('Drift 4'), `primary session, worktree edit: ${fromRoot}`)
+})
+
+test('an edit inside the nested checkout keeps the family-relative path', () => {
+  // RED on the #617 tip: resolving at the nested repo's own toplevel strips the
+  // `packages/sdk/` prefix that Drift 8's literals require, so the routine two-commit SDK
+  // workflow — the obligation's whole point — went silent.
+  const { root, sub } = family()
+  const note = runAt('sub', root, put(sub, 'src/benchweave_sdk/interfaces.py'))
+  assert.ok(note?.includes('Drift 8'), `expected the adapter-protocol warning, got: ${note}`)
+})
+
+test('an edit in an unrelated repository warns about nothing', () => {
+  // RED on the #617 tip: the mechanism matched ANY repository's relative path, so a foreign
+  // repo's identically named files drew this project's obligations.
+  const { root } = family()
+  const foreign = tempDir('drift-foreign-')
+  initRepo(foreign)
+  assert.equal(runAt('foreign', root, put(foreign, 'src/benchweave/cli/report.py')), null)
+  assert.equal(runAt('foreign-pyproject', root, put(foreign, 'pyproject.toml')), null)
+})
+
+test('a symlinked spelling of a family checkout still warns', () => {
+  // git reports the PHYSICAL toplevel while the caller holds a logical path; comparing the
+  // two without realpath yields a `..` path and silently skips every rule. macOS `/tmp` and
+  // `$TMPDIR` are exactly this shape.
+  const { root } = family()
+  put(root, 'src/benchweave/cli/report.py')
+  const link = join(tempDir('drift-link-'), 'linked')
+  symlinkSync(root, link)
+  const note = runAt('symlink', link, join(link, 'src/benchweave/cli/report.py'))
+  assert.ok(note?.includes('Drift 4'), `expected the CLI warning through a symlink, got: ${note}`)
 })
 
 test('a path genuinely outside any repository still stays silent', () => {
+  const { root } = family()
+  assert.equal(runAt('outside', root, join(tmpdir(), 'not-a-repo', 'file.py')), null)
+})
+
+test('a session anchored inside the nested checkout still warns for its own files', () => {
+  // The family was anchored to the SESSION's checkout, so a lane opened with `cd packages/sdk`
+  // — the documented two-commit workflow starts by committing inside the submodule — scoped
+  // every rule to the submodule and silenced Drift 8 again.
+  const { sub } = family()
+  const file = put(sub, 'src/benchweave_sdk/interfaces.py')
+  const fromSub = runAt('anchored-sub', sub, file)
+  const fromSubSrc = runAt('anchored-sub-src', join(sub, 'src'), file)
+  assert.ok(fromSub?.includes('Drift 8'), `submodule-anchored session: ${fromSub}`)
+  assert.ok(fromSubSrc?.includes('Drift 8'), `subdirectory-of-submodule session: ${fromSubSrc}`)
+})
+
+test('a symlinked file is judged by what it resolves to, both directions', () => {
+  // The root and the parent directory were realpathed but the leaf was not, so a symlinked
+  // source file was judged by its link name: one pointing out of the repo fired a warning
+  // about this repo, one pointing in stayed silent.
+  const { root } = family()
+  const outside = tempDir('drift-outside-')
+  put(outside, 'real.py')
+  const linkPath = join(root, 'src/benchweave/cli/report.py')
+  mkdirSync(dirname(linkPath), { recursive: true })
+  symlinkSync(join(outside, 'real.py'), linkPath)
+  const outward = runAt('symlink-out', root, linkPath)
+  assert.equal(outward, null, 'a link whose target is outside the repo must stay silent')
+
+  put(root, 'src/benchweave/cli/target.py')
+  const alias = join(root, 'notes/alias.py')
+  mkdirSync(dirname(alias), { recursive: true })
+  symlinkSync(join(root, 'src/benchweave/cli/target.py'), alias)
+  const inward = runAt('symlink-in', root, alias)
+  assert.ok(inward?.includes('Drift 4'), `a link into a rule path must warn, got: ${inward}`)
+})
+
+test('an out-of-repo edit costs a few git calls, not one per ancestor', () => {
+  // The walk stepped to each parent itself and re-asked git, which already searches upward:
+  // a deep path under a slow mount measured 8.4 s of blocked PostToolUse on one edit.
+  const { root } = family()
+  const bin = tempDir('drift-bin-')
+  const log = join(tempDir('drift-log-'), 'calls.log')
+  writeFileSync(log, '')
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf-8' }).trim()
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$@" >> ${log}\nexec ${realGit} "$@"\n`)
+  chmodSync(join(bin, 'git'), 0o755)
+
+  const deep = join(tempDir('drift-deep-'), ...Array.from({ length: 40 }, (_, i) => `d${i}`), 'file.py')
   const res = spawnSync('node', [HOOK], {
-    input: JSON.stringify({
-      session_id: 'drift-guard-test-outside-' + process.pid,
-      cwd: process.cwd(),
-      tool_input: { file_path: join(tmpdir(), 'not-a-repo', 'file.py') },
-    }),
+    input: JSON.stringify({ session_id: `drift-deep-${process.pid}`, cwd: root, tool_input: { file_path: deep } }),
     encoding: 'utf-8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
   })
   assert.equal(res.status, 0)
-  assert.equal(res.stdout.trim(), '', 'an out-of-repo edit must produce no warning')
+  const calls = execFileSync('cat', [log], { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)
+  assert.ok(calls.length <= 4, `expected a bounded number of git calls, got ${calls.length}: ${calls.join(' | ')}`)
+})
+
+test('a hostile git cannot stall an edit past the budget', () => {
+  // The per-call timeout alone was not a bound: several calls multiply it, and the bound was
+  // never tested. This pins the whole-edit budget.
+  const { root } = family()
+  const bin = tempDir('drift-bin-')
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf-8' }).trim()
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\nsleep 5\nexec ${realGit} "$@"\n`)
+  chmodSync(join(bin, 'git'), 0o755)
+
+  const started = Date.now()
+  const res = spawnSync('node', [HOOK], {
+    input: JSON.stringify({ session_id: `drift-slow-${process.pid}`, cwd: root, tool_input: { file_path: join(root, 'src/benchweave/cli/report.py') } }),
+    encoding: 'utf-8',
+    timeout: 30000,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  const elapsed = Date.now() - started
+  assert.equal(res.status, 0, 'a slow git must not break the exit-0 contract')
+  assert.ok(elapsed < 5000, `edits must stay inside the git budget, took ${elapsed}ms`)
 })

@@ -11,10 +11,20 @@
 // the session already touched the surface it would ask about. Add a rule by appending to
 // RULES — nothing else here is rule-specific.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+
+// Git is bounded twice: a per-call timeout, and a budget for the WHOLE edit. A per-call bound
+// alone is not a bound — the walk below makes several calls, so N x timeout is what the user
+// actually waits, and this is a PostToolUse hook that runs on every edit. Declared above the
+// work below rather than beside its users: this file runs its top-level block before reaching
+// the helper functions, so a `const` down there sits in the temporal dead zone on first use,
+// and because every git helper swallows its own failures that reads as "no repository".
+const GIT_TIMEOUT_MS = 1000
+const GIT_BUDGET_MS = 3000
+const gitDeadline = Date.now() + GIT_BUDGET_MS
 
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
@@ -222,19 +232,22 @@ try {
   const filePath = input?.tool_input?.file_path
   if (!filePath) process.exit(0)
 
-  // Rules match against the edited file's own repository root, not the session's. They
-  // differ whenever an edit crosses checkouts of this repo family, which is the documented
-  // way work happens here: a lane worktree edited from a session anchored at the primary
-  // (the computed path carries a `.wt/<lane>/` prefix, so no rule's prefix matches), or the
-  // primary edited from a session anchored in a worktree (the path resolves through `..`
-  // and used to return early). Either way every rule went silent, and a silent guard reads
-  // exactly like a clean session. A path with no repository gets no file context and stays
-  // silent as before; the session root is the fallback, so a git-less environment keeps the
-  // previous behaviour.
-  let root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
-  const fileToplevel = gitToplevel(filePath)
-  if (fileToplevel !== null) root = fileToplevel
-  const rel = relative(root, filePath).split(sep).join('/')
+  // Rules match against the root of the edited file's own checkout within THIS repo family,
+  // not the session's. They differ whenever an edit crosses checkouts, which is the
+  // documented way work happens here: a lane worktree edited from a session anchored at the
+  // primary (the computed path carried a `.wt/<lane>/` prefix, so no rule's prefix matched),
+  // or the primary edited from a worktree-anchored session (the path resolved through `..`
+  // and returned early). Either way every rule went silent, and a silent guard reads exactly
+  // like a clean session.
+  //
+  // The root must be scoped to the family, not merely to "some repository". Two shapes break
+  // the naive version, and both were measured: resolving inside the SDK submodule strips the
+  // `packages/sdk/` prefix that Drift 8's literals need (so the routine two-commit SDK
+  // workflow went silent), while resolving in an unrelated repository makes its identically
+  // named paths fire BenchWeave obligations that are none of its business.
+  const sessionRoot = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
+  const root = familyRoot(sessionRoot, filePath) ?? sessionRoot
+  const rel = relative(root, realpathOr(filePath)).split(sep).join('/')
   // Edits outside the repo are not our business.
   if (!rel || rel.startsWith('..')) process.exit(0)
 
@@ -274,19 +287,93 @@ try {
 }
 process.exit(0)
 
-// The edited file's own repository root, or null when it is not in one. Best-effort: a
-// missing git, an unknown directory or any failure means "not a repo", and the hook keeps
-// its warn-never-block contract by staying silent.
-function gitToplevel(filePath) {
+// Best-effort git, warn-never-block: a missing git, an unknown directory, a timeout or any
+// non-zero exit all mean "no answer" and the caller degrades.
+function gitOut(dir, args) {
+  const remaining = gitDeadline - Date.now()
+  if (remaining <= 0) return null
   try {
-    const res = spawnSync('git', ['-C', dirname(filePath), 'rev-parse', '--show-toplevel'], {
+    const res = spawnSync('git', ['-C', dir, ...args], {
       encoding: 'utf-8',
+      timeout: Math.min(GIT_TIMEOUT_MS, remaining),
     })
     if (res.status !== 0) return null
     return res.stdout.trim() || null
   } catch {
     return null
   }
+}
+
+// Logical and physical spellings of the same path must compare equal, or a session anchored
+// through a symlink (macOS `/tmp`, `$TMPDIR`) resolves one side against the other and silently
+// computes a `..` path. Canonicalises the nearest EXISTING ancestor and appends the rest
+// lexically: a plain realpath fails on a path whose leaf does not exist yet, and falling back
+// to the logical spelling would reintroduce the very mismatch this resolves. The same walk
+// also resolves a symlinked FILE, not just a symlinked directory.
+function realpathOr(p) {
+  const absolute = resolve(p)
+  const tail = []
+  let head = absolute
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return join(realpathSync(head), ...tail.slice().reverse())
+    } catch {
+      const parent = dirname(head)
+      if (parent === head) return absolute
+      tail.push(basename(head))
+      head = parent
+    }
+  }
+  return absolute
+}
+
+// The OUTERMOST checkout of the session's superproject chain. A session anchored inside the
+// nested checkout is ordinary here — AGENTS.md's two-commit workflow starts with "commit
+// inside the submodule first", so a lane opened with `cd packages/sdk` is the documented
+// path. Anchoring the family to that checkout would scope every rule to the submodule and
+// silence Drift 8 in exactly the direction this fix exists to keep alive.
+function outermostCheckout(dir) {
+  let current = dir
+  for (let depth = 0; depth < 8; depth += 1) {
+    const top = gitOut(current, ['rev-parse', '--show-toplevel'])
+    if (top === null) break
+    current = realpathOr(top)
+    const superproject = gitOut(current, ['rev-parse', '--show-superproject-working-tree'])
+    if (superproject === null) break
+    current = realpathOr(superproject)
+  }
+  return current
+}
+
+// Worktrees of one repository share a common git dir; unrelated clones and nested repos do
+// not. That is the family identity, and it is what tells a sibling worktree (same family)
+// from a foreign repository that happens to contain identically named files.
+function gitCommonDir(dir) {
+  const p = gitOut(dir, ['rev-parse', '--git-common-dir'])
+  return p === null ? null : realpathOr(resolve(dir, p))
+}
+
+// The edited file's checkout root, but only when that checkout belongs to the session's repo
+// family. Walks up from the file so a checkout nested inside the family (the SDK submodule)
+// resolves to its superproject — which restores the `packages/sdk/…` prefix the rules match
+// on — while a foreign repository finds no family ancestor and yields null, leaving the
+// caller's session root in place (and the file out of scope).
+function familyRoot(sessionRoot, filePath) {
+  const family = gitCommonDir(outermostCheckout(sessionRoot))
+  if (family === null) return null
+  let dir = realpathOr(dirname(filePath))
+  for (let depth = 0; depth < 8; depth += 1) {
+    const top = gitOut(dir, ['rev-parse', '--show-toplevel'])
+    // git searches upward itself, so null here means no ancestor is a repository at all —
+    // there is nothing further to walk and walking anyway costs one spawn per ancestor.
+    if (top === null) return null
+    const topReal = realpathOr(top)
+    if (gitCommonDir(topReal) === family) return topReal
+    const parent = dirname(topReal)
+    if (parent === topReal) return null
+    dir = parent
+  }
+  return null
 }
 
 async function readStdin() {
