@@ -258,6 +258,23 @@ rather than rewriting the history — that is how this file earns trust.
   The policy is the one capture evidence already pins (`record_evidence` writes
   under the host-held session context key, "never a caller-supplied one") —
   dataset identity now matches the pattern capture evidence already used.*
+  *Amendment (2026-11-09, gateway issue #606 HIGH-1, the mint-door fix): the
+  mint domain is append-only-by-host — `mint_payload_id` refuses an operation
+  with no host mint, so no state a member call creates can introduce an id the
+  host did not dispatch. The adapter's inability to choose its dataset id is
+  enforced in the INTRODUCTION sense only: no id the host did not mint can be
+  filed under. The SELECTION sense remains open and is NOT claimed: during
+  operation X's execute the adapter may still publish under a PAST,
+  minted-but-unadmitted operation of the same run. M10 binds only where the
+  named action's pinned input schema declares `configuration_id` or
+  `acquisition_id`; M11 binds only artifact-backed variables, and the
+  selecting adapter can satisfy it itself (staging under the named operation
+  is legal); an inline-value manifest under an action declaring neither field
+  therefore has no structural bound. Pinned by
+  `test_gw1_arm2c_operation_rewrite_poisons` +
+  `test_payload_create_outside_a_minted_operation_refuses`; the
+  dispatch-bound-identity design is the named completion of the selection
+  sense.*
 
 ## State & persistence invariants
 

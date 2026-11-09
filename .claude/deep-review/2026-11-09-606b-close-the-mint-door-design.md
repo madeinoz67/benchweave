@@ -149,3 +149,21 @@ A, if ever.
   two-candidate analysis applies there, and its inline path already demonstrates the
   capture-before principle.
 - Cross-principal dataset authorization — the standing deferral, untouched.
+
+## 9. Pricing correction (2026-11-09, post-designer): §1 overpriced candidate A
+
+§1 priced candidate A at "a seam through every direct publish/payload call in the unit
+harness (~30 call sites)" and "the first ContextVar in this codebase". Both numbers are
+wrong. The independent designer's A record
+(`2026-11-09-606b-dispatch-bound-identity-design.md`) measures the fixture surface at
+THREE named sites (its §6.4) and uses NO ContextVar — the bridge is single-dispatch
+under its lock, so a plain host-side record serves (its §4.1); four edits, no new module.
+Verified against that record before this correction was written.
+
+The pick of B stands on §1's other legs, each independent of the mispricing: the door
+had no legitimate traffic (no live `src/` caller — the strongest argument this repo
+recognises); B is necessary in either candidate world; B completes the in-tree
+mechanism. But the deferral must not look costlier than it is: the selection residual
+(§2) has a CHEAP completion, and the follow-up should be scheduled on that true price,
+not on this record's original estimate. A deferral priced high is the error that keeps
+a residual alive for a year.
