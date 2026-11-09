@@ -254,6 +254,7 @@ def load_otdp_plugin(
     probe_descriptor_constraints(descriptor)
     services_for_bridge = services
     dataset: Any = None
+    dataset_admission: Any = None
     if resolved is not None and "invoke" in _descriptor_capabilities(descriptor):
         from benchweave.content.dataset_services import build_dataset_controller
 
@@ -266,7 +267,11 @@ def load_otdp_plugin(
             # permission slicing and the raw-descriptor digest
             # re-derivation live in build_dataset_services, exactly the
             # capture builder's app.py-side shape).
-            services_for_bridge = dataset_services(dataset)
+            # The factory returns the composed bundle AND the host's
+            # admission core over the same controller (GW-1): the adapter
+            # keeps the first, the bridge holds the second, and the ruled
+            # dataset-shaped-result entrance reaches the same core.
+            services_for_bridge, dataset_admission = dataset_services(dataset)
     # Find the contiguous regular-package chain; never add cache dirs to sys.path.
     root = entry.parent
     if str(root / "__init__.py") not in code_paths:
@@ -303,6 +308,7 @@ def load_otdp_plugin(
             capture=capture,
             stream=stream,
             dataset=dataset,
+            dataset_admission=dataset_admission,
         )
         bridge._release_loader = release
         return bridge

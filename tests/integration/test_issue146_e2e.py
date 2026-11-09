@@ -410,7 +410,13 @@ def test_issue146_e2e_thirty_runs_through_the_real_activation_path(
 )
 def test_issue146_e2e_mutation_battery(tmp_path: Path, mode: str) -> None:
     """§7's battery: protocol lies through the REAL path are refused —
-    the run fails loudly, nothing is admitted, no evidence row lands."""
+    except the ruled dataset-shaped result, which the host now admits.
+
+    ``unpublished-dataset`` is no longer a lie (GW-1 / #589 D10 / #604):
+    the adapter returns a valid dataset-shaped result without publishing,
+    the host admits it, and the run passes with one dataset evidence row.
+    The other three modes stay refusals: identity, immutability, and the
+    closed-envelope lie."""
     anchor = (
         "        import time as _time\n"
         "        started = _time.perf_counter()\n"
@@ -426,12 +432,18 @@ def test_issue146_e2e_mutation_battery(tmp_path: Path, mode: str) -> None:
     coordinator, store, content = _coordinator(harness, "run-146-mut", QUOTA_LIMITS)
     try:
         record = coordinator.start_run("run-146-mut", "principal-activation")
-        assert record["outcome"] != "passed", (mode, record)
-        # The PRE-publish lies (unpublished dataset, wrong id) admit
-        # nothing; the POST-publish lies (divergent return, malformed
-        # envelope) admit once — the dataset stands, the lie is the
-        # returned result, and the bridge refuses it.
-        expected_rows = 0 if mode in ("unpublished-dataset", "wrong-dataset-id") else 1
+        if mode == "unpublished-dataset":
+            # The ruled path: returning the valid dataset-shaped result is
+            # standard behavior; the host's admission persists it.
+            assert record["outcome"] == "passed", (mode, record)
+            expected_rows = 1
+        else:
+            assert record["outcome"] != "passed", (mode, record)
+            # The identity lie admits nothing; the POST-publish lies
+            # (divergent return, malformed envelope) admit once — the
+            # dataset stands, the lie is the returned result, and the
+            # bridge refuses it.
+            expected_rows = 0 if mode == "wrong-dataset-id" else 1
         assert _publish_evidence_rows(store, "run-146-mut") == expected_rows, (
             mode,
             _publish_evidence_rows(store, "run-146-mut"),

@@ -89,8 +89,7 @@ class DatasetController:
     state the bundle correlates against: the dispatch's action/input, the
     LIVE payload-id registry (the R10 discriminator's membership source —
     minted ids enter it, terminal ids leave it), the finalise records M11
-    cross-checks, and the admitted manifests (bridge cross-check +
-    idempotency + lookup).
+    cross-checks, and the admitted manifests (idempotency + lookup).
     """
 
     def __init__(
@@ -261,34 +260,12 @@ class DatasetController:
 
     def is_dataset_shaped(self, result: Any) -> bool:
         """The manifest's required keys all present (§2.3's detector —
-        required keys only, so the honest channel for an unpublished
-        dataset names the publication lie, not a subschema miss)."""
+        required keys only: a dataset-shaped result is an admission
+        ATTEMPT, admitted or refused by the host's own validation, never
+        laundered as a plain result)."""
         return isinstance(result, dict) and (
             self._contracts.dataset_required_keys <= set(result)
         )
-
-    def dataset_shape_note(self, result: Any) -> str | None:
-        """The sharper refusal note for a dataset-shaped result that also
-        fails the pinned measurement schema (Amendment 2 rider): the
-        validator's own finding — e.g. a `kind` outside the corpus's nine
-        dataset kinds — appended to the bridge's publication-lie refusal.
-        The corpus's check family is M01-M15; this note never claims a
-        narrower range."""
-        if not self.is_dataset_shaped(result):
-            return None
-        error = next(iter(self._contracts.dataset_validator.iter_errors(result)), None)
-        if error is None:
-            return None
-        return f"the pinned measurement schema refuses it at {error.json_path}: {error.message}"
-
-    def admitted_for(self, operation_id: str) -> dict[str, Any] | None:
-        """The admitted manifest for THIS operation, if any — the bridge's
-        §2.3 result cross-check source."""
-        state = self._operations.get(operation_id)
-        if state is None:
-            return None
-        admitted = state.get("admitted")
-        return admitted if isinstance(admitted, dict) else None
 
     def record_admitted(
         self, operation_id: str, manifest: dict[str, Any], artifact_id: str | None = None
@@ -354,94 +331,22 @@ class DatasetController:
         return reclaimed
 
 
-def build_dataset_controller(
-    contracts: ResolvedOtdpContracts,
-    *,
-    writer: Any = None,
-    content: ContentStore | None = None,
-    context_key: str | None = None,
-    wall: Any = None,
-) -> DatasetController:
-    """Construct the controller from §2.1's resolution (the loader-path
-    call; ``build_dataset_services`` is the permission-gated full
-    construction)."""
-    return DatasetController(
-        contracts=contracts,
-        writer=writer,
-        content=content,
-        context_key=context_key,
-        wall=wall,
-    )
+class DatasetAdmission:
+    """The host's dataset-admission core (GW-1, gateway issue #604; the
+    ruled path of SDK issue #589 D10): the validation-and-persistence
+    pipeline ``dataset_publish`` has always run, extracted onto a callable
+    the bridge's result gate reaches too. Two entrances, one core — the
+    adapter may still call ``dataset_publish`` (upload actions inspecting a
+    dataset before payload reads; pre-result publication; idempotent
+    re-admission) and the HOST admits a dataset-shaped invoke result
+    itself; the standard does not require adapter cooperation.
 
-
-def build_dataset_services(
-    *,
-    controller: DatasetController,
-    services: ScopedServicesBundle,
-    descriptor_digest: str,
-    content: ContentStore,
-    writer: CaptureStagingStore,
-) -> ScopedServicesBundle:
-    """The permission-gated construction point (§2.2's table; the
-    build_capture_services precedent). Re-derives the RAW descriptor by
-    pinned digest (the grant-seam precedent — CON-10's re-derives-the-
-    raw-form-by-digest exactly as the permissions precedent does) and
-    composes the dataset members ONTO the caller's services bundle by
-    the adapter's declared permissions:
-
-    ==================  ==========================================
-    controller          the loader-constructed controller (the
-                        invoke capability ∧ resolved contracts —
-                        §2.1/§2.2's decision, made loader-side where
-                        the verified inventory lives)
-    base members        dataset_publish + dataset_lookup always
-    artifact_writer     the four payload members join
-    artifact_reader     artifact_read joins
-    ==================  ==========================================
-
-    The base keeps every member it already holds — a capturing class
-    device keeps the capture lane. Structural members, never runtime
-    flags (spec §3/S15).
-    """
-    document = content.get_document(descriptor_digest)
-    if document is None:
-        raise ValueError(
-            "raw descriptor not cached at its pinned digest: the dataset "
-            "factory re-derives the full form from the content store "
-            f"(digest {descriptor_digest[:12]}… is absent — descriptors are "
-            "cached when a binding pins them)"
-        )
-    raw = document["content"]
-    channels = tuple(
-        str(channel.get("id"))
-        for channel in raw.get("channels", [])
-        if isinstance(channel, dict)
-    )
-    return attach_dataset_members(
-        services,
-        controller=controller,
-        writer=writer,
-        channels=channels,
-        permissions=adapter_permissions(raw),
-    )
-
-
-class _InvokeMembers:
-    """The invoke lane's members (§3's shape): ``dataset_publish`` and
-    ``dataset_lookup`` as a pure mixin over any services base. The
-    attributes the members rely on are declared here and satisfied by the
-    composing base (ScopedServicesBundle or the capture bundle — a class
-    device that captures AND fetches keeps both lanes)."""
-
-    _controller: DatasetController
-    _writer: CaptureStagingStore
-    _channels: frozenset[str]
-    _content: ContentStore
-    _context_key: str
-    _quota_evidence: int
-    _wall: Any
-
-    # --- dataset_publish (§2.2 step 1-6; the validation surface) -------------
+    The order is load-bearing: identity against the host-minted
+    ``context.dataset_id`` → idempotency → the pinned measurement schema →
+    the implemented M-check subset → the staged-writer routing and the
+    dataset-kind evidence row. A refusal raises
+    :class:`DatasetServiceRejected`; an evidence-quota refusal raises the
+    stamped :class:`EvidenceQuotaExceeded` (classifiable at the bridge)."""
 
     #: dtype -> (payload encoding, element bytes). The M03 pairing for
     #: artifact-backed variables; utf8_json is variable-width (element bytes
@@ -458,9 +363,26 @@ class _InvokeMembers:
         "string": ("utf8_json", None),
     }
 
-    async def dataset_publish(
-        self, manifest: dict[str, Any], context: Any
-    ) -> dict[str, Any]:
+    def __init__(
+        self,
+        *,
+        controller: DatasetController,
+        writer: CaptureStagingStore,
+        content: ContentStore,
+        context_key: str,
+        quota_evidence: int,
+        wall: Any,
+        channels: tuple[str, ...] | frozenset[str] = (),
+    ) -> None:
+        self._controller = controller
+        self._writer = writer
+        self._content = content
+        self._context_key = context_key
+        self._quota_evidence = quota_evidence
+        self._wall = wall
+        self._channels = frozenset(channels)
+
+    def admit(self, manifest: dict[str, Any], context: Any) -> dict[str, Any]:
         """Validate and admit one measurement manifest for this operation
         (spec §3; design §2.2 steps 1–6). The submitted ``dataset_id`` is
         host-reserved — it must equal ``context.dataset_id``, non-null (a
@@ -565,11 +487,8 @@ class _InvokeMembers:
 
     def _dataset_validator(self) -> Any:
         """The pinned measurement schema's dataset validator (§2.1 compiled
-        it; the bundle consults the controller's contracts)."""
+        it; the core consults the controller's contracts)."""
         return self._controller.dataset_validator
-
-
-
 
     # --- the implemented M-check subset (§2.4; the class-semantic M05-M09,
     # M12, M13 remain author-side obligations, named in the guide) ---------
@@ -746,6 +665,128 @@ class _InvokeMembers:
                         f"writer's published record {record.get(field)!r}"
                     )
 
+    def _stamp_evidence_quota(
+        self, error: EvidenceQuotaExceeded, context: Any
+    ) -> EvidenceQuotaExceeded:
+        error.capture_stamp = EvidenceStamp(
+            _BUNDLE_STAMP_TOKEN,
+            getattr(context, "operation_id", None),
+        )
+        return error
+
+
+def build_dataset_controller(
+    contracts: ResolvedOtdpContracts,
+    *,
+    writer: Any = None,
+    content: ContentStore | None = None,
+    context_key: str | None = None,
+    wall: Any = None,
+) -> DatasetController:
+    """Construct the controller from §2.1's resolution (the loader-path
+    call; ``build_dataset_services`` is the permission-gated full
+    construction)."""
+    return DatasetController(
+        contracts=contracts,
+        writer=writer,
+        content=content,
+        context_key=context_key,
+        wall=wall,
+    )
+
+
+def build_dataset_services(
+    *,
+    controller: DatasetController,
+    services: ScopedServicesBundle,
+    descriptor_digest: str,
+    content: ContentStore,
+    writer: CaptureStagingStore,
+) -> tuple[ScopedServicesBundle, DatasetAdmission]:
+    """The permission-gated construction point (§2.2's table; the
+    build_capture_services precedent). Re-derives the RAW descriptor by
+    pinned digest (the grant-seam precedent — CON-10's re-derives-the-
+    raw-form-by-digest exactly as the permissions precedent does) and
+    composes the dataset members ONTO the caller's services bundle by
+    the adapter's declared permissions:
+
+    ==================  ==========================================
+    controller          the loader-constructed controller (the
+                        invoke capability ∧ resolved contracts —
+                        §2.1/§2.2's decision, made loader-side where
+                        the verified inventory lives)
+    base members        dataset_publish + dataset_lookup always
+    artifact_writer     the four payload members join
+    artifact_reader     artifact_read joins
+    ==================  ==========================================
+
+    The base keeps every member it already holds — a capturing class
+    device keeps the capture lane. Structural members, never runtime
+    flags (spec §3/S15).
+
+    Returns the composed bundle AND the host's admission core over the
+    same controller/writer — the bridge holds the second (GW-1's ruled
+    result-side entrance); the bundle's ``dataset_publish`` delegates to
+    the first.
+    """
+    document = content.get_document(descriptor_digest)
+    if document is None:
+        raise ValueError(
+            "raw descriptor not cached at its pinned digest: the dataset "
+            "factory re-derives the full form from the content store "
+            f"(digest {descriptor_digest[:12]}… is absent — descriptors are "
+            "cached when a binding pins them)"
+        )
+    raw = document["content"]
+    channels = tuple(
+        str(channel.get("id"))
+        for channel in raw.get("channels", [])
+        if isinstance(channel, dict)
+    )
+    admission = DatasetAdmission(
+        controller=controller,
+        writer=writer,
+        content=content,
+        context_key=services._context_key,
+        quota_evidence=services._quota_evidence,
+        wall=services._wall,
+        channels=channels,
+    )
+    bundle = attach_dataset_members(
+        services,
+        controller=controller,
+        writer=writer,
+        channels=channels,
+        permissions=adapter_permissions(raw),
+        admission=admission,
+    )
+    return bundle, admission
+
+
+class _InvokeMembers:
+    """The invoke lane's members (§3's shape): ``dataset_publish`` and
+    ``dataset_lookup`` as a pure mixin over any services base. The
+    attributes the members rely on are declared here and satisfied by the
+    composing base (ScopedServicesBundle or the capture bundle — a class
+    device that captures AND fetches keeps both lanes).
+
+    ``dataset_publish`` is the ADAPTER entrance's delegation to the host's
+    admission core (:class:`DatasetAdmission`); the ruled dataset-shaped
+    RESULT entrance reaches the same core from the bridge (GW-1, #589 D10).
+    One pipeline, whichever side of the adapter boundary initiated it."""
+
+    _controller: DatasetController
+    _admission: DatasetAdmission
+
+    async def dataset_publish(
+        self, manifest: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        """Validate and admit one measurement manifest for this operation.
+        The order, refusals and idempotent return are the admission core's
+        (:meth:`DatasetAdmission.admit`); this delegation keeps the adapter
+        protocol's async surface unchanged."""
+        return self._admission.admit(manifest, context)
+
     async def dataset_lookup(
         self, dataset_id: str, context: Any
     ) -> dict[str, Any]:
@@ -761,15 +802,6 @@ class _InvokeMembers:
             )
         private_copy: dict[str, Any] = json.loads(json.dumps(admitted))
         return private_copy  # a private copy, never the admitted state
-
-    def _stamp_evidence_quota(
-        self, error: EvidenceQuotaExceeded, context: Any
-    ) -> EvidenceQuotaExceeded:
-        error.capture_stamp = EvidenceStamp(
-            _BUNDLE_STAMP_TOKEN,
-            getattr(context, "operation_id", None),
-        )
-        return error
 
 
 class _PayloadMembers:
@@ -946,12 +978,21 @@ class DatasetServicesBundle(_InvokeMembers, ScopedServicesBundle):
         controller: DatasetController,
         writer: CaptureStagingStore,
         channels: tuple[str, ...] = (),
+        admission: DatasetAdmission | None = None,
         **base: Any,
     ) -> None:
         super().__init__(**base)
         self._controller = controller
         self._writer = writer
-        self._channels = frozenset(channels)
+        self._admission = admission or DatasetAdmission(
+            controller=controller,
+            writer=writer,
+            content=self._content,
+            context_key=self._context_key,
+            quota_evidence=self._quota_evidence,
+            wall=self._wall,
+            channels=channels,
+        )
 
 
 class DatasetPayloadBundle(_PayloadMembers, DatasetServicesBundle):
@@ -975,6 +1016,7 @@ def attach_dataset_members(
     writer: CaptureStagingStore,
     channels: tuple[str, ...],
     permissions: Any,
+    admission: DatasetAdmission | None = None,
 ) -> ScopedServicesBundle:
     """Compose the dataset members ONTO the adapter's existing services
     bundle by permission (the app.py wiring path). The base keeps every
@@ -986,7 +1028,10 @@ def attach_dataset_members(
 
     The published surface is a fresh instance of a composed class —
     ``type(services)`` plus the invoke mixin and, by permission, the
-    payload and reader mixins — carrying the base's state verbatim."""
+    payload and reader mixins — carrying the base's state verbatim. The
+    admission core then rides the instance (``dataset_publish`` delegates
+    to it); ``build_dataset_services`` passes the one it returns to the
+    bridge, so both entrances share a core."""
     mixins: list[type] = [_InvokeMembers]
     if ARTIFACT_WRITER in permissions:
         mixins.append(_PayloadMembers)
@@ -1001,6 +1046,14 @@ def attach_dataset_members(
     instance.__dict__.update(services.__dict__)
     instance._controller = controller
     instance._writer = writer
-    instance._channels = frozenset(channels)
+    instance._admission = admission or DatasetAdmission(
+        controller=controller,
+        writer=writer,
+        content=instance._content,
+        context_key=instance._context_key,
+        quota_evidence=instance._quota_evidence,
+        wall=instance._wall,
+        channels=channels,
+    )
     result: ScopedServicesBundle = instance
     return result

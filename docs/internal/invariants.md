@@ -229,6 +229,25 @@ rather than rewriting the history — that is how this file earns trust.
   client can reach the transport, the wire surface for provider ops does not
   exist; A07: intent that cannot be recorded is not actuated.*
 
+- **[CTL-13]** *(2026-11-09, gateway issue #604 — the GW-1 design record's §4.6
+  new invariant; the ruling on SDK issue #589.)* A dataset-shaped invoke result is
+  admitted only by the host's own admission validation on the result — identity
+  against the host-minted id, idempotency, the pinned measurement schema, the
+  M-check subset, artifact routing through the staged writer, the dataset-kind
+  evidence row — the same pipeline `dataset_publish` runs; it is never laundered
+  as a plain result and never accepted unvalidated
+  (`src/benchweave/content/dataset_services.py` `DatasetAdmission.admit`, reached
+  from the bridge's invoke result gate in `src/benchweave/host/otdp_bridge.py`).
+  Admission failure is the typed invalid-result refusal; a resource-condition
+  admission failure is the classified lane refusal and the session survives.
+  Pinned by `tests/unit/test_otdp_bridge.py` (GW-1 arms 1–8) +
+  `tests/unit/test_dataset_services.py` (the one-core arm). *A dataset enters the
+  run's record only through the host's validation and persistence, whichever side
+  of the adapter boundary initiated it. The guard proves validation-and-persistence
+  provenance, not measurement authenticity: a schema-valid manifest of invented
+  values passes both entrances, exactly as a published one did before — adapter
+  values were never verified against the physical world.*
+
 ## State & persistence invariants
 
 - **[STO-1]** The store is single-writer SQLite — WAL journal, `synchronous=FULL`,

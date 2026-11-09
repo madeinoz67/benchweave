@@ -15,6 +15,7 @@ import pytest
 
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
+from benchweave.content.dataset_services import DatasetAdmission
 from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
 from benchweave.content.stream_services import (
     StreamController,
@@ -3113,7 +3114,13 @@ class InvokeHarness:
     five-member scoped shape and no capture controller exists (invoke is
     not capture's lane)."""
 
-    def __init__(self, tmp_path: Path, *, evidence_quota: int = 50) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        evidence_quota: int = 50,
+        max_dataset_bytes: int = 8192,
+    ) -> None:
         self.store = Store.open(tmp_path / "bridge-invoke.db")
         self.content = ContentStore(self.store)
         raw = {
@@ -3134,7 +3141,9 @@ class InvokeHarness:
         digest = hashlib.sha256(blob).hexdigest()
         self.content.put_document(blob, digest, raw, "otdp-descriptor", "2026-09-25T00:00:00Z")
         self.writer = CaptureStagingStore(
-            self.store, max_capture_bytes=8192, max_dataset_bytes=8192
+            self.store,
+            max_capture_bytes=8192,
+            max_dataset_bytes=max_dataset_bytes,
         )
         self.bundle, no_capture = build_capture_services(
             descriptor_digest=digest,
@@ -3143,7 +3152,7 @@ class InvokeHarness:
             clock=lambda: 0.0,
             wall=lambda: "2026-09-25T00:00:00Z",
             quota=QuotaLimits(
-                max_dataset_bytes=8192,
+                max_dataset_bytes=max_dataset_bytes,
                 max_evidence_entries=evidence_quota,
                 max_event_batch=10,
             ),
@@ -3155,9 +3164,26 @@ class InvokeHarness:
         self.controller = build_dataset_controller(
             _invoke_synthetic_contracts(), writer=self.writer
         )
+        # The host-side admission core the bridge holds (GW-1): the same
+        # controller/writer the adapter's dataset_publish delegates to.
+        self.admission = DatasetAdmission(
+            controller=self.controller,
+            writer=self.writer,
+            content=self.content,
+            context_key="invoke-harness-session",
+            quota_evidence=evidence_quota,
+            wall=lambda: "2026-09-25T00:00:00Z",
+            channels=("ch1",),
+        )
         self.adapter: Any = None
 
-    def bridge(self, adapter: Any, *, dataset: Any = "default") -> OTDPBridge:
+    def bridge(
+        self,
+        adapter: Any,
+        *,
+        dataset: Any = "default",
+        dataset_admission: Any = "default",
+    ) -> OTDPBridge:
         self.adapter = adapter
         return OTDPBridge(
             adapter,
@@ -3165,6 +3191,11 @@ class InvokeHarness:
             services=self.bundle,
             simulation=SimulationInfo(True, "Synthetic"),
             dataset=self.controller if dataset == "default" else dataset,
+            dataset_admission=(
+                self.admission
+                if dataset_admission == "default"
+                else dataset_admission
+            ),
         )
 
     def close(self) -> None:
@@ -3397,31 +3428,6 @@ def test_r6_unknown_outcome_never_downgraded_through_invoke(tmp_path: Path) -> N
         assert result.status is OperationStatus.UNKNOWN
         assert result.error is not None
         assert result.error.dispatch_state is DispatchState.DISPATCHED
-        plugin.plugin_close()
-    finally:
-        harness.close()
-
-
-def test_r2_dataset_shaped_result_without_publication_poisons(
-    tmp_path: Path,
-) -> None:
-    """R2 (strict posture, §3 slice 2): a dataset-shaped invoke result that
-    was never admitted through dataset_publish poisons PROTOCOL_ERROR with
-    the publication lie named — bridge-side state, not adapter
-    cooperation."""
-    harness = InvokeHarness(tmp_path)
-    try:
-        plugin = harness.bridge(InvokeAdapter(result=_DATASET_SHAPED_RESULT))
-        plugin.plugin_open(object())
-        result = plugin.dispatch(
-            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
-            deadline_ns=11_000_000_000,
-        )
-        assert result.status is OperationStatus.UNKNOWN
-        assert result.error is not None
-        assert result.error.code is ErrorCode.PROTOCOL_ERROR
-        assert "dataset_publish" in result.error.message
-        assert "Invalid, failed or late adapter result" not in result.error.message
         plugin.plugin_close()
     finally:
         harness.close()
@@ -3712,51 +3718,66 @@ def test_r10_another_operations_payload_replay_poisons(tmp_path: Path) -> None:
         harness.close()
 
 
-def test_r2_published_dataset_result_passes_the_cross_check(tmp_path: Path) -> None:
-    """R2's inversion now that slice 3 exists: an adapter that publishes
-    its dataset through dataset_publish during the invoke and returns THE
-    ADMITTED manifest passes the bridge's cross-check (OK); a post-publish
-    MUTATION of the returned manifest still poisons — bridge-side state,
-    not adapter cooperation."""
+def _invoke_dataset_bundle(harness: InvokeHarness) -> Any:
+    """The artifact_writer-permitted bundle (publish + payload members) over
+    the harness's store, for the arms whose adapter publishes during
+    execute."""
+    from benchweave.content.dataset_services import DatasetPayloadBundle
+
+    return DatasetPayloadBundle(
+        controller=harness.controller,
+        writer=harness.writer,
+        content=harness.content,
+        channels=("ch1",),
+        clock=lambda: 0.0,
+        wall=lambda: "2026-09-26T00:00:00Z",
+        quota_evidence=50,
+        context_key="invoke-harness-session",
+    )
+
+
+class _PublishingInvokeAdapter(InvokeAdapter):
+    """Publishes the manifest during execute, then returns a caller-chosen
+    envelope carrying the (possibly mutated) admitted copy."""
+
+    def __init__(self, *, mutate: bool = False) -> None:
+        super().__init__()
+        self._mutate = mutate
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["dataset_id"] = context.dataset_id
+        admitted = await self.services.dataset_publish(manifest, context)
+        if self._mutate:
+            admitted["status"] = "partial"  # A' != A after the publish
+        return {
+            "operation_id": request["operation_id"],
+            "verb": "invoke",
+            "status": "ok",
+            "data": {
+                "action_id": request["arguments"]["action_id"],
+                "result": admitted,
+            },
+        }
+
+
+def test_gw1_arm5_publish_then_return_admitted_is_ok(tmp_path: Path) -> None:
+    """ARM-5 (re-homes the passing arm at the old 3715): an adapter that
+    publishes THE manifest it returns lands OK — the admission's idempotency
+    branch returns the admitted copy with no new rows, so pre-ruling
+    plugins stay conformant."""
     harness = InvokeHarness(tmp_path)
     try:
-        from benchweave.content.dataset_services import DatasetPayloadBundle
-
-        bundle = DatasetPayloadBundle(
-            controller=harness.controller,
-            writer=harness.writer,
-            content=harness.content,
-            channels=("ch1",),
-            clock=lambda: 0.0,
-            wall=lambda: "2026-09-26T00:00:00Z",
-            quota_evidence=50,
-            context_key="invoke-harness-session",
-        )
-
-        class PublishingAdapter(InvokeAdapter):
-            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
-                self.calls += 1
-                if request["verb"] != "invoke":
-                    return await Adapter.execute(self, request, context)
-                manifest = _A_PUBLISHABLE_MANIFEST()
-                manifest["dataset_id"] = context.dataset_id
-                admitted = await self.services.dataset_publish(manifest, context)
-                return {
-                    "operation_id": request["operation_id"],
-                    "verb": "invoke",
-                    "status": "ok",
-                    "data": {
-                        "action_id": request["arguments"]["action_id"],
-                        "result": admitted,
-                    },
-                }
-
         plugin = OTDPBridge(
-            PublishingAdapter(),
+            _PublishingInvokeAdapter(),
             descriptor=dict(INVOKE_DESCRIPTOR),
-            services=bundle,
+            services=_invoke_dataset_bundle(harness),
             simulation=SimulationInfo(True, "Synthetic"),
             dataset=harness.controller,
+            dataset_admission=harness.admission,
         )
         plugin.plugin_open(object())
         result = plugin.dispatch(
@@ -3765,33 +3786,38 @@ def test_r2_published_dataset_result_passes_the_cross_check(tmp_path: Path) -> N
         )
         assert result.status is OperationStatus.OK, result.error
         assert result.data["result"]["dataset_id"] == "ds:op-i"
-
-        class MutatingAdapter(PublishingAdapter):
-            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
-                if request["verb"] != "invoke":
-                    return await Adapter.execute(self, request, context)
-                envelope = await PublishingAdapter.execute(self, request, context)
-                envelope["data"]["result"]["status"] = "partial"  # post-publish mutation
-                return envelope
-
         plugin.plugin_close()
-        mutator_bridge = OTDPBridge(
-            MutatingAdapter(),
+    finally:
+        harness.close()
+
+
+def test_gw1_arm4_published_then_mutated_result_refuses_immutability(
+    tmp_path: Path,
+) -> None:
+    """ARM-4 (re-homes the mutation arm at the old 3715): publishing A then
+    returning a DIVERGENT A' poisons carrying the immutability refusal. The
+    old design refused this by match failure; the outcome is preserved, the
+    message is the admission core's."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = OTDPBridge(
+            _PublishingInvokeAdapter(mutate=True),
             descriptor=dict(INVOKE_DESCRIPTOR),
-            services=bundle,
+            services=_invoke_dataset_bundle(harness),
             simulation=SimulationInfo(True, "Synthetic"),
             dataset=harness.controller,
+            dataset_admission=harness.admission,
         )
-        mutator_bridge.plugin_open(object())
-        mutated = mutator_bridge.dispatch(
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
             a_invoke_request(action_id="demo.raw/1.0.0", input={}),
             deadline_ns=11_000_000_000,
         )
-        assert mutated.status is OperationStatus.UNKNOWN
-        assert mutated.error is not None
-        assert mutated.error.code is ErrorCode.PROTOCOL_ERROR
-        assert "dataset_publish" in mutated.error.message
-        mutator_bridge.plugin_close()
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "already admitted and immutable" in result.error.message
+        plugin.plugin_close()
     finally:
         harness.close()
 
@@ -3830,6 +3856,257 @@ def _A_PUBLISHABLE_MANIFEST() -> dict[str, Any]:
         "status": "complete",
         "context": {},
     }
+
+
+# --- GW-1 (#604 / #589 D10): the host admits the dataset-shaped result ----------
+#
+# The ruled path: a dataset-shaped invoke result is admitted by the HOST's
+# own admission validation — the same pipeline dataset_publish runs — and
+# only then persisted. Admission failure is the typed invalid-result
+# refusal; a resource-condition failure is the classified lane refusal and
+# the session survives.
+
+
+def _manifest_artifact_id(manifest: dict[str, Any]) -> str:
+    """The content-addressed id the staged writer mints for the manifest
+    bytes (the admission core's own canonical form)."""
+    blob = _json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
+    return "art-" + hashlib.sha256(blob).hexdigest()
+
+
+def _count(harness: InvokeHarness, sql: str, params: tuple[Any, ...] = ()) -> int:
+    return int(harness.store.connection.execute(sql, params).fetchone()[0])
+
+
+def test_gw1_arm1_valid_unpublished_dataset_result_is_admitted(tmp_path: Path) -> None:
+    """ARM-1 (the RED arm, §8 condition 1): a valid dataset-shaped result
+    with NO dataset_publish call is admitted — OK, with all three
+    admission residues: the admitted-by-id record equals the payload, one
+    art-<sha256> row for the manifest bytes, and one dataset-kind evidence
+    row under the session key. Before the fix this refused with the
+    publication lie (the pre-fix RED run is in the commit message)."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        plugin = harness.bridge(InvokeAdapter(result=manifest))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.OK, (result.status, result.error)
+        assert harness.controller.admitted_by_dataset_id("ds:op-i") == manifest
+        assert (
+            _count(
+                harness,
+                "SELECT COUNT(*) FROM artifacts WHERE artifact_id = ?",
+                (_manifest_artifact_id(manifest),),
+            )
+            == 1
+        )
+        assert (
+            _count(
+                harness,
+                "SELECT COUNT(*) FROM evidence"
+                " WHERE kind = 'dataset' AND context_key = ?",
+                ("invoke-harness-session",),
+            )
+            == 1
+        )
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm2_foreign_dataset_id_poisons(tmp_path: Path) -> None:
+    """ARM-2 (identity): a dataset-shaped result whose dataset_id differs
+    from the host-minted context id poisons carrying the identity refusal
+    — the adapter cannot choose its dataset id."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["dataset_id"] = "ds:attacker"
+        plugin = harness.bridge(InvokeAdapter(result=manifest))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "does not carry the host-minted id" in result.error.message
+        assert harness.controller.admitted_by_dataset_id("ds:attacker") is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm3_schema_invalid_dataset_result_poisons(tmp_path: Path) -> None:
+    """ARM-3 (schema): a dataset-shaped result failing the pinned
+    measurement schema poisons carrying the validator's own json_path
+    finding (re-homes the retired dataset_shape_note property, stronger:
+    the actual refusal, not a note)."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["kind"] = "not-a-kind"
+        plugin = harness.bridge(InvokeAdapter(result=manifest))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "violates the pinned measurement schema" in result.error.message
+        assert "$.kind" in result.error.message
+        assert "not-a-kind" in result.error.message
+        assert harness.controller.admitted_by_dataset_id("ds:op-i") is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm3b_foreign_artifact_reference_poisons(tmp_path: Path) -> None:
+    """ARM-3b (M11 scope): a dataset-shaped result referencing an artifact
+    id THIS operation never finalised poisons carrying the M11 refusal."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        variable = manifest["variables"][0]
+        del variable["values"]
+        foreign = "art-" + "0" * 64
+        variable["artifact"] = {
+            "artifact_id": foreign,
+            "encoding": "f64le",
+            "byte_length": 8,
+            "sha256": "0" * 64,
+        }
+        plugin = harness.bridge(InvokeAdapter(result=manifest))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "M11" in result.error.message
+        assert "never finalised" in result.error.message
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm6_unarmed_admission_lane_refuses(tmp_path: Path) -> None:
+    """ARM-6 (lane not armed): a bridge with the controller but no
+    admission object poisons honestly — a bridge that cannot admit says so
+    instead of pretending, and no admission residue is written."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(
+            InvokeAdapter(result=_A_PUBLISHABLE_MANIFEST()),
+            dataset_admission=None,
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "admission lane is not armed" in result.error.message
+        assert (
+            _count(
+                harness,
+                "SELECT COUNT(*) FROM artifacts WHERE artifact_id LIKE 'art-%'",
+            )
+            == 0
+        )
+        assert (
+            _count(harness, "SELECT COUNT(*) FROM evidence WHERE kind = 'dataset'")
+            == 0
+        )
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm7_dataset_budget_exhaustion_is_classified(tmp_path: Path) -> None:
+    """ARM-7 (quota, classified): result-side admission under an exhausted
+    dataset byte budget raises the classified lane refusal — RESOURCE_LIMIT,
+    the invoke-resource-condition message, dispatched — and the session
+    survives a further dispatch. The reclaim's epilogue floor is ARM-w2's
+    own pin; this arm proves the classification and survival."""
+    harness = InvokeHarness(tmp_path, max_dataset_bytes=64)
+    try:
+        class TwoPhase(InvokeAdapter):
+            async def execute(
+                self, request: dict[str, Any], context: Any
+            ) -> dict[str, Any]:
+                self.calls += 1
+                if request["verb"] != "invoke":
+                    return await Adapter.execute(self, request, context)
+                result = (
+                    _A_PUBLISHABLE_MANIFEST() if self.calls == 1 else {"ok": True}
+                )
+                return {
+                    "operation_id": request["operation_id"],
+                    "verb": "invoke",
+                    "status": "ok",
+                    "data": {
+                        "action_id": request["arguments"]["action_id"],
+                        "result": result,
+                    },
+                }
+
+        plugin = harness.bridge(TwoPhase())
+        plugin.plugin_open(object())
+        first = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert first.error is not None
+        assert first.error.code is ErrorCode.RESOURCE_LIMIT
+        assert "invoke resource condition" in first.error.message
+        assert first.error.dispatch_state is DispatchState.DISPATCHED
+        second = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert second.status is OperationStatus.OK, second.error
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_gw1_arm8_plain_result_triggers_no_admission(tmp_path: Path) -> None:
+    """ARM-8 (no overreach): a plain (non-dataset-shaped) result triggers
+    no admission — no admitted manifest, no artifact row, no dataset
+    evidence row, OK unchanged."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.OK
+        assert harness.controller.admitted_by_dataset_id("ds:op-i") is None
+        assert (
+            _count(
+                harness,
+                "SELECT COUNT(*) FROM artifacts WHERE artifact_id LIKE 'art-%'",
+            )
+            == 0
+        )
+        assert (
+            _count(harness, "SELECT COUNT(*) FROM evidence WHERE kind = 'dataset'")
+            == 0
+        )
+        plugin.plugin_close()
+    finally:
+        harness.close()
 
 
 def test_w2_abort_open_rides_the_epilogue_floor(tmp_path: Path) -> None:
