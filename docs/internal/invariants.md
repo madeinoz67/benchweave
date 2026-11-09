@@ -246,7 +246,39 @@ rather than rewriting the history — that is how this file earns trust.
   of the adapter boundary initiated it. The guard proves validation-and-persistence
   provenance, not measurement authenticity: a schema-valid manifest of invented
   values passes both entrances, exactly as a published one did before — adapter
-  values were never verified against the physical world.*
+  values were never verified against the physical world.* *Amendment (2026-11-09,
+  gateway issue #606): the identity term is enforced against the controller's mint
+  record for the operation (`dispatch_state(operation_id)["dataset_id"]`), never
+  the `context.dataset_id` attribute the adapter holds and can rewrite; the mint
+  record is the admission identity's only source, and a manifest matching a
+  rewritten context attribute but not the mint refuses. Before the amendment the
+  refusal already said "host-minted" while the compared value was caller-supplied —
+  an operator reading a refusal was told the host had checked a minted id when it
+  had not; the reroute makes the existing sentence true rather than changing it.
+  The policy is the one capture evidence already pins (`record_evidence` writes
+  under the host-held session context key, "never a caller-supplied one") —
+  dataset identity now matches the pattern capture evidence already used.*
+  *Amendment (2026-11-09, gateway issue #606 HIGH-1, the mint-door fix): the
+  mint domain is append-only by MEMBER CALL — `mint_payload_id` refuses an
+  operation with no host mint, so no state a member call creates can introduce
+  an id the host did not dispatch. Scoped to member calls, NOT to Python itself:
+  adapters are trusted, unsandboxed Python (the bridge module's stated boundary),
+  so an adapter that reaches the controller object directly and calls the host's
+  own `mint_dataset_id` sits outside this control and outside its threat model —
+  stated here so the sentence cannot be read as a sandbox claim. The adapter's
+  inability to choose its dataset id is enforced in the INTRODUCTION sense only:
+  no id the host did not mint can be filed under. The SELECTION sense remains open and is NOT claimed: during
+  operation X's execute the adapter may still publish under a PAST,
+  minted-but-unadmitted operation of the same run. M10 binds only where the
+  named action's pinned input schema declares `configuration_id` or
+  `acquisition_id`; M11 binds only artifact-backed variables, and the
+  selecting adapter can satisfy it itself (staging under the named operation
+  is legal); an inline-value manifest under an action declaring neither field
+  therefore has no structural bound. Pinned by
+  `test_gw1_arm2c_operation_rewrite_poisons` +
+  `test_payload_create_outside_a_minted_operation_refuses`; the
+  dispatch-bound-identity design is the named completion of the selection
+  sense.*
 
 ## State & persistence invariants
 
