@@ -448,16 +448,18 @@ def test_r2_identity_refusals(tmp_path: Path) -> None:
         harness.close()
 
 
-def test_r2b_identity_reads_the_mint_not_the_context(tmp_path: Path) -> None:
-    """R2b (#606): the admission identity is the controller's MINT RECORD for
-    the operation, never the adapter-held context attribute — a manifest that
-    matches a rewritten context.dataset_id but not the mint refuses, and
-    nothing is admitted under either id."""
+def test_admission_files_under_the_host_minted_dataset_id(tmp_path: Path) -> None:
+    """R2b (#606), the dataset twin of the capture-evidence policy arm
+    (test_record_evidence_writes_under_the_host_minted_context_key): the
+    admission identity is the host-constructed MINT RECORD, never the
+    adapter-supplied context attribute. The forged-context case — a manifest
+    matching a rewritten context.dataset_id but not the mint — refuses and
+    files nothing; the honest publish files under the minted id."""
     harness = DatasetHarness(tmp_path)
     try:
         forged = "ds:attacker"
         rewritten = harness.context()
-        rewritten.dataset_id = forged
+        rewritten.dataset_id = forged  # the adapter-supplied lie
         with pytest.raises(
             DatasetServiceRejected, match="does not carry the host-minted"
         ):
@@ -465,6 +467,11 @@ def test_r2b_identity_reads_the_mint_not_the_context(tmp_path: Path) -> None:
         assert harness.controller.admitted_by_dataset_id(forged) is None
         assert harness.controller.admitted_by_dataset_id("ds:op-a") is None
         assert evidence_rows(harness) == 0
+        admitted = run(
+            harness.bundle.dataset_publish(a_valid_manifest(), harness.context())
+        )
+        assert harness.controller.admitted_by_dataset_id("ds:op-a") == admitted
+        assert harness.controller.admitted_by_dataset_id(forged) is None
     finally:
         harness.close()
 

@@ -3971,9 +3971,9 @@ class _ContextRewritingInvokeAdapter(InvokeAdapter):
 def test_gw1_arm2b_context_rewrite_poisons(tmp_path: Path) -> None:
     """ARM-2b (#606, identity): an adapter that rewrites the host-minted
     context.dataset_id mid-flight poisons with the identity refusal — the
-    admission identity reads the controller's MINT RECORD, never the
-    adapter-held attribute. The manifest matches the rewritten context but
-    not the mint, so neither id files anything."""
+    admission identity reads the host-constructed MINT RECORD, never the
+    adapter-supplied context attribute. The manifest matches the rewritten
+    context but not the mint, so neither id files anything."""
     harness = InvokeHarness(tmp_path)
     try:
         plugin = harness.bridge(_ContextRewritingInvokeAdapter())

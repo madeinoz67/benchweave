@@ -251,7 +251,13 @@ rather than rewriting the history — that is how this file earns trust.
   record for the operation (`dispatch_state(operation_id)["dataset_id"]`), never
   the `context.dataset_id` attribute the adapter holds and can rewrite; the mint
   record is the admission identity's only source, and a manifest matching a
-  rewritten context attribute but not the mint refuses.*
+  rewritten context attribute but not the mint refuses. Before the amendment the
+  refusal already said "host-minted" while the compared value was caller-supplied —
+  an operator reading a refusal was told the host had checked a minted id when it
+  had not; the reroute makes the existing sentence true rather than changing it.
+  The policy is the one capture evidence already pins (`record_evidence` writes
+  under the host-held session context key, "never a caller-supplied one") —
+  dataset identity now matches the pattern capture evidence already used.*
 
 ## State & persistence invariants
 
