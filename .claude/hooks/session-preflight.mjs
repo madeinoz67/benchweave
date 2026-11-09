@@ -1,95 +1,141 @@
 #!/usr/bin/env node
-// session-preflight.mjs — SessionStart facts for the two traps only a session start can
-// catch: a stale checkout and an unmaterialised SDK submodule. Design
+// session-preflight.mjs — SessionStart facts for the two traps only a session start can catch:
+// a stale checkout and an unmaterialised SDK submodule. Design
 // `.claude/deep-review/2026-11-09-459-release-preflight-design.md` §5 (slice 2 of #459).
 //
-// Both traps cost real hours the night this was designed: a design pass ran against a
-// primary 33 commits behind origin/main (CLAUDE.md §3.1 is discipline only, and it failed
-// twice in one night), and a fresh worktree reddened bare mypy with "Cannot read file
-// packages/sdk/src", which reads like a code failure and is not one.
+// Both traps cost real hours the night this was designed: a design pass ran against a primary
+// 33 commits behind origin/main (CLAUDE.md §3.1 is discipline only, and it failed twice in one
+// night), and a fresh worktree reddened bare mypy with an error that reads like a code failure
+// and is not one.
 //
-// Posture copied from drift-guard: WARNS, never blocks — always exit 0, silent when
-// everything holds. Deliberately says nothing about venv or path configuration
-// (owner-machine specifics stay out of the repo) and nothing about gortex state.
+// §8 of that design pre-committed a kill line for this slice: "wall time ≥5 s after the
+// degrade path engages → drop the fetch step (last-fetched-refs mode) and re-measure". A
+// refute pass measured a blackholed origin at 5.175 s, so the fetch is GONE: this hook never
+// touches the network. It reads only remote-tracking refs that already exist, which also
+// means it no longer mutates the user's repo on every setup — a fetch is a write, and it was
+// fast-forwarding shared `origin/*` refs and `FETCH_HEAD` from whichever worktree the session
+// happened to start in.
+//
+// Posture copied from drift-guard: WARNS, never blocks — always exit 0, silent when everything
+// holds. Deliberately says nothing about venv or path configuration (owner-machine specifics
+// stay out of the repo) and nothing about gortex state.
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const FETCH_TIMEOUT_MS = 5000
+// Every git call is bounded. Only the fetch used to carry a timeout, so a git that blocked on
+// anything else (a stale network mount, a wrapper, an FS lock) held the session start until
+// the harness killed it.
+const GIT_TIMEOUT_MS = 2000
 
-function git(cwd, args, timeout) {
+function git(cwd, args) {
   try {
-    return spawnSync('git', ['-C', cwd, ...args], {
+    const res = spawnSync('git', ['-C', cwd, ...args], {
       encoding: 'utf-8',
-      ...(timeout ? { timeout } : {}),
+      timeout: GIT_TIMEOUT_MS,
     })
+    return res.status === 0 ? res.stdout.trim() : null
   } catch {
     return null
   }
 }
 
-// F3 — the submodule trap. Only fires when this checkout actually declares the submodule
-// and its sources are absent, so a repository without one stays silent.
-function submoduleUnmaterialised(cwd) {
+// `git rev-parse` resolves a session started in `src/benchweave`; reading `.gitmodules` from
+// the raw cwd does not. Reading the raw cwd silently disabled the submodule half of this hook
+// for any session started in a subdirectory, while the behind-count kept working — so the
+// hook looked alive.
+function checkoutRoot(cwd) {
+  return git(cwd, ['rev-parse', '--show-toplevel']) ?? cwd
+}
+
+// The branch's own upstream when it has one (a fork whose canonical remote is `upstream`, or a
+// default branch that is not `main`), falling back to `origin/main`. Both spellings were
+// hardcoded before, so such a clone was silent forever with no sign the check had not run.
+function upstreamRef(root) {
+  return (
+    git(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']) ?? 'origin/main'
+  )
+}
+
+function behindUpstream(root) {
+  const upstream = upstreamRef(root)
+  const count = git(root, ['rev-list', '--count', `HEAD..${upstream}`])
+  if (count === null) return null
+  const behind = Number(count)
+  if (!Number.isFinite(behind) || behind <= 0) return null
+
+  const head = git(root, ['rev-parse', '--short', 'HEAD']) ?? 'unknown'
+  const remote = git(root, ['rev-parse', '--short', upstream]) ?? 'unknown'
+  return [
+    `**[Pre-flight] This checkout is ${behind} commit${behind === 1 ? '' : 's'} behind ${upstream}**`,
+    '',
+    `HEAD \`${head}\` vs ${upstream} \`${remote}\`, counted against the last-fetched refs — this`,
+    'hook does not fetch. Confirm the commit before you assert what the code does and re-verify',
+    'any design work done here (CLAUDE.md §3.1). A remote-tracking ref that is itself stale, or',
+    'one whose branch was deleted upstream, makes this count wrong in either direction.',
+  ].join('\n')
+}
+
+// The submodule this checkout registers, matched on its `.gitmodules` PATH entry. Matching the
+// file as a substring fired on a URL that merely mentioned the path and on a longer sibling
+// name, and the remedy those warnings printed then failed with "pathspec did not match".
+const SUBMODULE_PATH = 'packages/sdk'
+
+function declaresSubmodule(root) {
+  let text
   try {
-    if (!readFileSync(join(cwd, '.gitmodules'), 'utf-8').includes('packages/sdk')) return false
+    text = readFileSync(join(root, '.gitmodules'), 'utf-8')
   } catch {
     return false
   }
-  return !existsSync(join(cwd, 'packages', 'sdk', 'src'))
+  return text
+    .split('\n')
+    .some((line) => line.trim().replace(/\s+/g, ' ') === `path = ${SUBMODULE_PATH}`)
 }
 
-// F2 — the stale-checkout trap. Best-effort by design: the fetch is capped and its failure
-// degrades to counting against the last-fetched ref, disclosed in the warning rather than
-// swallowed. A checkout with no origin/main at all says nothing.
-function behindOrigin(cwd) {
-  const fetch = git(cwd, ['fetch', 'origin'], FETCH_TIMEOUT_MS)
-  const fetched = fetch !== null && fetch.status === 0
+function submoduleNote(root) {
+  if (!declaresSubmodule(root)) return null
+  // `git submodule status` is the authority, not the absence of a directory: a leading `-`
+  // means registered-but-not-initialised, which is exactly the state `update --init` fixes.
+  // A submodule that IS checked out but has no `src/` is a different fault, and telling its
+  // owner to run `update --init` is advice that changes nothing while repeating every session.
+  const status = git(root, ['submodule', 'status', '--', SUBMODULE_PATH])
+  if (status === null) return null
+  const line = status.split('\n').find((candidate) => candidate.includes(SUBMODULE_PATH))
+  if (line === undefined) return null
 
-  const count = git(cwd, ['rev-list', '--count', 'HEAD..origin/main'])
-  if (count === null || count.status !== 0) return null
-  const behind = Number(count.stdout.trim())
-  if (!Number.isFinite(behind) || behind <= 0) return null
-
-  const head = git(cwd, ['rev-parse', '--short', 'HEAD'])
-  const origin = git(cwd, ['rev-parse', '--short', 'origin/main'])
-  const headSha = head?.status === 0 ? head.stdout.trim() : 'unknown'
-  const originSha = origin?.status === 0 ? origin.stdout.trim() : 'unknown'
-
-  const lines = [
-    `**[Pre-flight] This checkout is ${behind} commit${behind === 1 ? '' : 's'} behind origin/main**`,
-    '',
-    `HEAD \`${headSha}\` vs origin/main \`${originSha}\`. Confirm the commit before you assert`,
-    'what the code does, and re-verify any design work done on this tree (CLAUDE.md §3.1).',
-  ]
-  if (!fetched) {
-    lines.push(
+  if (line.trim().startsWith('-')) {
+    return [
+      '**[Pre-flight] `packages/sdk` is not initialized in this checkout**',
       '',
-      '`git fetch origin` failed here, so this count is against the last-fetched refs and may',
-      'understate the gap.',
-    )
+      'Run `git submodule update --init packages/sdk`. Until then bare `uv run mypy` exits 2 with',
+      '`packages/sdk/src: error: Cannot read file: No such file or directory`, which reads like a',
+      'code failure and is not one — a fresh worktree does not initialize submodules.',
+    ].join('\n')
   }
-  return lines.join('\n')
+  if (existsSync(join(root, SUBMODULE_PATH, 'src'))) return null
+
+  const sha = line.trim().split(/\s+/)[0] ?? 'unknown'
+  return [
+    '**[Pre-flight] `packages/sdk` is checked out but carries no `src/`**',
+    '',
+    `The submodule working tree exists at \`${sha.slice(0, 10)}\` without the sources its pin has, so`,
+    'this is a working tree that does not match its pin rather than one that was never',
+    'initialized. `git submodule update --init` will change nothing; run',
+    `\`git submodule update ${SUBMODULE_PATH}\` and re-check.`,
+  ].join('\n')
 }
 
 try {
   const input = JSON.parse(await readStdin())
   const cwd = input?.cwd || process.cwd()
+  const root = checkoutRoot(cwd)
 
   const notes = []
-  if (submoduleUnmaterialised(cwd)) {
-    notes.push(
-      [
-        '**[Pre-flight] `packages/sdk` is not materialized in this checkout**',
-        '',
-        'Run `git submodule update --init packages/sdk`. Until then bare `uv run mypy` exits 2',
-        "with \"Cannot read file packages/sdk/src\", which reads like a code failure and is not",
-        'one — a fresh worktree does not initialise submodules.',
-      ].join('\n'),
-    )
-  }
-  const behind = behindOrigin(cwd)
+  const submodule = submoduleNote(root)
+  if (submodule !== null) notes.push(submodule)
+  const behind = behindUpstream(root)
   if (behind !== null) notes.push(behind)
 
   if (notes.length) {
