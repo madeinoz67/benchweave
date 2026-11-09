@@ -3,7 +3,7 @@
 // checkout's own state.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -221,4 +221,22 @@ test('a wedged git cannot hold the session start open', () => {
 
 test('a path that is not a repository warns about nothing', () => {
   assert.equal(run(tempDir('session-preflight-plain-')), null)
+})
+
+test('a .gitmodules spelling git accepts still counts as a declaration', () => {
+  // The matcher required canonical spacing, so `path=packages/sdk` and `path = "packages/sdk"`
+  // — both valid to git, both naming a genuinely uninitialised submodule — kept the check
+  // silent. Silent is the bad direction: the mypy trap those spellings describe is live.
+  for (const spelling of ['path=packages/sdk', 'path = "packages/sdk"']) {
+    const dir = withSubmodule(true)
+    git(dir, 'submodule', 'deinit', '-f', 'packages/sdk')
+    const gitmodules = join(dir, '.gitmodules')
+    writeFileSync(
+      gitmodules,
+      readFileSync(gitmodules, 'utf-8').replace(/\tpath = packages\/sdk/, `\t${spelling}`),
+    )
+    const note = run(dir)
+    assert.ok(note, `expected the submodule warning for .gitmodules "${spelling}", got silence`)
+    assert.match(note, /packages\/sdk` is not initialized/)
+  }
 })

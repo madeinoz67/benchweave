@@ -489,3 +489,64 @@ jobs:
           # headers to parse — screen the changed-file LIST as its own surface.
           git diff --no-renames --name-only --diff-filter=ACM "$base"...HEAD \
             | node "$script" --paths
+
+  hooks:
+    if: github.event_name != 'schedule'
+    # The hook suites' CI leg. Until this job existed, NOTHING ran
+    # `.claude/hooks/tests/` outside the author's machine, and on 2026-11-09 a HIGH
+    # drift-guard regression reached main with every arm green: the arms themselves were
+    # topology-bound (they hardcoded `../..` as the primary checkout), so a green run proved
+    # only that they passed in one worktree. A suite nobody else runs is not a gate.
+    # Node-only, no uv, no Python: the whole point is that this lane is cheap enough that
+    # "keep CI fast" is never the reason to leave it out. Uses the runner's preinstalled
+    # node — no third-party action joins this job's supply chain.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Run the hook suites
+        run: |
+          set -euo pipefail
+          if ! command -v node >/dev/null 2>&1; then
+            echo "::error::node is required by the hooks job but is absent on this runner"
+            exit 1
+          fi
+          # Explicit files, not a bare directory and not a shell glob: the runner's node
+          # (24.x) rejected the directory form this was written against locally (26.x), and
+          # glob semantics differ between versions. POSIX sh only, so the same command can be
+          # run and checked on the development machine rather than trusted on the runner.
+          count=$(find .claude/hooks/tests -name '*.test.mjs' | wc -l | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no hook test files found under .claude/hooks/tests"
+            exit 1
+          fi
+          echo "hook test files: $count"
+          # xargs -0, not a word-split variable: zsh does not split unquoted expansions, so the
+          # same line behaves differently on the development machine and the runner.
+          find .claude/hooks/tests -name '*.test.mjs' -print0 \
+            | xargs -0 node --test --test-reporter=tap \
+            | tee hook-tests.tap
+
+      - name: Assert the suites actually ran
+        # A collector that finds nothing must never read as green. The floor is loose (181
+        # tests today, set at 150) so ordinary additions and retirements do not churn it,
+        # while an empty or half-collected run reds.
+        run: |
+          set -euo pipefail
+          # Summed, not last-value: a long file list can run node more than once, and each
+          # run emits its own totals.
+          pass=$(awk '/^# pass /{v+=$3} END{print v+0}' hook-tests.tap)
+          fail=$(awk '/^# fail /{v+=$3} END{print v+0}' hook-tests.tap)
+          echo "hook suites: ${pass} passed, ${fail} failed"
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::${fail} hook test(s) failed"
+            exit 1
+          fi
+          if [ "${pass}" -lt 150 ]; then
+            echo "::error::only ${pass} hook tests collected — the suites did not run"
+            exit 1
+          fi

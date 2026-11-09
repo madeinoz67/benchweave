@@ -89,9 +89,14 @@ function declaresSubmodule(root) {
   } catch {
     return false
   }
-  return text
-    .split('\n')
-    .some((line) => line.trim().replace(/\s+/g, ' ') === `path = ${SUBMODULE_PATH}`)
+  // git accepts `path = x`, `path=x` and `path = "x"` as the same registration. Requiring the
+  // canonical spacing left a hand-edited or tool-generated `.gitmodules` silent — the bad
+  // direction for a guard, since the submodule it names is genuinely uninitialised.
+  return text.split('\n').some((line) => {
+    const match = /^\s*path\s*=\s*(.+)$/.exec(line)
+    if (match === null) return false
+    return match[1].trim().replace(/^"(.*)"$/, '$1') === SUBMODULE_PATH
+  })
 }
 
 function submoduleNote(root) {
