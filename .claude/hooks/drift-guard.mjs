@@ -16,13 +16,15 @@ import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 
-// Every git call here is bounded: a wedged `git rev-parse` under a stalled checkout would
-// otherwise hold this PostToolUse hook until the harness's own timeout, once per edit.
-// Declared above the work below rather than beside its users: this file runs its top-level
-// block before reaching the helper functions, so a `const` down there would be in the
-// temporal dead zone on first use — and because every git helper swallows its own failures,
-// that reads as "no repository" instead of a crash.
-const GIT_TIMEOUT_MS = 2000
+// Git is bounded twice: a per-call timeout, and a budget for the WHOLE edit. A per-call bound
+// alone is not a bound — the walk below makes several calls, so N x timeout is what the user
+// actually waits, and this is a PostToolUse hook that runs on every edit. Declared above the
+// work below rather than beside its users: this file runs its top-level block before reaching
+// the helper functions, so a `const` down there sits in the temporal dead zone on first use,
+// and because every git helper swallows its own failures that reads as "no repository".
+const GIT_TIMEOUT_MS = 1000
+const GIT_BUDGET_MS = 3000
+const gitDeadline = Date.now() + GIT_BUDGET_MS
 
 const LATTICE = (p) =>
   p.startsWith('fixtures/registry/') || p.startsWith('scripts/registry/') || p === 'catalogue.json'
@@ -245,11 +247,7 @@ try {
   // named paths fire BenchWeave obligations that are none of its business.
   const sessionRoot = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd()
   const root = familyRoot(sessionRoot, filePath) ?? sessionRoot
-  // Realpath the PARENT and rejoin the leaf: the leaf may not exist yet (a hook runs on a
-  // path whose write has just landed or is about to), and a fallback to the logical spelling
-  // there reintroduces the symlink mismatch this resolves.
-  const realFile = join(realpathOr(dirname(filePath)), basename(filePath))
-  const rel = relative(root, realFile).split(sep).join('/')
+  const rel = relative(root, realpathOr(filePath)).split(sep).join('/')
   // Edits outside the repo are not our business.
   if (!rel || rel.startsWith('..')) process.exit(0)
 
@@ -292,10 +290,12 @@ process.exit(0)
 // Best-effort git, warn-never-block: a missing git, an unknown directory, a timeout or any
 // non-zero exit all mean "no answer" and the caller degrades.
 function gitOut(dir, args) {
+  const remaining = gitDeadline - Date.now()
+  if (remaining <= 0) return null
   try {
     const res = spawnSync('git', ['-C', dir, ...args], {
       encoding: 'utf-8',
-      timeout: GIT_TIMEOUT_MS,
+      timeout: Math.min(GIT_TIMEOUT_MS, remaining),
     })
     if (res.status !== 0) return null
     return res.stdout.trim() || null
@@ -305,15 +305,44 @@ function gitOut(dir, args) {
 }
 
 // Logical and physical spellings of the same path must compare equal, or a session anchored
-// through a symlink (macOS `/tmp`, `$TMPDIR`) resolves one side against the other and
-// silently computes a `..` path. Falls back to the resolved spelling for a path that does
-// not exist yet.
+// through a symlink (macOS `/tmp`, `$TMPDIR`) resolves one side against the other and silently
+// computes a `..` path. Canonicalises the nearest EXISTING ancestor and appends the rest
+// lexically: a plain realpath fails on a path whose leaf does not exist yet, and falling back
+// to the logical spelling would reintroduce the very mismatch this resolves. The same walk
+// also resolves a symlinked FILE, not just a symlinked directory.
 function realpathOr(p) {
-  try {
-    return realpathSync(p)
-  } catch {
-    return resolve(p)
+  const absolute = resolve(p)
+  const tail = []
+  let head = absolute
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return join(realpathSync(head), ...tail.slice().reverse())
+    } catch {
+      const parent = dirname(head)
+      if (parent === head) return absolute
+      tail.push(basename(head))
+      head = parent
+    }
   }
+  return absolute
+}
+
+// The OUTERMOST checkout of the session's superproject chain. A session anchored inside the
+// nested checkout is ordinary here — AGENTS.md's two-commit workflow starts with "commit
+// inside the submodule first", so a lane opened with `cd packages/sdk` is the documented
+// path. Anchoring the family to that checkout would scope every rule to the submodule and
+// silence Drift 8 in exactly the direction this fix exists to keep alive.
+function outermostCheckout(dir) {
+  let current = dir
+  for (let depth = 0; depth < 8; depth += 1) {
+    const top = gitOut(current, ['rev-parse', '--show-toplevel'])
+    if (top === null) break
+    current = realpathOr(top)
+    const superproject = gitOut(current, ['rev-parse', '--show-superproject-working-tree'])
+    if (superproject === null) break
+    current = realpathOr(superproject)
+  }
+  return current
 }
 
 // Worktrees of one repository share a common git dir; unrelated clones and nested repos do
@@ -330,20 +359,19 @@ function gitCommonDir(dir) {
 // on — while a foreign repository finds no family ancestor and yields null, leaving the
 // caller's session root in place (and the file out of scope).
 function familyRoot(sessionRoot, filePath) {
-  const family = gitCommonDir(sessionRoot)
+  const family = gitCommonDir(outermostCheckout(sessionRoot))
   if (family === null) return null
-  const seen = new Set()
   let dir = realpathOr(dirname(filePath))
-  while (dir && !seen.has(dir)) {
-    seen.add(dir)
+  for (let depth = 0; depth < 8; depth += 1) {
     const top = gitOut(dir, ['rev-parse', '--show-toplevel'])
-    if (top !== null) {
-      const topReal = realpathOr(top)
-      if (gitCommonDir(topReal) === family) return topReal
-      dir = dirname(topReal)
-      continue
-    }
-    dir = dirname(dir)
+    // git searches upward itself, so null here means no ancestor is a repository at all —
+    // there is nothing further to walk and walking anyway costs one spawn per ancestor.
+    if (top === null) return null
+    const topReal = realpathOr(top)
+    if (gitCommonDir(topReal) === family) return topReal
+    const parent = dirname(topReal)
+    if (parent === topReal) return null
+    dir = parent
   }
   return null
 }

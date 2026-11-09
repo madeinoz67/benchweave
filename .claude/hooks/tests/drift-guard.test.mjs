@@ -2,7 +2,7 @@
 // Runs the real script end-to-end with a private session-id state dir.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -203,9 +203,20 @@ function family() {
   initRepo(root)
   const wt = tempDir('drift-family-wt-')
   execFileSync('git', ['-C', root, 'worktree', 'add', '-q', '--detach', wt])
-  const sub = join(root, 'packages', 'sdk')
-  initRepo(sub)
-  return { root, wt, sub }
+  // A REAL submodule registration, not an embedded repo: only a registered submodule has a
+  // superproject, and the chain is what keeps Drift 8 alive for a submodule-anchored session.
+  const seedRepo = tempDir('drift-seed-')
+  initRepo(seedRepo)
+  put(seedRepo, 'src/benchweave_sdk/interfaces.py', '')
+  execFileSync('git', ['-C', seedRepo, 'add', '.'])
+  execFileSync('git', ['-C', seedRepo, 'commit', '-q', '-m', 'sdk'])
+  execFileSync(
+    'git',
+    ['-C', root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', seedRepo, 'packages/sdk'],
+    { encoding: 'utf-8' },
+  )
+  execFileSync('git', ['-C', root, 'commit', '-q', '-m', 'add submodule'])
+  return { root, wt, sub: join(root, 'packages', 'sdk') }
 }
 
 // A real edit lands in an existing directory, so the fixtures create the parents and the
@@ -281,4 +292,80 @@ test('a symlinked spelling of a family checkout still warns', () => {
 test('a path genuinely outside any repository still stays silent', () => {
   const { root } = family()
   assert.equal(runAt('outside', root, join(tmpdir(), 'not-a-repo', 'file.py')), null)
+})
+
+test('a session anchored inside the nested checkout still warns for its own files', () => {
+  // The family was anchored to the SESSION's checkout, so a lane opened with `cd packages/sdk`
+  // — the documented two-commit workflow starts by committing inside the submodule — scoped
+  // every rule to the submodule and silenced Drift 8 again.
+  const { sub } = family()
+  const file = put(sub, 'src/benchweave_sdk/interfaces.py')
+  const fromSub = runAt('anchored-sub', sub, file)
+  const fromSubSrc = runAt('anchored-sub-src', join(sub, 'src'), file)
+  assert.ok(fromSub?.includes('Drift 8'), `submodule-anchored session: ${fromSub}`)
+  assert.ok(fromSubSrc?.includes('Drift 8'), `subdirectory-of-submodule session: ${fromSubSrc}`)
+})
+
+test('a symlinked file is judged by what it resolves to, both directions', () => {
+  // The root and the parent directory were realpathed but the leaf was not, so a symlinked
+  // source file was judged by its link name: one pointing out of the repo fired a warning
+  // about this repo, one pointing in stayed silent.
+  const { root } = family()
+  const outside = tempDir('drift-outside-')
+  put(outside, 'real.py')
+  const linkPath = join(root, 'src/benchweave/cli/report.py')
+  mkdirSync(dirname(linkPath), { recursive: true })
+  symlinkSync(join(outside, 'real.py'), linkPath)
+  const outward = runAt('symlink-out', root, linkPath)
+  assert.equal(outward, null, 'a link whose target is outside the repo must stay silent')
+
+  put(root, 'src/benchweave/cli/target.py')
+  const alias = join(root, 'notes/alias.py')
+  mkdirSync(dirname(alias), { recursive: true })
+  symlinkSync(join(root, 'src/benchweave/cli/target.py'), alias)
+  const inward = runAt('symlink-in', root, alias)
+  assert.ok(inward?.includes('Drift 4'), `a link into a rule path must warn, got: ${inward}`)
+})
+
+test('an out-of-repo edit costs a few git calls, not one per ancestor', () => {
+  // The walk stepped to each parent itself and re-asked git, which already searches upward:
+  // a deep path under a slow mount measured 8.4 s of blocked PostToolUse on one edit.
+  const { root } = family()
+  const bin = tempDir('drift-bin-')
+  const log = join(tempDir('drift-log-'), 'calls.log')
+  writeFileSync(log, '')
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf-8' }).trim()
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$@" >> ${log}\nexec ${realGit} "$@"\n`)
+  chmodSync(join(bin, 'git'), 0o755)
+
+  const deep = join(tempDir('drift-deep-'), ...Array.from({ length: 40 }, (_, i) => `d${i}`), 'file.py')
+  const res = spawnSync('node', [HOOK], {
+    input: JSON.stringify({ session_id: `drift-deep-${process.pid}`, cwd: root, tool_input: { file_path: deep } }),
+    encoding: 'utf-8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  assert.equal(res.status, 0)
+  const calls = execFileSync('cat', [log], { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)
+  assert.ok(calls.length <= 4, `expected a bounded number of git calls, got ${calls.length}: ${calls.join(' | ')}`)
+})
+
+test('a hostile git cannot stall an edit past the budget', () => {
+  // The per-call timeout alone was not a bound: several calls multiply it, and the bound was
+  // never tested. This pins the whole-edit budget.
+  const { root } = family()
+  const bin = tempDir('drift-bin-')
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf-8' }).trim()
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\nsleep 5\nexec ${realGit} "$@"\n`)
+  chmodSync(join(bin, 'git'), 0o755)
+
+  const started = Date.now()
+  const res = spawnSync('node', [HOOK], {
+    input: JSON.stringify({ session_id: `drift-slow-${process.pid}`, cwd: root, tool_input: { file_path: join(root, 'src/benchweave/cli/report.py') } }),
+    encoding: 'utf-8',
+    timeout: 30000,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  })
+  const elapsed = Date.now() - started
+  assert.equal(res.status, 0, 'a slow git must not break the exit-0 contract')
+  assert.ok(elapsed < 5000, `edits must stay inside the git budget, took ${elapsed}ms`)
 })
