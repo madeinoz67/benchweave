@@ -115,8 +115,35 @@ class DatasetController:
         self._admitted_by_dataset: dict[str, dict[str, Any]] = {}
         # this run's published-dataset artifacts (artifact_read's subset)
         self._readable_artifacts: set[str] = set()
+        # The operation the host is dispatching right now (#608). A single
+        # slot, not a context variable: the bridge holds its RLock for the
+        # whole dispatch body, so one live dispatch per controller is
+        # structural (CTL-13's amendment carries that reason). Cleared in
+        # the bridge's finally so an out-of-dispatch member call finds NO
+        # binding rather than the previous dispatch's.
+        self._current_dispatch: str | None = None
 
     # --- the slice-2 dispatch half (unchanged surface) -----------------------
+
+    def begin_dispatch(self, operation_id: str) -> None:
+        """Open the host's binding for the dispatch about to run (#608).
+
+        The identity term reads THIS, never an adapter-held attribute, so a
+        member call can only ever speak for the dispatch the host opened."""
+        self._current_dispatch = operation_id
+
+    def end_dispatch(self) -> None:
+        """Close the binding, in a ``finally`` (#608).
+
+        Clearing is load-bearing: a stale slot would let a member call made
+        after a completed dispatch inherit that dispatch's identity, which
+        is the selection hole wearing a different coat."""
+        self._current_dispatch = None
+
+    @property
+    def current_dispatch(self) -> str | None:
+        """The host-named operation id for the live dispatch, or None."""
+        return self._current_dispatch
 
     @property
     def actions(self) -> Mapping[str, CompiledAction]:
@@ -196,8 +223,11 @@ class DatasetController:
         discriminator's dataset arm, exactly a mid-append one does).
         Staging requires a HOST-MINTED operation (#606 HIGH-1): an
         operation the host never dispatched refuses and creates no state —
-        the mint domain is append-only-by-host, so an adapter cannot
-        manufacture the per-operation record admission's identity reads."""
+        the mint domain is append-only against MEMBER CALLS, so an adapter
+        cannot manufacture the per-operation record admission's identity
+        reads. Not append-only in general: a host re-mint of the same
+        operation id REPLACES the entry wholesale, which discards the prior
+        entry's live payload registry (#610)."""
         state = self._operations.get(operation_id)
         if state is None:
             raise DatasetServiceRejected(
@@ -384,13 +414,14 @@ class DatasetAdmission:
         self._wall = wall
         self._channels = frozenset(channels)
 
-    def admit(self, manifest: dict[str, Any], context: Any) -> dict[str, Any]:
+    def admit(self, manifest: dict[str, Any], operation_id: str) -> dict[str, Any]:
         """Validate and admit one measurement manifest for this operation
-        (spec §3; design §2.2 steps 1–6). The submitted ``dataset_id`` is
-        host-reserved — it must equal the dataset id the host minted for
-        this operation (the controller's dispatch-state record, not the
-        adapter-rewritable ``context.dataset_id``; an unminted operation
-        forbids publishing). The order is load-bearing: identity
+        (spec §3; design §2.2 steps 1–6). ``operation_id`` is the id the
+        HOST is dispatching, never one the adapter selects: identity is
+        resolved from the controller's own dispatch-state record, so a
+        manifest carrying an id the host did not mint for this dispatch
+        refuses (the submitted ``dataset_id`` is host-reserved). The order is
+        load-bearing: identity
         first, then IDEMPOTENCY (a byte-identical manifest under a used
         dataset id returns the admitted manifest with no new rows — never
         re-routed, never double-charged), then the pinned schema, the
@@ -403,7 +434,7 @@ class DatasetAdmission:
         ``dataset``) under the session's context key — the dimension shared
         with the run's retention rows and the monitor's per-tick retention,
         disclosed (Amendment 1 LOW-3)."""
-        operation_id = str(getattr(context, "operation_id", ""))
+        operation_id = str(operation_id)
         state = self._controller.dispatch_state(operation_id)
         dataset_id = state["dataset_id"] if state is not None else None
         if not isinstance(manifest, dict):
@@ -484,7 +515,7 @@ class DatasetAdmission:
             # goes terminal — no divergence.
             self._writer.abort(payload_id)
             self._controller.note_payload_aborted(payload_id)
-            raise self._stamp_evidence_quota(error_quota, context) from error_quota
+            raise self._stamp_evidence_quota(error_quota, operation_id) from error_quota
         self._controller.note_payload_finalised(operation_id, payload_id, record)
         self._controller.record_admitted(operation_id, manifest, record["artifact_id"])
         result: dict[str, Any] = json.loads(json.dumps(manifest))
@@ -671,11 +702,15 @@ class DatasetAdmission:
                     )
 
     def _stamp_evidence_quota(
-        self, error: EvidenceQuotaExceeded, context: Any
+        self, error: EvidenceQuotaExceeded, operation_id: str
     ) -> EvidenceQuotaExceeded:
+        # The stamp's operation binding is the same key defect one layer down:
+        # the bridge's classifier compares the stamp against the host's own
+        # request.operation_id, so a forged binding there only harms the forger.
+        # Passing the host-named id is consistency, not a closed hole.
         error.capture_stamp = EvidenceStamp(
             _BUNDLE_STAMP_TOKEN,
-            getattr(context, "operation_id", None),
+            operation_id,
         )
         return error
 
@@ -789,8 +824,20 @@ class _InvokeMembers:
         """Validate and admit one measurement manifest for this operation.
         The order, refusals and idempotent return are the admission core's
         (:meth:`DatasetAdmission.admit`); this delegation keeps the adapter
-        protocol's async surface unchanged."""
-        return self._admission.admit(manifest, context)
+        protocol's async surface unchanged.
+
+        The operation is the one the HOST is dispatching (#608) — REG-4 pins
+        this member's signature, so ``context`` stays in it, but identity no
+        longer comes from it: an adapter that could name the operation could
+        publish under any minted id of the run."""
+        operation_id = self._controller.current_dispatch
+        if operation_id is None:
+            raise DatasetServiceRejected(
+                "dataset_publish requires the operation the host is "
+                "dispatching (no live dispatch: out-of-dispatch publication "
+                "is refused)"
+            )
+        return self._admission.admit(manifest, operation_id)
 
     async def dataset_lookup(
         self, dataset_id: str, context: Any

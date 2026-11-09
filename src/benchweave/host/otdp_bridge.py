@@ -456,6 +456,13 @@ class OTDPBridge:
                         else "Invalid, failed or late adapter result; no replay",
                     )
 
+                if self._dataset is not None:
+                    # #608: bind the operation the host is dispatching, so
+                    # admission identity is host-named rather than selected by
+                    # the adapter. Cleared in the finally below — a stale slot
+                    # would let an out-of-dispatch member call inherit the
+                    # previous dispatch's id.
+                    self._dataset.begin_dispatch(request.operation_id)
                 try:
                     result = self._run(self._adapter.execute(envelope, context), context)
                     converted = self._convert(request, result, context)
@@ -566,6 +573,9 @@ class OTDPBridge:
                         self._abort_contained(capture_id, request.operation_id)
                     self._stream_clear()
                     return poison(exc)
+                finally:
+                    if self._dataset is not None:
+                        self._dataset.end_dispatch()
 
     # The interoperable integer range (spec §4): values outside −(2^53−1)
     # through 2^53−1 are unsupported by the numeric interface — also the
@@ -1471,7 +1481,12 @@ class OTDPBridge:
                         "dataset admission lane is not armed"
                     )
                 try:
-                    self._dataset_admission.admit(payload, context)
+                    # #608: the id is the one the HOST dispatched. The envelope
+                    # correlation above already refuses a result whose
+                    # operation_id differs, so this is the same authority the
+                    # gate already trusts — taken from the request, never from
+                    # the adapter-held context.
+                    self._dataset_admission.admit(payload, request.operation_id)
                 except DatasetServiceRejected as exc:
                     raise InvalidInvokeResult(
                         "invoke returned a dataset-shaped result the host "
