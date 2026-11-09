@@ -515,7 +515,21 @@ jobs:
             echo "::error::node is required by the hooks job but is absent on this runner"
             exit 1
           fi
-          node --test --test-reporter=tap .claude/hooks/tests/ | tee hook-tests.tap
+          # Explicit files, not a bare directory and not a shell glob: the runner's node
+          # (24.x) rejected the directory form this was written against locally (26.x), and
+          # glob semantics differ between versions. POSIX sh only, so the same command can be
+          # run and checked on the development machine rather than trusted on the runner.
+          count=$(find .claude/hooks/tests -name '*.test.mjs' | wc -l | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no hook test files found under .claude/hooks/tests"
+            exit 1
+          fi
+          echo "hook test files: $count"
+          # xargs -0, not a word-split variable: zsh does not split unquoted expansions, so the
+          # same line behaves differently on the development machine and the runner.
+          find .claude/hooks/tests -name '*.test.mjs' -print0 \
+            | xargs -0 node --test --test-reporter=tap \
+            | tee hook-tests.tap
 
       - name: Assert the suites actually ran
         # A collector that finds nothing must never read as green. The floor is loose (181
@@ -523,8 +537,10 @@ jobs:
         # while an empty or half-collected run reds.
         run: |
           set -euo pipefail
-          pass=$(awk '/^# pass /{v=$3} END{print v+0}' hook-tests.tap)
-          fail=$(awk '/^# fail /{v=$3} END{print v+0}' hook-tests.tap)
+          # Summed, not last-value: a long file list can run node more than once, and each
+          # run emits its own totals.
+          pass=$(awk '/^# pass /{v+=$3} END{print v+0}' hook-tests.tap)
+          fail=$(awk '/^# fail /{v+=$3} END{print v+0}' hook-tests.tap)
           echo "hook suites: ${pass} passed, ${fail} failed"
           if [ "${fail}" -ne 0 ]; then
             echo "::error::${fail} hook test(s) failed"
