@@ -90,8 +90,24 @@ test("tracked source: denied in the primary checkout, allowed in a linked worktr
     assert.equal(r.status, 0, "expected ALLOW for a tracked file inside a linked worktree");
     assert.doesNotMatch(r.stderr || "", /GortexWriteGate/);
   } else {
-    assert.notEqual(r.status, 0, "expected DENY for a tracked file in the gortex-tracked checkout");
-    assert.match(r.stderr || "", /GortexWriteGate/);
+    // The DENY branch is a statement about a GORTEX-EQUIPPED host, and the precondition is
+    // gortex, not worktree topology. Reading it off the machine's own gortex made this arm
+    // pass on the development host and fail in CI, where the gate fails open BY DESIGN — the
+    // arm was measuring the environment, not the mechanism. A stub makes DENY deterministic
+    // everywhere, which is also why the sibling F1 arm uses one.
+    const stubDir = mkdtempSync(join(tmpdir(), "wg-tracked-"));
+    const stub = join(stubDir, "gortex");
+    writeExecutable(stub, `#!/bin/sh\necho '{"members":[{"name":"stub","path":"${primaryToplevel()}"}]}'\n`);
+    try {
+      const res = runHookRaw(JSON.stringify({ tool_input: { file_path: tracked } }), {
+        ...process.env,
+        GORTEX_BIN: stub,
+      });
+      assert.notEqual(res.status, 0, "expected DENY for a tracked file when gortex tracks the checkout");
+      assert.match(res.stderr || "", /GortexWriteGate/);
+    } finally {
+      rmSync(stubDir, { recursive: true, force: true });
+    }
   }
 });
 
