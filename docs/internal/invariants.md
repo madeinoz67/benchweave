@@ -259,11 +259,15 @@ rather than rewriting the history — that is how this file earns trust.
   under the host-held session context key, "never a caller-supplied one") —
   dataset identity now matches the pattern capture evidence already used.*
   *Amendment (2026-11-09, gateway issue #606 HIGH-1, the mint-door fix): the
-  mint domain is append-only-by-host — `mint_payload_id` refuses an operation
-  with no host mint, so no state a member call creates can introduce an id the
-  host did not dispatch. The adapter's inability to choose its dataset id is
-  enforced in the INTRODUCTION sense only: no id the host did not mint can be
-  filed under. The SELECTION sense remains open and is NOT claimed: during
+  mint domain is append-only by MEMBER CALL — `mint_payload_id` refuses an
+  operation with no host mint, so no state a member call creates can introduce
+  an id the host did not dispatch. Scoped to member calls, NOT to Python itself:
+  adapters are trusted, unsandboxed Python (the bridge module's stated boundary),
+  so an adapter that reaches the controller object directly and calls the host's
+  own `mint_dataset_id` sits outside this control and outside its threat model —
+  stated here so the sentence cannot be read as a sandbox claim. The adapter's
+  inability to choose its dataset id is enforced in the INTRODUCTION sense only:
+  no id the host did not mint can be filed under. The SELECTION sense remains open and is NOT claimed: during
   operation X's execute the adapter may still publish under a PAST,
   minted-but-unadmitted operation of the same run. M10 binds only where the
   named action's pinned input schema declares `configuration_id` or
