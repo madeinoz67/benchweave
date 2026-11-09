@@ -29,8 +29,8 @@
       "total": 50
     },
     "tests/cli/test_env_file.py": {
-      "core": 25,
-      "total": 25
+      "core": 26,
+      "total": 26
     },
     "tests/cli/test_lifecycle.py": {
       "core": 50,

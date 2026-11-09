@@ -373,7 +373,15 @@ def test_g8_non_allowlisted_key_fails_previewing_serve(tmp_path: Path) -> None:
     row = _row(_payload(result), "env_file")
     assert row["verdict"] == "fail"
     assert "env_file:" in row["detail"]
-    assert "BENCHWEAVE_NOT_AN_ALLOWLISTED_KEY" in row["detail"]
+    # The unknown name is described, not echoed (#626) — the doctor reports the
+    # loader's refusal verbatim, so the loader's key-masking contract holds here
+    # too: length is enough to find the line, and the name cannot be a secret on
+    # the wire.
+    assert "BENCHWEAVE_NOT_AN_ALLOWLISTED_KEY" not in row["detail"]
+    assert (
+        f"a name of {len('BENCHWEAVE_NOT_AN_ALLOWLISTED_KEY')} characters"
+        in row["detail"]
+    )
     assert "hello" not in _combined(result), "values never reach output"
 
 

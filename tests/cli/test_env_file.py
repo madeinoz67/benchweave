@@ -136,16 +136,25 @@ def test_a5_malformed_line_refuses_and_never_calls_build(
     assert not built, "a refused parse must never reach build()"
 
 
-def test_a6_unknown_key_refuses_naming_the_key(
+def test_a6_unknown_key_refuses_without_echoing_its_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
 ) -> None:
+    """#626: an unknown name is DESCRIBED, never echoed.
+
+    The refusal used to name the key, which reads well for a typo and is a leak
+    for everything else: the key pattern accepts a base64url secret, so a
+    corrupt file that puts the secret in key position reached this refusal and
+    had it printed. The allowlist is still named, which is what an operator with
+    a typo actually needs to compare against.
+    """
     data_dir = _legacy_data_dir_with_env_file(tmp_path, "BENCHWEAVE_NOT_A_THING=1\n")
     monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
     result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
     assert result.exit_code != 0
     combined = _combined(result)
     assert "env_file:" in combined
-    assert "BENCHWEAVE_NOT_A_THING" in combined
+    assert "BENCHWEAVE_NOT_A_THING" not in combined, combined
+    assert f"a name of {len('BENCHWEAVE_NOT_A_THING')} characters" in combined, combined
     assert "allowlisted" in combined, "the refusal points at the allowlist"
     assert not built
 
@@ -615,3 +624,30 @@ def test_r12_missing_file_note_fires_on_the_named_locator_with_a_store(
     combined = _combined(result)
     assert "no env file at" in combined
     assert str(data_dir / atrest.CREDENTIAL_FILE) in combined
+
+
+def test_626_a_secret_in_key_position_is_never_echoed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Every refusal that quotes a key is exercised with a key-SHAPED secret.
+
+    A base64url secret matches ``[A-Za-z_][A-Za-z0-9_]*``, so it reaches the
+    not-allowlisted refusal and the duplicate refusal as a legitimate-looking key.
+    None of them may print it.
+    """
+    shaped = "a1B2c3D4e5F6g7H8_9I0jKlMnOpQrStUvWxYz012345"  # key-shaped, secret-like
+    for index, body in enumerate((
+        f"{shaped}=1\n",                      # not allowlisted
+        f"{shaped}=1\n{shaped}=2\n",          # duplicate
+        f'{shaped}="unclosed\n',               # mismatched quotes
+        f"{shaped}= trailing\n",              # value starts with whitespace
+        f"{shaped}=\n",                       # empty value
+    )):
+        data_dir = _legacy_data_dir_with_env_file(tmp_path, body, name=f"case{index}")
+        monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+        result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
+        combined = _combined(result)
+        assert result.exit_code != 0, combined
+        assert shaped not in combined, f"the refusal echoed the name: {combined}"
+        assert "env_file:" in combined
+        assert not built
