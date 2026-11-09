@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -51,13 +52,12 @@ from benchweave.cli import evidence as evidence_lib
 from benchweave.cli.client import GatewayClient, GatewayError
 from benchweave.cli.demo import View
 from benchweave.cli.env_file import (
-    ENV_FILE_EXCLUDED_KEYS,
     EnvFileError,
-    apply_env_entries,
-    parse_env_file,
-    serve_env_file_keys,
+    bridge_env_file,
 )
 from benchweave.cli.output import Renderer, emit
+from benchweave.interfaces.identity import issue
+from benchweave.interfaces.operations import TIER_SATISFIES
 from benchweave.state.hold import StoreHeldError
 
 
@@ -854,25 +854,15 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
                 err=True,
             )
     else:
+        # One reader for the credential file: the parse rules, the empty-shadow
+        # refusal (fold R6) and the set-if-not-set semantics live in
+        # ``bridge_env_file`` so ``serve`` and ``token`` cannot drift. The
+        # refusal wording moved verbatim, so serve's pinned messages are
+        # unchanged.
         try:
-            entries = parse_env_file(
-                env_path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS
-            )
+            applied = bridge_env_file(env_path)
         except EnvFileError as error:
             raise click.ClickException(str(error)) from error
-        # Fold R6: a present-but-EMPTY process-env value shadows the file's
-        # real value with no effect (setdefault keeps ""), silently
-        # disarming e.g. the production posture — refuse at the seam,
-        # BEFORE applying, so a refusal leaves no partial residue.
-        for _lineno, key, _value in entries:
-            current = os.environ.get(key)
-            if current is not None and not current.strip():
-                raise click.ClickException(
-                    f"env_file: {env_path}: {key} is set but empty in the"
-                    " process environment and shadows the value this file"
-                    " carries — unset it or set it to a real value"
-                )
-        applied = apply_env_entries(entries)
         if applied:
             # Key NAMES only, never values (the file carries a live secret).
             click.echo(
@@ -1378,6 +1368,164 @@ def ui_login(
         return
     # The plain surface prints exactly the URL (an operator pastes it).
     click.echo(data["login_url"])
+
+
+# --- operator token (issue #625) ------------------------------------------------
+
+#: The default lifetime. It is NOT arbitrary: ``ui-login`` with no ``--ttl-mins``
+#: asks the store for its session ceiling (8 h, ``app_entry._LIMITS``), and
+#: ``sessions.mint_login_code`` REFUSES when ``now + ttl`` exceeds the token's
+#: expiry rather than clamping. A token of exactly the ceiling therefore fails the
+#: no-flag path one second after it is minted (the comparison is ``>`` at second
+#: granularity), so the default carries slack. The pairing test in
+#: ``tests/cli/test_token.py`` reds if the ceiling ever rises past this.
+_TOKEN_DEFAULT_TTL_S = 12 * 3600
+
+#: The shipped gateway's audience. ``create_app`` takes no audience parameter and
+#: the REST/UI/MCP sub-builders all default to this value, so a flag would be
+#: decoration on something the gateway cannot change; the end-to-end arm reds if
+#: the gateway default ever moves away from it.
+_TOKEN_AUDIENCE = "stg"
+
+#: A label, not an identity claim: no authorization decision reads ``principal``
+#: (permissions read scopes), so a shared label has no security effect. A
+#: ``--principal`` flag would add a place to write a real name into a token
+#: without changing any decision, so it is deferred.
+_TOKEN_PRINCIPAL = "operator"
+
+#: The least privilege that still reaches the read-only UI: every route the UI
+#: index calls requires the observe tier, and this scope grants nothing that
+#: mutates, leases, or administers.
+_TOKEN_DEFAULT_SCOPES = ("stg:observe",)
+
+
+@cli.command(name="token")
+@click.option(
+    "--data-dir",
+    "data_dir",
+    required=True,
+    type=click.Path(path_type=Path),
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--scope",
+    "scopes",
+    multiple=True,
+    help=(
+        "Scope to grant (repeatable). Default: stg:observe, the least privilege "
+        "that reaches the read-only UI."
+    ),
+)
+@click.option(
+    "--ttl-mins",
+    "ttl_mins",
+    type=click.IntRange(min=1),
+    default=None,
+    help=f"Token lifetime in minutes (default: {_TOKEN_DEFAULT_TTL_S // 60}).",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def token(
+    data_dir: Path, scopes: tuple[str, ...], ttl_mins: int | None, json_output: bool
+) -> None:
+    """Mint an operator bearer token from a data directory's signing secret.
+
+    This is the missing step between ``setup`` and every authenticated surface:
+    ``setup`` writes the signing secret, and ``ui-login``, the REST API and the
+    MCP transport all need a bearer token. The secret is read through the same
+    bridge ``serve`` uses and is never printed; only the token is.
+    """
+    _set_json(json_output)
+    secret_file = data_dir / atrest.CREDENTIAL_FILE
+    if not secret_file.is_file():
+        # This also covers "a directory that is not a BenchWeave data dir":
+        # setup writes the store and the file together, and the file is the
+        # marker this command needs.
+        raise click.ClickException(
+            f"token: {data_dir} is not a BenchWeave data directory"
+            f" (no {secret_file}) — run benchweave setup --data-dir {data_dir}"
+        )
+    try:
+        applied = bridge_env_file(secret_file)
+    except EnvFileError as error:
+        raise click.ClickException(str(error)) from error
+
+    secret = os.environ.get("BENCHWEAVE_SECRET", "")
+    if not secret.strip():
+        # An empty key signs tokens anyone can forge; never print one.
+        raise click.ClickException(
+            f"token: no BENCHWEAVE_SECRET in {secret_file} and none in the process"
+            " environment — restore the secret line, or run benchweave setup in a"
+            " fresh data directory"
+        )
+    secret_source = (
+        "env-file" if "BENCHWEAVE_SECRET" in applied else "process-environment"
+    )
+
+    # The gateway's own boot gate, not a copy of it: the inventory of
+    # publicly-known secrets is pinned by a tree-grepping test, and a second
+    # copy in the CLI is exactly the drift that test exists to prevent. It
+    # reads BENCHWEAVE_ENV from the process environment, which the bridge has
+    # just populated from the file, so the FILE's posture is honoured.
+    from benchweave.interfaces.app_entry import _require_production_secret
+
+    try:
+        _require_production_secret(secret.encode())
+    except RuntimeError as error:
+        raise click.ClickException(f"token: {error}") from error
+
+    granted = tuple(scopes) or _TOKEN_DEFAULT_SCOPES
+    known = TIER_SATISFIES["observe"]
+    for scope in granted:
+        if scope not in known:
+            raise click.ClickException(
+                f"token: unknown scope {scope!r} — accepted scopes are"
+                f" {', '.join(sorted(known))}"
+            )
+
+    ttl_s = ttl_mins * 60 if ttl_mins is not None else _TOKEN_DEFAULT_TTL_S
+    expires_at = int(time.time()) + ttl_s
+    value = issue(
+        secret.encode(),
+        principal=_TOKEN_PRINCIPAL,
+        audience=_TOKEN_AUDIENCE,
+        scopes=granted,
+        expires_at=expires_at,
+    )
+    payload = {
+        "audience": _TOKEN_AUDIENCE,
+        "expires_at": expires_at,
+        "principal": _TOKEN_PRINCIPAL,
+        "scopes": sorted(granted),
+        "secret_source": secret_source,
+        "token": value,
+    }
+    if json_output:
+        # No `secret` key, ever.
+        emit(payload)
+        return
+    # The `ui-login` shape: exactly the credential on stdout, so
+    # $(benchweave token --data-dir D) yields a bare token.
+    click.echo(value)
+    click.echo(
+        f"benchweave: token for {_TOKEN_PRINCIPAL} ({', '.join(sorted(granted))}),"
+        f" expires {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(expires_at))}",
+        err=True,
+    )
+    if secret_source == "process-environment":
+        # The surprising case, and the one that silently produces a token the
+        # data-dir gateway rejects with bad_signature.
+        click.echo(
+            "benchweave: the secret came from the process environment, not from"
+            f" {secret_file} — a gateway using the file's secret will reject this"
+            " token (bad_signature)",
+            err=True,
+        )
 
 
 # --- entrypoint ---------------------------------------------------------------
