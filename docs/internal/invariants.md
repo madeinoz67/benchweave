@@ -278,7 +278,21 @@ rather than rewriting the history — that is how this file earns trust.
   `test_gw1_arm2c_operation_rewrite_poisons` +
   `test_payload_create_outside_a_minted_operation_refuses`; the
   dispatch-bound-identity design is the named completion of the selection
-  sense.*
+  sense.* *Amendment (2026-11-09, gateway issue #610, the re-mint merge): a
+  re-mint of an operation id MERGES rather than replaces — `mint_dataset_id`
+  keeps an existing record's `payload_ids`, `finalise_records` and `admitted`
+  and refreshes only the correlation pair (action, resolved input) that M10
+  reads. The reachable re-mint is the protective transition's stable name
+  (`protect:<action id>`), dispatched once per run over a controller that
+  outlives runs, so a replacing assignment orphaned any still-open payload and
+  dropped the records M11 cross-checks. Refusal was rejected on A04 grounds:
+  a raise exits the bridge's dispatch before `execute`, so the physical safe
+  action would never run from the second run onward, making controller
+  bookkeeping a veto over protection. Cost accepted: a genuinely fresh
+  dispatch reusing a live id inherits the registries, and no in-tree caller
+  does that (executor ids are occurrence-keyed; the protective re-mint passes
+  byte-identical policy-declared action and input). Pinned by
+  `test_gw1_arm_610a_remint_preserves_the_operation_registries`.*
 
 ## State & persistence invariants
 
