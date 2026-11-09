@@ -3996,6 +3996,70 @@ def test_gw1_arm2b_context_rewrite_poisons(tmp_path: Path) -> None:
         harness.close()
 
 
+class _OperationRewritingInvokeAdapter(InvokeAdapter):
+    """The refute lane's HIGH-1 adversary (#606): rewrites
+    context.OPERATION_id during execute and mints the forged operation's
+    state through payload_create's out-of-dispatch fallback, then returns
+    a manifest carrying ds:<forged-op-id> — the mint record's KEY is
+    adapter-named (the residual ARM-2b cannot see: the dataset_id READ
+    was rerouted to the mint; the operation_id the mint is looked up BY
+    stayed on the adapter-held object)."""
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        context.operation_id = "attacker"
+        await self.services.payload_create("u8", 1, context)
+        manifest = _A_PUBLISHABLE_MANIFEST()
+        manifest["dataset_id"] = "ds:attacker"
+        return {
+            "operation_id": request["operation_id"],
+            "verb": "invoke",
+            "status": "ok",
+            "data": {
+                "action_id": request["arguments"]["action_id"],
+                "result": manifest,
+            },
+        }
+
+
+def test_gw1_arm2c_operation_rewrite_poisons(tmp_path: Path) -> None:
+    """ARM-2c (#606 HIGH-1, the refute lane's executed hole): rewriting
+    context.operation_id and minting the forged operation's state through
+    the payload-create fallback must NOT admit a manifest under the forged
+    id — the identity KEY may not be a value the adapter can name. RED on
+    the dataset_id-only fix (656114f8..ce4a4b44); the machine check that
+    keeps the mint's state door closed (#606b: staging outside a host
+    mint refuses, so the forged name has no record to admit against)."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = OTDPBridge(
+            _OperationRewritingInvokeAdapter(),
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=_invoke_dataset_bundle(harness),
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+            dataset_admission=harness.admission,
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN, (
+            f"#606 HIGH-1 OPEN: dispatch returned {result.status} "
+            f"(error={result.error!r}) — the rewritten operation id was "
+            "honored as the identity key"
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert harness.controller.admitted_by_dataset_id("ds:attacker") is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 def test_gw1_arm3_schema_invalid_dataset_result_poisons(tmp_path: Path) -> None:
     """ARM-3 (schema): a dataset-shaped result failing the pinned
     measurement schema poisons carrying the validator's own json_path

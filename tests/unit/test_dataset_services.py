@@ -371,12 +371,32 @@ def test_r17_payload_refusals_carry_no_capture_wording(tmp_path: Path) -> None:
         harness.close()
 
 
+def test_payload_create_outside_a_minted_operation_refuses(tmp_path: Path) -> None:
+    """#606 HIGH-1's state door, pinned at the source: payload_create under
+    an operation the host never dispatched refuses and creates NO state —
+    the mint domain is append-only-by-host (an adapter must not be able to
+    manufacture the per-operation record that admission's identity reads)."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        with pytest.raises(
+            DatasetServiceRejected, match="no host mint exists"
+        ):
+            run(harness.bundle.payload_create("u8", 8, harness.context("op-never")))
+        assert harness.controller.dispatch_state("op-never") is None
+        assert harness.staged_count() == 0
+    finally:
+        harness.close()
+
+
 def test_controller_abort_open_and_sweep_reclaim(tmp_path: Path) -> None:
     """R5: the controller's abort_open reclaims an operation's still-open
     payloads without adapter cooperation, and sweep_open clears every
-    operation (plugin_close's sweep)."""
+    operation (plugin_close's sweep). The operations are host-minted
+    (#606b): staging outside a mint refuses, so the fixture mints."""
     harness = DatasetHarness(tmp_path)
     try:
+        harness.controller.mint_dataset_id("op-x")
+        harness.controller.mint_dataset_id("op-y")
         run(harness.bundle.payload_create("u8", 16, harness.context("op-x")))
         run(harness.bundle.payload_create("u8", 16, harness.context("op-y")))
         assert harness.staged_count() == 2

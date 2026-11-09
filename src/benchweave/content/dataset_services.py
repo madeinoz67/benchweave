@@ -193,22 +193,20 @@ class DatasetController:
         """Mint the next per-session payload staging id and enter it in the
         operation's LIVE registry (mint-before-open: a create-refused id is
         registry-live so its stamped quota refusal classifies through the
-        discriminator's dataset arm, exactly a mid-append one does)."""
-        self._payload_counter += 1
-        payload_id = f"pay:{operation_id}:{self._payload_counter}"
+        discriminator's dataset arm, exactly a mid-append one does).
+        Staging requires a HOST-MINTED operation (#606 HIGH-1): an
+        operation the host never dispatched refuses and creates no state —
+        the mint domain is append-only-by-host, so an adapter cannot
+        manufacture the per-operation record admission's identity reads."""
         state = self._operations.get(operation_id)
         if state is None:
-            # A bundle used outside a minted dispatch (host-side routing in
-            # publish): track it under its own operation key.
-            state = {
-                "dataset_id": f"ds:{operation_id}",
-                "action_id": None,
-                "input": None,
-                "payload_ids": {},
-                "finalise_records": {},
-                "admitted": None,
-            }
-            self._operations[operation_id] = state
+            raise DatasetServiceRejected(
+                f"payload_create forbids operation {operation_id!r}: no host "
+                "mint exists (an operation the host never dispatched cannot "
+                "stage payloads)"
+            )
+        self._payload_counter += 1
+        payload_id = f"pay:{operation_id}:{self._payload_counter}"
         state["payload_ids"][payload_id] = "open"
         return payload_id
 
