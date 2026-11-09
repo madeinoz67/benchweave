@@ -288,3 +288,57 @@ precisely the content the deep lane exists to check.
    turns out to be a wall-clock budget inside the doorbell. Falsifier: the
    Instance-B carrier's own investigation; if it holds, that member migrates to
    the band class and #605's closure text gains a caveat, not a reopen.
+
+## 10. Addendum (2026-11-09, post-merge): the probes were executed
+
+§4 committed a pre-committed probe pair with its predictions. This addendum
+records what the runs actually showed. It is an addition, not an edit: rewriting
+§4 after the runs would destroy the proof that the predictions preceded them.
+
+Both probes ran solo on a quiet host in a scratch worktree at `origin/main`
+(`16ff3c94`), nothing committed, the primary checkout untouched.
+
+**Probe A — RED, as pre-committed.** A fixed 400 ms delay injected at the
+landing seam (`_on_event`, gated to the first landings of the X3 drain), the
+test unmodified:
+
+```
+AssertionError: control X3 exceeded 3x poll_ms
+separation: long X2 median 218.0 vs control 39.0; X3 worst 1386.1 vs 436.5
+```
+
+Control X3 measured 436.5 ms against the 150 ms bound; the long arms reached
+1386.1. The current ceiling catches a delivery delay of the class it exists for.
+Site note: a delay inside `next_event` breaches the poll's own 50 ms budget in
+the bridge's real-seconds deadline wrapper and reads as session-poison
+infrastructure, not as a band; the landing seam sits after delivery, outside
+every poll deadline.
+
+**Probe B — the seam cannot express the rig.** The §3 minimal diff was applied
+and the identical 400 ms delay left in place. The first control trial dies at the
+snapshot-bracket pin (`:1357`):
+
+```
+AssertionError: the pre-dispatch snapshot was retained before the measured
+dispatch began — the wrapper's pre-tick did not retain
+assert 1116000000 > 1116000000
+```
+
+Two real events read the identical virtual nanosecond: between real events
+nothing advances virtual time, so the tick → block → dispatch → tick bracket
+cannot be expressed. That is the third branch of §5's pre-committed rule, which
+already names it as a close.
+
+The forced walk completes the argument. The control's required
+`status == "unknown"` is produced by the real-seconds deadline wrapper cutting a
+200 ms-paced acquisition at 20 ms; instant virtual pacing erases that cut, so
+pacing must stay real, and real pacing forces real window stamps. Virtualising
+only the X3 stamps yields a domain-mismatched negative or authored values. Every
+completion route is authorship (a tautology) or real coupling (nothing
+de-timed).
+
+**Consequence for the finding.** It stands, and it no longer rests on structure
+alone: A establishes the bound detects today, B establishes that the seam cannot
+express the rig, and the only green route is to write the numbers the asserts
+read. The §5 acceptance rule fired on its third branch rather than its first,
+and both branches close the issue.
