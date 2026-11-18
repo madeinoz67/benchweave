@@ -364,6 +364,7 @@ All notable changes to this project will be documented in this file.
 - Bump astral-sh/setup-uv from 10.3.2 to 10.3.3
 - Bump the codeql-action group with 2 updates
 - Drop fastmcp's non-existent [server] extra (#602)
+- Bump the codeql-action group with 2 updates
 
 ### Refactoring
 
