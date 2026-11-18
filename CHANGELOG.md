@@ -368,6 +368,7 @@ All notable changes to this project will be documented in this file.
 - Bump click from 8.5.0 to 8.5.1
 - Bump fastmcp from 4.1.6 to 4.1.8
 - Bump ruff from 0.17.3 to 0.17.4
+- Bump playwright from 1.64.1 to 1.65.0
 
 ### Refactoring
 
