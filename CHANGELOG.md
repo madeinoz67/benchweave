@@ -369,6 +369,7 @@ All notable changes to this project will be documented in this file.
 - Bump fastmcp from 4.1.6 to 4.1.8
 - Bump ruff from 0.17.3 to 0.17.4
 - Bump playwright from 1.64.1 to 1.65.0
+- Bump fastapi from 0.162.0 to 0.163.0
 
 ### Refactoring
 
