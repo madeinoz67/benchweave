@@ -365,6 +365,7 @@ All notable changes to this project will be documented in this file.
 - Bump the codeql-action group with 2 updates
 - Drop fastmcp's non-existent [server] extra (#602)
 - Bump the codeql-action group with 2 updates
+- Bump click from 8.5.0 to 8.5.1
 
 ### Refactoring
 
