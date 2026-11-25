@@ -620,6 +620,10 @@
       "core": 0,
       "total": 36
     },
+    "tests/standards/test_coverage.py": {
+      "core": 0,
+      "total": 7
+    },
     "tests/standards/test_cross_constraints.py": {
       "core": 0,
       "total": 13
