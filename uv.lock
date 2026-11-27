@@ -144,14 +144,14 @@ wheels = [
 
 [[package]]
 name = "axe-playwright-python"
-version = "0.1.8"
+version = "0.1.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "playwright" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4c/3a/0ac4e97b92a3f8dc98f7dfb3b68c3e8d3811eda630000ccf4f7654e3498a/axe_playwright_python-0.1.8.tar.gz", hash = "sha256:97de160210fd5ce51e552d21d3b0a1cabb850235942737643ee3b9398de81a47", size = 194644, upload-time = "2026-07-24T20:11:06.699Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/1f/dc08ac324d83ac92015b8658b9d4b3f0e9cd956bead24a0fb1e458a52656/axe_playwright_python-0.1.9.tar.gz", hash = "sha256:eb5feb0111dd55c69932a61def7029aa84e414af6245f84165b2d349bd1184c1", size = 223654, upload-time = "2026-11-23T15:44:07.838Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/c6/5fdb6d5d96653927b6a4763a4b7aaa9e468d4a6eda5048b7c2e158d17bc9/axe_playwright_python-0.1.8-py3-none-any.whl", hash = "sha256:fdd263c998388f1a8e67cad02677e612d946248bd44d163be5e8650ea31f95f8", size = 160681, upload-time = "2026-07-24T20:11:05.228Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/de/1c3d7b1fbc3c50b97eb9ef3853444599643a621849b06dce6285410e8a89/axe_playwright_python-0.1.9-py3-none-any.whl", hash = "sha256:101d3a69fd9e4e064164250aeb375eb31c37a749ff81aff9915c12ac430497ac", size = 189476, upload-time = "2026-11-23T15:44:06.17Z" },
 ]
 
 [[package]]
