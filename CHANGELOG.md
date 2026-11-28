@@ -455,6 +455,7 @@ All notable changes to this project will be documented in this file.
 - Refresh the win-core manifest totals for the #556 Track A arms
 - Sweep the m400 disclosure sentences to the 0.5.0 family
 - Fold the v0.24.0 pointer's pin obligations (PR #588)
+- Read the live bench generation in the parity fence pins (#656)
 
 ### Build
 
