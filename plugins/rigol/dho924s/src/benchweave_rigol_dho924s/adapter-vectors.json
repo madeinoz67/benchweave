@@ -1,0 +1,43 @@
+{
+  "provenance": "synthetic — not hardware-qualified (issue #92)",
+  "note": "Every exchange here was authored, not recorded. The identity reply has the shape the manufacturer's programming guide documents; its serial and firmware tokens are invented. The waveform block uses the documented block header and BYTE format with invented values. The request carries the write terminator the adapter supplies (documentary framing), not an observed one.",
+  "identity": [
+    {
+      "id": "idn-documented-shape",
+      "request_hex": "2A49444E3F0A",
+      "request_ascii": "*IDN?\n",
+      "response_hex": "5249474F4C20544543484E4F4C4F474945532C44484F393234532C53594E5448455449432D53455249414C2C53594E5448455449432D4649524D574152450A",
+      "response_ascii": "RIGOL TECHNOLOGIES,DHO924S,SYNTHETIC-SERIAL,SYNTHETIC-FIRMWARE\n",
+      "result": {
+        "operation_id": "host-op",
+        "verb": "identify",
+        "status": "ok",
+        "data": {
+          "manufacturer": "RIGOL",
+          "model": "DHO924S",
+          "serial": "SYNTHETIC-SERIAL",
+          "firmware": "SYNTHETIC-FIRMWARE",
+          "source": "device"
+        }
+      }
+    }
+  ],
+  "waveform": {
+    "byte": [
+      {
+        "id": "byte-four-points",
+        "note": "Block header #9 with a nine-digit length, then four BYTE points. volts = (point - yorigin - yreference) * yincrement, with yincrement 0.5 chosen so every product is exact.",
+        "block_hex": "233930303030303030303400808EFF",
+        "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128",
+        "volts": [-64.0, 0.0, 7.0, 63.5]
+      }
+    ],
+    "ascii": [
+      {
+        "id": "ascii-four-points",
+        "text": "-6.400000E+1,0.000000E+0,7.000000E+0,6.350000E+1",
+        "volts": [-64.0, 0.0, 7.0, 63.5]
+      }
+    ]
+  }
+}

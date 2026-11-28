@@ -1,0 +1,70 @@
+{
+  "otdp_version": "0.2.2",
+  "descriptor_version": "0.1.0",
+  "id": "org.benchweave.rigol-dho924s",
+  "display_name": "Rigol DHO-924S (identify only; unqualified)",
+  "description": "UNQUALIFIED: no claim about the physical unit is evidenced. The adapter answers identify from the documented identity exchange and is tested against synthetic vectors only. Deliberately not claimed: any firmware version, which interface the unit presents (USB-TMC or LAN), the SCPI dialect beyond the identity exchange, capture bounds, channel count and vertical ranges, and every device-class profile. See docs/device-evidence.md for each unknown and the evidence that would settle it.",
+  "identity": {
+    "strategy": "adapter",
+    "manufacturer": "RIGOL",
+    "model": "DHO924S",
+    "firmware_policy": "commissioned"
+  },
+  "integration": {
+    "mode": "adapter",
+    "adapter": {
+      "entry_point": "benchweave_rigol_dho924s.adapter:create_plugin",
+      "api_version": "1.1",
+      "version": "0.1.0",
+      "dependencies": [],
+      "permissions": [
+        "scoped_transport"
+      ]
+    }
+  },
+  "transport": {
+    "type": "custom",
+    "connection_key": "dho924s",
+    "settings": {
+      "protocol_reference": "rigol-dho900-scpi (documentary only, unqualified; see docs/device-evidence.md)"
+    }
+  },
+  "capabilities": [
+    "identify"
+  ],
+  "operations": {
+    "identify": {
+      "timeout_ms": 1000,
+      "side_effect": "none",
+      "retry": "never",
+      "cancellable": true,
+      "completion": "acknowledged"
+    }
+  },
+  "parameters": [],
+  "required_features": [
+    "otdp.core/0.1.0",
+    "otdp.adapter/0.1.0"
+  ],
+  "provenance": {
+    "sources": [
+      {
+        "title": "Rigol DHO800/DHO900 Programming Guide. Documentary evidence for the shape of commands only; it is not evidence from any unit.",
+        "reference": "https://download.rigol.com/en/Manual/Digital%20Oscilloscope/DHO900/DHO800900_ProgrammingGuide_EN.pdf",
+        "revision": "No revision number is printed. Copyright 2024; PDF created 2024-10-16; sha256 of the file read: bfd8a9cc7c1498b534688a0927fbc55d2ca535883895d6e5228a8335b99d7d7d."
+      }
+    ],
+    "test_vectors": [
+      {
+        "id": "synthetic-exchanges",
+        "path": "adapter-vectors.json",
+        "purpose": "SYNTHETIC identity and waveform exchanges in the documented shapes; not hardware-qualified"
+      },
+      {
+        "id": "synthetic-failures",
+        "path": "adapter-failure-vectors.json",
+        "purpose": "SYNTHETIC rejections, malformed responses, deadlines and uncertain outcomes; not hardware-qualified"
+      }
+    ]
+  }
+}
