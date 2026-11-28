@@ -71,7 +71,7 @@
     },
     "tests/faults/test_lifecycle_faults.py::test_pickup_gate_stops_dequeue_and_lets_the_active_job_finish": {
       "kind": "strict",
-      "reason": "Teardown error, not the assertion: state.sqlite is still held when TemporaryDirectory cleanup runs (WinError 32). Failed both Nov 2026 runs, passed Oct \u2014 row call: strict, revisit if it flaps."
+      "reason": "Teardown error, not the assertion: state.sqlite is still held when TemporaryDirectory cleanup runs (WinError 32). Failed both Nov 2026 runs; no earlier observation exists \u2014 the test landed 2026-10-08, after the Oct 2 census. Row call: strict, revisit if it flaps."
     },
     "tests/faults/test_recovery_sweep_faults.py::test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot": {
       "kind": "strict",

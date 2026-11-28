@@ -84,8 +84,9 @@ the ids a lane actually ran:
   and is the first candidate for strict reclassification once ~50 executions exist.
 - Row calls disclosed for maintainer review (implemented strict, defensible either
   way): `test_pickup_gate_stops_dequeue_and_lets_the_active_job_finish` (WinError
-  32 teardown hold on `state.sqlite`; failed both Nov runs, passed Oct — if it
-  flaps it joins the non-strict family) and
+  32 teardown hold on `state.sqlite`; failed both Nov runs — 2/2 observed; no
+  earlier observation exists, the test landed 2026-10-08, after the Oct 2
+  census — if it flaps it joins the non-strict family) and
   `test_f5_measurement_seams_tick_times_and_saturated_polls` (timing-shaped
   "saturated window" empty; failed both observed full-lane runs).
 
@@ -96,12 +97,18 @@ the ids a lane actually ran:
   census. Newest main-push run at build time.
 - `windows-full` job, run **45100708153** (scheduled 2026-11-23), artifact
   `windows-evidence-full-junit`: 4,786 tests, **60 failing ids**.
-- Union: **61 rows** (43 common; `test_kill_after_commit_state_survives` wincore-only).
+- Union: **61 rows** — 43 fail-in-both-lanes, 1 core-lane-only failure
+  (`test_kill_after_commit_state_survives`, collected by both lanes: it failed
+  Nov 25 and passed Nov 23 — the intermittence evidence), 17 full-lane-only
+  failures (the `windows` job's inert count for these is 17, matching the
+  gate's own printed line).
 - Drift reference, run **36967753302** (2026-10-02, the AR-2 plant branch): 37
   failing ids including `test_ar2_plant_canary` — that id is NOT manifested (it is
-  a deliberate plant, never a platform truth). The four #329 deterministic ids
-  (fw5, fold2-wedge, fold1-fsync, fold2-durability) passed both Nov runs and stay
-  unmanifested (#207 AC-2 expects them to keep passing).
+  a deliberate plant, never a platform truth). No id of the four #329
+  deterministic families (fw5, fold2-wedge, fold1-fsync, fold2-durability)
+  appears in either Nov census's failing set; they stay unmanifested (#207
+  AC-2 expects them passing — collected where each lane's selection runs
+  them).
 - Every row's reason is grounded in that run's junit failure text (read from the
   artifact, not from summaries).
 
@@ -166,6 +173,33 @@ are data in `tests/`, not literals in `scripts/`).
 6. The `windows-full` weekly comparison is wire-proven only by its first
    post-merge scheduled run (it cannot fire at PR time; the step is identical
    code over a sibling artifact).
+7. Coverage anchor (the refute pass's F4): assert the lane artifact's
+   collected count equals the ratchet-pinned selection count, so an
+   aborted-but-well-formed session cannot read green.
+
+## 8b. Adversarial pass (Tier-3 G6) — findings folded
+
+The REFUTE pass (2026-11-28, pre-PR) confirmed the mechanism on every real
+and constructed artifact (all 61 rows re-derived exactly; canonicalization
+faithful across class chains, params, hostile ids, the markdown rows;
+fail-closed family holds incl. a billion-laughs DTD; CI wiring and fork-PR
+posture verified) and returned four findings, all folded:
+
+- **F1** census arithmetic — "16 full-lane-only" was wrong; 17 (43/1/17
+  taxonomy above). Fixed here and in the PR body.
+- **F2** false provenance — `test_pickup_gate` never "passed Oct": the
+  test landed 2026-10-08, after the Oct 2 census; observed record is 2/2
+  failing. Manifest reason and this record corrected. The #329 sentence
+  restated as families over actual failing-set membership.
+- **F3** duplicate JSON keys read valid (json last-wins could shadow a
+  strict row with a non-strict twin) — the loader now rejects repeated
+  keys fail-closed, pinned by test.
+- **F4** (disclosed, not fixed — a named follow-up under #207): a
+  well-formed junit from an aborted session that contains only listed
+  failures reads green; the gate cannot tell "not in this selection" from
+  "never got there". The fine-grained anchor (artifact count == the
+  win-core ratchet's pinned selection count) is follow-up scope; the
+  zero-testcase fail-closed catches the coarser collapse.
 
 ## 9. Review tier (design-time call, #254)
 

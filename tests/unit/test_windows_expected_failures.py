@@ -273,6 +273,20 @@ class TestFailClosed:
         with pytest.raises(module.FailClosed):
             module.load_manifest(path)
 
+    def test_duplicate_json_key_fails_closed(self, tmp_path: Path) -> None:
+        """json last-wins would let a non-strict twin silently shadow a
+        strict row (the refute pass's F3) — a duplicated key is malformed."""
+        module = _load()
+        path = tmp_path / "dup.json"
+        path.write_text(
+            '{"schema": "benchweave.windows-expected-failures/1",'
+            f' "rows": {{}}, "rows": {{{json.dumps(ATREST)}: '
+            '{"kind": "non-strict", "reason": "shadow"}}}}',
+            encoding="utf-8",
+        )
+        with pytest.raises(module.FailClosed):
+            module.load_manifest(path)
+
 
 class TestCanonicalId:
     def test_windows_shapes_render_pytest_nodeids(self) -> None:

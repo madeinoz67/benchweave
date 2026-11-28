@@ -17,8 +17,9 @@ breakage: fix it or add a reviewed row in the same change) or a ``strict``
 row whose id RAN in this lane and did not fail (healing is visible: remove
 or update the row in the same change); 2 fail-closed — junit absent or
 unreadable, zero collected testcases, duplicate ids, manifest absent,
-malformed, foreign-schema, or a bad row shape. A comparison step that
-cannot read its inputs must never read as green.
+malformed (including a duplicate JSON key — last-wins would silently
+shadow a strict row), foreign-schema, or a bad row shape. A comparison
+step that cannot read its inputs must never read as green.
 
 Lane scoping (design record §3): one manifest serves two selections, so a
 ``strict`` row is judged ONLY over the ids the lane's junit actually
@@ -36,7 +37,13 @@ Maintenance flow: the red IS the forcing function. Unlisted failing id →
 fix the breakage or add the row (id, kind, one-line reason citing the
 census run) in the same change. Healed strict row → remove or update the
 row in the same change. The manifest is the machine-checked distillation
-of the #207 census, never its replacement.
+of the #207 census, never its replacement. Coverage residual (disclosed,
+from the adversarial pass): a WELL-FORMED junit from an aborted session
+that contains only listed failures still reads green — the gate cannot
+distinguish "not in this lane's selection" from "this run never got
+there". The zero-testcase fail-closed and the win-core ratchet catch the
+coarser collapses; the fine-grained anchor (artifact count == the
+ratchet's pinned selection count) is a named follow-up under #207.
 """
 
 from __future__ import annotations
@@ -121,10 +128,28 @@ def parse_junit(path: Path) -> tuple[set[str], set[str]]:
     return ran, failed
 
 
+def _reject_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """object_pairs_hook: a repeated JSON key is a malformed manifest.
+
+    ``json.loads`` keeps the LAST occurrence of a duplicate key before any
+    validation can see it — a hand-edit or merge-conflict resolution that
+    duplicates a row (worst case: a strict row shadowed by a non-strict
+    twin) would silently disable the healing check. Refuse it here.
+    """
+    seen: set[str] = set()
+    for key, _value in pairs:
+        if key in seen:
+            raise FailClosed(f"manifest carries duplicate JSON key: {key!r}")
+        seen.add(key)
+    return dict(pairs)
+
+
 def load_manifest(path: Path) -> dict[str, dict[str, str]]:
     """Read the manifest, refusing anything not shaped like ours (fail closed)."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicates
+        )
     except FileNotFoundError:
         raise FailClosed(
             f"manifest absent at {path} — the baseline cannot be checked "
