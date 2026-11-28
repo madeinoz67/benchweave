@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +44,7 @@ from test_dependency import (
 )
 from test_dev_pins import (
     HEAD_LABEL,
+    _drop_git_store,
     _git,
     _git_root,
 )
@@ -343,7 +343,7 @@ def test_m2_the_dev_refusal_propagates_verbatim(tmp_path: Path) -> None:
     opt-in refuses ``dev_head_unresolvable:`` — unchanged, by name."""
     root, sha = _git_root(tmp_path)
     package = _dev_package(root, opt_in={"otdp": f"{HEAD_LABEL}@{sha}"})
-    shutil.rmtree(root / ".git")
+    _drop_git_store(root)
     with pytest.raises(StandardsError, match="dev_head_unresolvable:") as from_resolver:
         resolve_package(root, package)
     with pytest.raises(StandardsError, match="dev_head_unresolvable:") as from_why:

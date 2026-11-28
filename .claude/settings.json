@@ -1,20 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Project-owned guards (see .claude/memory-protocol.md for the protocol and its measured history). drift-guard.mjs warns on the path-shaped cross-surface obligations in docs/internal/drift-and-obligations.md (once per session, never blocks; quiet once the paired surface is touched). ledger-guard.mjs rejects a malformed memory proposal in the session that can still fix it. memory-drain.mjs moves proposals into the `benchweave` memory vault (PreCompact leads because long sessions never fire SessionEnd; Stop covers crash/kill, debounced against the receipt). memory-freshness.mjs reads the drain receipt at SessionStart so a wedged or never-run drain reports itself. gortex-write-gate.mjs (PreToolUse) routes Edit/Write/MultiEdit away from tracked files in a gortex-tracked primary checkout per the CLAUDE.md edit-routing card; it no-ops (exit 0) off gortex-equipped hosts by design. name-screen.mjs --pretooluse (PreToolUse, the second Edit|Write|MultiEdit entry, issue #518) blocks an edit whose content or filename carries a tier-P pattern hit or a name on the local list at BENCHWEAVE_NAME_LIST; a list absent from the machine means the public tier only, and the block output never quotes the matched text. drain credentials: ~/.muninn/flush-keys/benchweave.token.",
+  "_comment": "Project-owned guards (see .claude/memory-protocol.md for the protocol and its measured history). drift-guard.mjs warns on the path-shaped cross-surface obligations in docs/internal/drift-and-obligations.md (once per session, never blocks; quiet once the paired surface is touched). ledger-guard.mjs rejects a malformed memory proposal in the session that can still fix it. memory-drain.mjs moves proposals into the `benchweave` memory vault (PreCompact leads because long sessions never fire SessionEnd; Stop covers crash/kill, debounced against the receipt). memory-freshness.mjs reads the drain receipt at SessionStart so a wedged or never-run drain reports itself. codanna-reindex.ts (PostToolUse) re-indexes an edited file inside Claude subagent worktrees only; codanna-nudge.ts nudges once per session when a search starts before Codanna has been used. name-screen.mjs --pretooluse (PreToolUse, the second Edit|Write|MultiEdit entry, issue #518) blocks an edit whose content or filename carries a tier-P pattern hit or a name on the local list at BENCHWEAVE_NAME_LIST; a list absent from the machine means the public tier only, and the block output never quotes the matched text. drain credentials: the benchweave flush-key file under the Muninn home directory.",
   "_trigger_rationale": "The three-event trigger set comes from the memory system's original design, measured on ITS workload: 55 transcripts, 35,417 events, where the two sessions holding 81.3% of events ran 7.5 and 6.3 days, fired SessionEnd zero times, and compacted 2 and 16 times — hence PreCompact leads there. LOCAL measurement (2026-09-18, all BenchWeave project transcript dirs): 394 transcripts, 46,020 events, top sessions 0.7-1.15 days, only 4 in-file compaction markers detected — under this setup's 1M-context windows sessions compact far less often, so PreCompact fires less here and Stop and SessionEnd carry correspondingly more of the load. All three are kept because the local shape is a window-size artifact, not a property of the work. Stop is debounced against the receipt's last_run_at (20 min). The watermark advances only on an outcome that actually consumed from the ledger: a locked/unreachable/error run that advanced it would disable this trigger permanently. A periodic OS timer was rejected: it has no CLAUDE_PROJECT_DIR so it cannot find the right ledger, and it would fire mid-append. The drain is invoked with --hook, so it always exits 0 and the receipt carries the truth: a hook that reports failure at session close is a hook people disable.",
   "permissions": {
     "allow": [
-      "mcp__gortex__analyze",
-      "mcp__gortex__capabilities",
-      "mcp__gortex__change",
-      "mcp__gortex__explore",
-      "mcp__gortex__read",
-      "mcp__gortex__recall",
-      "mcp__gortex__relations",
-      "mcp__gortex__response",
-      "mcp__gortex__search",
-      "mcp__gortex__trace",
-      "mcp__gortex__workspace",
       "mcp__github__issue_read",
       "mcp__muninndb__muninn_recall",
       "mcp__muninndb__muninn_find_by_entity",
@@ -25,7 +14,23 @@
       "mcp__muninndb__muninn_remember",
       "mcp__muninndb__muninn_guide",
       "mcp__muninndb__muninn_evolve",
-      "mcp__muninndb__muninn_link"
+      "mcp__muninndb__muninn_link",
+      "Bash(codanna mcp:*)",
+      "Bash(codanna retrieve:*)",
+      "Bash(codanna index:*)",
+      "Bash(codanna init)",
+      "Bash(codanna dump:*)",
+      "Bash(rg:*)",
+      "Bash(sed -n:*)",
+      "mcp__codanna__analyze_impact",
+      "mcp__codanna__find_callers",
+      "mcp__codanna__find_symbol",
+      "mcp__codanna__get_calls",
+      "mcp__codanna__get_index_info",
+      "mcp__codanna__search_documents",
+      "mcp__codanna__search_symbols",
+      "mcp__codanna__semantic_search_docs",
+      "mcp__codanna__semantic_search_with_context"
     ]
   },
   "hooks": {
@@ -47,6 +52,33 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/drift-guard.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/codanna-reindex.ts\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/codanna-nudge.ts\""
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__codanna__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"${CLAUDE_PROJECT_DIR}/.claude/hooks/codanna-nudge.ts\""
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -61,15 +93,6 @@
       }
     ],
     "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/gortex-write-gate.mjs\""
-          }
-        ]
-      },
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
@@ -122,5 +145,19 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "codanna": {
+      "source": {
+        "source": "github",
+        "repo": "bartolli/codanna"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "codanna-toolset@codanna": true
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }
