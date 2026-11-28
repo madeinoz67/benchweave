@@ -12,6 +12,8 @@ Arms over ``.claude/settings.json`` and ``.claude/agents/*.md``:
 3. No agent reaches a memory write. A ``tools:`` list may carry the memory read tools
    only, and an agent that reads memory also names the writes it refuses in
    ``disallowedTools:``.
+4. No line of an agent's frontmatter ends with whitespace. YAML gives it no meaning, and
+   ``git diff --check`` reports it as an error in every diff that touches the line.
 
 Each arm has a tamper arm that feeds it the bad shape, so a green arm is a measured zero
 and not a scanner that cannot see.
@@ -27,6 +29,10 @@ What this test does NOT catch:
 - That a declared ``tools:`` list is the list a running session resolved. The frontmatter
   is the only evidence here.
 - The main session's own allow entries. The memory arms cover ``.claude/agents/*.md``.
+- Whitespace after an agent's frontmatter, or in any other file. Two trailing spaces are
+  a line break in Markdown prose, so arm 4 reads the frontmatter block only. On a branch
+  that does not touch the offending line, ``git diff --check`` against the base reads
+  clean whether or not the line is fixed; arm 4 is what reads the line itself.
 """
 
 from __future__ import annotations
@@ -41,7 +47,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_DIR = ROOT / ".claude"
 AGENTS_DIR = CLAUDE_DIR / "agents"
-SETTINGS = CLAUDE_DIR / "settings.json"
 
 # The per-user file is gitignored and carries one person's own rules, not the project's.
 _UNSCOPED = "settings.local.json"
@@ -94,6 +99,27 @@ def _frontmatter(text: str) -> dict[str, str]:
         if match is not None:
             fields[match[1]] = match[2].strip()
     return fields
+
+
+def _frontmatter_numbered(text: str) -> list[tuple[int, str]]:
+    """The lines inside the leading ``---`` block, as ``(1-based number, line)``.
+
+    An absent block, or one with no closing fence, reads as no lines.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return []
+    numbered: list[tuple[int, str]] = []
+    for number, line in enumerate(lines[1:], start=2):
+        if line.strip() == "---":
+            return numbered
+        numbered.append((number, line))
+    return []
+
+
+def _trailing_whitespace(text: str) -> list[int]:
+    """The numbers of the frontmatter lines that end with a space or a tab."""
+    return [number for number, line in _frontmatter_numbered(text) if line != line.rstrip()]
 
 
 def _block_list(text: str, key: str) -> list[str]:
@@ -379,3 +405,31 @@ def test_frontmatter_lists_read_every_shape_the_agents_use() -> None:
     assert _block_list(text, "skills") == ["x-ray", "graph"]
     assert _names(_frontmatter("---\nname: a\ndisallowedTools: \n---\n")["disallowedTools"]) == []
     assert _names("Read, Grep, Glob, Bash") == ["Read", "Grep", "Glob", "Bash"]
+
+
+# ---- arm 4: no frontmatter line ends with whitespace ---------------------------------
+
+
+def test_no_frontmatter_line_ends_with_whitespace() -> None:
+    offenders = [
+        f"{path.name}:{number}"
+        for path in _agent_files()
+        for number in _trailing_whitespace(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, (
+        "a frontmatter line ends with whitespace; YAML gives it no meaning and "
+        "`git diff --check` reports it as an error in every diff that touches the line "
+        f"(issue #664, finding 7): {offenders}"
+    )
+
+
+def test_tamper_trailing_whitespace_is_found_inside_the_block_and_not_after_it() -> None:
+    """Arm 4's detection power: a trailing space and a trailing tab are found inside the
+    frontmatter at their line numbers. The same in the body, and a file with no block, are
+    not this arm's."""
+    text = "---\nname: a\ntools: Read \ndisallowedTools:\tskills:\n  - x\n---\nbody \n"
+    assert _trailing_whitespace(text) == [3]
+    assert _trailing_whitespace("---\nname: a\ndisallowedTools:\t\n---\n") == [3]
+    assert _trailing_whitespace("---\nname: a\ntools: Read\n---\nbody \n") == []
+    assert _trailing_whitespace("no front matter \n") == []
+    assert _trailing_whitespace("---\nname: a\ntools: Read \n") == [], "no closing fence"
