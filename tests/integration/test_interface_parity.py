@@ -388,6 +388,35 @@ def _poll_terminal(client: httpx.Client, run_id: str) -> dict[str, Any]:
         time.sleep(0.2)
 
 
+def _live_generation(gw: SimpleNamespace, bench_id: str = BENCH) -> int:
+    """Read the bench's live generation over REST: ``bench_get`` →
+    ``data.generation``. This is the module's one reader for the generation
+    fences its pins present (#280): the read the retry-honesty pin
+    introduced, now in one place.
+
+    ``gateway`` is module-scoped, so whether an earlier test's apply has
+    advanced a bench depends on which tests ran before on this worker. A
+    literal is right only in the orders that leave the bench where the
+    literal assumes (the 2/2 shard flip on PR #277); a read is right in
+    every order — it is taken from this worker's own gateway at the point
+    of use. The fixture's own literals are construction, not pins: it seeds
+    each bench at generation 1 and fences its seeding calls against that.
+    The REST value is the bench ROW's copy: both production bump sites
+    (bootstrap, ``_dispatch_change``) refresh the row, so it equals the
+    canonical generations table every fence compares against.
+
+    Two arms keep a literal instead (#280). The ``conflict`` case of
+    ``test_failure_classes_match_on_both_transports``: its ``999`` makes
+    the arm see the generation fence, but the arm would stay green on the
+    binding request-id refusal behind it, so a read there changes nothing
+    the arm can see. ``test_change_apply_stored_generation_fence``: its
+    apply presents a generation that differs from the change record's, and
+    the arm asserts that refusal's message."""
+    resp = gw.client.get(f"/v1/benches/{bench_id}", headers=_bearer(ADMIN))
+    assert resp.status_code == 200, resp.text
+    return int(resp.json()["data"]["generation"])
+
+
 # --- MCP client (Task 8's frame pattern: session + SSE-aware post) ----------
 
 
@@ -739,7 +768,24 @@ def test_run_get_catalog_tier_observe_control_hierarchy(
 
 def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
     """§9 replay: the same request id + binding pin returns the ORIGINAL run
-    (no second enqueue), so both transports answer byte-identically."""
+    (no second enqueue), so both transports answer byte-identically.
+
+    Load-bearing (#280): the generation fence is READ live, once, for the
+    one logical request both transports fire. ``run_start`` fences the bench
+    generation BEFORE the §9 replay lookup, so the read decides this pin
+    only in an order that puts a change's apply to the bench before it.
+    Measured with the literal restored. Red under the generation-advanced
+    arm (a real apply before the body). Red under a flipped module order,
+    where the approver-token pin's successful apply runs before this pin:
+    4 of 4 serial runs and, sharded with a foreign module first, only the
+    splits that put that apply on this pin's worker (8 of 8 runs at -n 2,
+    1 of 13 at -n 4, 0 of 8 at -n auto). Green alone and in module order,
+    and green in 25 sharded runs that keep module order, where no split can
+    put that apply before this pin. With the read, every one of those
+    orders is green (8 of 8 in the flipped -n 2 shape), and reader
+    sabotage (live + 1) reds it. The red-then-green proof exists for the
+    advanced arm and the flipped order, and for no other order run."""
+    gen = _live_generation(gateway)
     status, rest_json = _rest(
         gateway,
         "post",
@@ -747,7 +793,7 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
         {
             "request_id": RUN_REQUEST,
             "binding_ref": BINDING_REF,
-            "expected_generation": 1,
+            "expected_generation": gen,
             "lease_id": None,
         },
         CONTROL,
@@ -762,7 +808,7 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
             "bench_id": BENCH,
             "request_id": RUN_REQUEST,
             "binding_ref": BINDING_REF,
-            "expected_generation": 1,
+            "expected_generation": gen,
             "lease_id": None,
         },
         CONTROL,
@@ -776,11 +822,22 @@ def test_lease_create_parity(gateway: SimpleNamespace) -> None:
     monotone fencing ``sequence`` differs (masked — the one mutating field).
     §6 (WP08 Task 5): one live manual lease per bench, so the REST lease is
     released before the MCP twin mints — the same §9 key then re-issues the
-    same lease id on the now-idle spare bench."""
+    same lease id on the now-idle spare bench.
+
+    Load-bearing under one order only (#280): the generation fence is READ
+    live for the spare bench, one read for both transports (neither a lease
+    nor its release moves the generation). Measured with the literal
+    restored: red under the generation-advanced arm alone (a real apply to
+    the spare bench before the body; 409 at the fence). Green alone, in
+    module order, in a flipped module order and in 5 sharded orders. No
+    test in this module applies a change to the spare bench, so no order of
+    its own tests produces that state. With the read, every one of those
+    orders is green, and reader sabotage (live + 1) reds it. The
+    red-then-green proof exists for that arm and for no other order run."""
     bench = "parity-create"
     body = {
         "request_id": "req-parity-lease-create",
-        "expected_generation": 1,
+        "expected_generation": _live_generation(gateway, bench),
         "duration_ms": 60000,
     }
     rest_status, rest_json = _rest(
@@ -1431,6 +1488,15 @@ def test_failure_classes_match_on_both_transports(
         body = {
             "request_id": "req-parity-conflict",
             "binding_ref": BINDING_REF,
+            # Stale on purpose (#280): the literal stays. With it, the 409
+            # this arm sees is the generation fence. ``run_start`` compares
+            # the presented generation before ``_assert_bench_acceptable``
+            # runs ("bench sim-bench is at generation 1, not 999"). The arm
+            # does not pin that fence on its own: its request id is not the
+            # one the binding document names, so the binding request-id
+            # refusal is a second 409 ``conflict`` behind the fence. Measured
+            # with a live read in place of the literal: still green, serving
+            # "binding document names request_id ...".
             "expected_generation": 999,
             "lease_id": None,
         }
@@ -1518,6 +1584,12 @@ TYPE_CONFUSION_CASES: dict[str, dict[str, Any]] = {
     # by the RED run): 500 internal_error (AttributeError on the confused
     # binding), 409 conflict (string expected_generation compared
     # unequal), or a 201 with garbage stored (change_submit target_ref).
+    #
+    # #280: the integer ``expected_generation`` values here are typed-valid
+    # FILLERS, not fences — every case is refused at seam validation, before
+    # any generation is read, so no order can flip them (7/7 green with the
+    # bench generation advanced). They stay literal; ``_live_generation``
+    # is for pins that present a fence the gateway compares against.
     "run_start_binding": {
         "rest": ("post", f"/v1/benches/{BENCH}/runs", {
             "request_id": "req-tc-run-start",
@@ -1612,6 +1684,11 @@ SCHEMA_VIOLATION_CASES: dict[str, dict[str, Any]] = {
     # Violations on plain string params pass fastmcp's signature coercion
     # and reach the seam on BOTH transports — full envelope parity here.
     # Pre-D8 behavior (RED run): not_found 404 on both.
+    #
+    # #280: the ``lease_create`` case's ``expected_generation`` is a
+    # typed-valid filler against a bench id that never resolves — refused at
+    # validation before any generation is read (3/3 green with the bench
+    # generation advanced). It stays literal; see TYPE_CONFUSION_CASES.
     "bench_get": {
         "rest": ("get", "/v1/benches/BAD_ID", None),
         "mcp": {"bench_id": "BAD_ID"},  # violates ^[a-z][a-z0-9_.-]*$
@@ -2110,7 +2187,21 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
     admits the optional ``approver_token`` the adapter forwards — the body
     WITH the token is seam-validated against the amended corpus (apply
     succeeds end-to-end); a corpus-literal body without it stays valid and
-    fails closed at approval verification."""
+    fails closed at approval verification.
+
+    Load-bearing under one order only (#280): each change reads the live
+    generation for its submission, its apply and its approval binding — the
+    successful apply is fenced against the bench's CURRENT generation.
+    Measured with the literal restored: red under the generation-advanced
+    arm alone (a real apply to the bench before the body; 409 at the
+    success leg). Green alone, in module order, in a flipped module order
+    and in 5 sharded orders. This pin's second apply is the only apply in
+    the module that advances the bench, so no order of its own tests puts
+    an apply before it. With the read, every one of those orders is green,
+    and reader sabotage (live + 1) reds it. The red-then-green proof exists
+    for that arm and for no other order run. The second read is fresh: the
+    pin assumes nothing about whether a refused apply moves the generation."""
+    gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2119,7 +2210,7 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
             "bench_id": BENCH,
             "kind": "trip_reset",
             "target_ref": TARGET_REF,
-            "expected_generation": 1,
+            "expected_generation": gen,
             "reason": "pin: fail closed without approver token",
         },
     )
@@ -2131,8 +2222,8 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
         headers=_bearer(ADMIN),
         json={
             "request_id": "req-pin-notoken-apply",
-            "expected_generation": 1,
-            "approval_ref": _store_approval(gateway.content, change_id, 1),
+            "expected_generation": gen,
+            "approval_ref": _store_approval(gateway.content, change_id, gen),
         },
     )
     assert denied.status_code == 403, denied.text
@@ -2141,6 +2232,7 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
     _, failed = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
     assert failed["data"]["state"] == "failed"
 
+    gen = _live_generation(gateway)
     ok = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2149,7 +2241,7 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
             "bench_id": BENCH,
             "kind": "trip_reset",
             "target_ref": TARGET_REF,
-            "expected_generation": 1,
+            "expected_generation": gen,
             "reason": "pin: apply with detached approver token",
         },
     )
@@ -2160,8 +2252,8 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
         headers=_bearer(ADMIN),
         json={
             "request_id": "req-pin-apply-ok-apply",
-            "expected_generation": 1,
-            "approval_ref": _store_approval(gateway.content, applied_change, 1),
+            "expected_generation": gen,
+            "approval_ref": _store_approval(gateway.content, applied_change, gen),
             "approver_token": APPROVER_TOKEN,
         },
     )
@@ -2172,7 +2264,11 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
 def test_change_apply_stored_generation_fence(gateway: SimpleNamespace) -> None:
     """Ledger item 5: right token, wrong stored generation — the change record
     was proposed at generation 2; apply presenting 3 (with a matching approval
-    binding) is a conflict and records ``failed``, not a silent apply."""
+    binding) is a conflict and records ``failed``, not a silent apply.
+
+    #280: both literals stay — a stale generation is the thing under test
+    here, and the stored fence fires before the live one, so the pin holds
+    in any order (green alone, and with the bench generation advanced)."""
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2215,10 +2311,7 @@ def test_change_apply_unknown_outcome_advertises_retry_never(
     The truthful value is ``never`` (contract §10: reconciliation, not
     re-entry) — and the pinned re-entry below proves the advertised
     conflict is real, which is exactly why same_request lied."""
-    gen = int(
-        gateway.client.get(f"/v1/benches/{BENCH}", headers=_bearer(ADMIN))
-        .json()["data"]["generation"]
-    )
+    gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2280,10 +2373,7 @@ def test_not_ready_configuration_activation_under_live_lease(
     Self-sufficient (order-independent under xdist sharding): the bench
     generation is READ live rather than assumed — an earlier test's apply may
     or may not have advanced it before this test runs on any worker."""
-    gen = int(
-        gateway.client.get(f"/v1/benches/{BENCH}", headers=_bearer(ADMIN))
-        .json()["data"]["generation"]
-    )
+    gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2321,7 +2411,18 @@ def test_approver_token_requires_gateway_admin_audience(
     """D7 twist on the D2 flow: an stg-audience admin token as
     ``approver_token`` fails closed 403 — approval authentication validates
     against the detached ``gateway-admin`` audience, so gateway scope alone
-    authorizes nothing; the change records ``failed``."""
+    authorizes nothing; the change records ``failed``.
+
+    Inert for the generation (#280): this pin goes red under neither arm.
+    Measured with its literal restored: green in all 11 orders run, the
+    generation-advanced arm included. Measured with ``_live_generation``
+    returning live + 1: green. ``change_apply`` authenticates the approver
+    BEFORE either generation fence, so the 403 is decided before any
+    generation is compared. The read stays for its inputs only and claims
+    no kill: the literal assumed an earlier test's apply had advanced the
+    bench, and the read binds the approval at the bench's actual generation
+    in every order."""
+    gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2330,7 +2431,7 @@ def test_approver_token_requires_gateway_admin_audience(
             "bench_id": BENCH,
             "kind": "trip_reset",
             "target_ref": TARGET_REF,
-            "expected_generation": 2,
+            "expected_generation": gen,
             "reason": "pin: approver token must be gateway-admin audience",
         },
     )
@@ -2341,8 +2442,8 @@ def test_approver_token_requires_gateway_admin_audience(
         headers=_bearer(ADMIN),
         json={
             "request_id": "req-pin-approver-audience-apply",
-            "expected_generation": 2,
-            "approval_ref": _store_approval(gateway.content, change_id, 2),
+            "expected_generation": gen,
+            "approval_ref": _store_approval(gateway.content, change_id, gen),
             "approver_token": ADMIN,  # stg audience + admin scope: not an approver
         },
     )

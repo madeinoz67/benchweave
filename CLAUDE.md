@@ -1,50 +1,68 @@
 @AGENTS.md
 
-<!-- gortex:communities:start -->
+<!-- Codanna section for CLAUDE.md — author: Stephen Eaton -->
 
-## MANDATORY: Use Gortex MCP tools instead of Read/Grep/Glob
+## Code navigation: Codanna
 
-Gortex is running as an MCP server. The machine-wide facade verbs — explore, read, search,
-relations, change, edit, refactor, trace — and the per-task contract around them load in
-the global instruction profile (`~/.gortex/instructions/active.md`) every session; that
-profile is the exploration contract and is not restated here. Hook posture is
-configurable; follow every Gortex hook instruction even when `Read` / `Grep` / `Glob` remain callable.
+This repo is indexed by Codanna (local symbol graph + semantic search).
+
+If the location of a symbol or the shape of a module is not already known, find it with
+Codanna before reading files or grepping. A file already named in the issue or the error
+is not a search: read it. A hook nudges once per session when a search starts with `rg` or `grep`
+before Codanna has been used, so the rule is not something to remember.
+
+### Which interface
+- **Main session:** use the `mcp__codanna__*` tools. The server runs `serve --watch` from the main checkout and stays current as files change.
+- **Subagents:** use the `codanna` CLI through Bash (the `x-ray` skill wraps it). The CLI reads the index in its current directory, so it stays correct inside worktrees.
+- **Whole-codebase shape** (module map, hubs, which modules talk to each other, history): use the `graph` skill.
+
+### Workflow
+1. **Rephrase first.** Search for what is meant, not the literal words (e.g. "the login stuff" → "authentication session token validation").
+2. **Locate:** semantic search with context, limit 5. Focus on results with score > 0.6. Use `find_symbol` for exact names and `search_symbols` for partial ones.
+3. **Read narrowly:** read only the returned line range (`sed -n 'A,Bp' file` or Read with offset/limit).
+4. **Expand:** follow 1–2 important relationships per result (`retrieve describe`, callers, calls). Run `analyze_impact` **before** changing any public symbol, signature, or shared function.
+5. **Docs:** `search_documents` for project docs and markdown.
+6. **Refine or fall back:** if the scores are weak, rephrase once. Use `rg` for exact strings, config keys, HTML/CSS/templates, and any language Codanna doesn't parse.
+
+CLI equivalents:
+- `codanna mcp semantic_search_with_context query:"..." limit:5 --json`
+- `codanna mcp find_symbol <Name> --json`
+- `codanna mcp find_callers <Name> --json`
+- `codanna mcp analyze_impact <Name> --json`
+- `codanna retrieve describe <Name|symbol_id:N>`
+- `codanna retrieve calls <Name>`
+
+Add `lang:<language>` to a search to narrow it by language.
 
 ### Calibration: the graph narrows scope, source confirms behavior
 
-The mandate above stands — but graph queries *narrow scope*, they do not *replace reading the implementation*. The graph tells you **where** the logic lives and **what** connects to it; the source tells you **how** it behaves. For the symbol you are about to change or depend on, read its full body — do not act on a one-line summary alone.
+Graph queries *narrow scope*; they do not *replace reading the implementation*. The graph
+tells you **where** the logic lives and **what** connects to it; the source tells you
+**how** it behaves. For the symbol you are about to change or depend on, read its full
+body — do not act on a one-line summary alone.
 
-Be especially deliberate with **behavior-critical code** — database migrations, retry / fallback / error-recovery paths, compatibility shims, concurrency-sensitive sections, and the tests that pin them. For these, read the real implementation; never pass `compress_bodies:true`, which elides exactly the branches that carry the risk. Reserve compressed bodies and graph summaries for breadth (surveying many symbols); use full source for the few you are about to commit to.
+Be especially deliberate with **behavior-critical code** — database migrations, retry /
+fallback / error-recovery paths, compatibility shims, concurrency-sensitive sections, and
+the tests that pin them. For these, read the real implementation. Reserve summaries for
+breadth (surveying many symbols); use full source for the few you are about to commit to.
 
-### Edit routing — which write path applies
+### Rules
+- Codanna results are navigation hints, not ground truth. Confirm against the file before editing.
+- Before renaming or changing a signature, list every caller in your plan.
+- If a Codanna command exits with code 7 (stale index), run `codanna index` in the current checkout and retry. Pass no path argument: a path rewrites the tracked `.codanna/settings.toml`.
+- Prefer `symbol_id:N` over names when available; it avoids ambiguity.
+- Guessing `pytest -k` filters is the anti-pattern this section replaces — `analyze_impact` names the affected symbols, and the §3 lanes remain the verification.
 
-One decision point, not a per-edit judgment call. The mandate binds the main
-session's own edits, not only dispatched agents. The card is wired for every
-clone: a tracked PreToolUse entry runs `gortex-write-gate.mjs` on
-Edit|Write|MultiEdit. Hosts without gortex or git fail open by design — the
-gate protects edit routing, not safety. A `disableAllHooks` setting (user or
-project-local) still silences every hook, this one included — the wiring is
-structural, not irrevocable.
+### Orca worktrees
+- In Orca, each agent is a full Claude Code session whose working directory is its own worktree. Orca's `scripts.setup` builds that worktree's Codanna index, and the `.mcp.json` server indexes the worktree, so `mcp__codanna__*` tools are correct there.
+- If a Codanna tool reports a missing or stale index (exit code 7) right after the worktree opens, setup may still be running: wait, or run `codanna index` once.
+- Never share `.codanna/` between worktrees (symlink or `sharedDirectories`).
 
-| Situation | Path |
-|---|---|
-| File indexed, primary checkout | `mcp__gortex__edit` — `change(operation:"impact")` before, `change(operation:"detect")` after; signatures also `verify` |
-| Linked worktree overlay | gortex single-file edit when freshness reports `exact: true` with `actual_view` naming the worktree; otherwise native Edit, and the bypass names the caveat. Worktree binding: `gortex repos reconcile` after `worktree add`; `gortex repos explain-view` diagnoses binding failures |
-| Branch-new / untracked file | native Write; visible to the graph after the next index pass |
-| Generated files (`preview_assets/`, `CHANGELOG_AUTO.md`, `docs/architecture/`, `wiki/`) | never hand-edited — regenerated |
-
-Every native bypass states which row covers it. Guessing `pytest -k` filters is
-the anti-pattern this table replaces — `change(operation:"tests")` names the files.
-
-### The gates that survive everything
-
-- `change(operation:"impact")` before an edit; a signature change also runs
-  `change(operation:"verify")` with the proposed signature.
-- `change(operation:"detect")` after edits — feed its symbol IDs to
-  `change(operation:"tests")`, `change(operation:"guards")`, and
-  `change(operation:"contract")`.
-- Verify with the project's real build/test — the §3 lanes below. A graph summary never
-  stands in for a run.
+### Subagents and worktrees
+- A subagent in `.claude/worktrees/*` must **not** use `mcp__codanna__*`. Those tools read the main checkout's index, which doesn't match the worktree's files.
+- Worktree subagents build their own index first (`codanna index` from the worktree root, no path argument), then use the CLI.
+- Never point the CLI at the main checkout from inside a worktree (`--config ../..`, `cd` to the repo root). Worktree isolation blocks it anyway.
+- Delegate read-only investigation to `codanna-explorer` and isolated edits to `codanna-implementer`.
 
 ## Findings that outlive the session
 
@@ -71,7 +89,6 @@ JSON
   `muninndb-benchweave` when approved; the ledger is the fallback that survives without it,
   and the drain delivers it.
 
-<!-- gortex:communities:end -->
 
 ---
 
