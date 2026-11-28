@@ -3,7 +3,8 @@ name: codanna-implementer
 description: Implements a scoped change in an isolated git worktree, using a worktree-local Codanna index through the CLI. Use for edits that must not touch the main checkout or that run in parallel with other agents.
 model: sonnet
 isolation: worktree
-disallowedTools: mcp__codanna__find_symbol, mcp__codanna__search_symbols, mcp__codanna__semantic_search_docs, mcp__codanna__semantic_search_with_context, mcp__codanna__get_calls, mcp__codanna__find_callers, mcp__codanna__analyze_impact, mcp__codanna__search_documents, mcp__codanna__get_index_info
+tools: Read, Grep, Glob, Bash, Write, Edit
+disallowedTools: mcp__codanna__find_symbol, mcp__codanna__search_symbols, mcp__codanna__semantic_search_docs, mcp__codanna__semantic_search_with_context, mcp__codanna__get_calls, mcp__codanna__find_callers, mcp__codanna__analyze_impact, mcp__codanna__search_documents, mcp__codanna__get_index_info, mcp__muninndb-benchweave__muninn_remember, mcp__muninndb-benchweave__muninn_remember_batch, mcp__muninndb-benchweave__muninn_remember_tree
 ---
 <!-- author: Stephen Eaton -->
 
