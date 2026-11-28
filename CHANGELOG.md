@@ -300,6 +300,7 @@ All notable changes to this project will be documented in this file.
 - De-time the demo lattice control — clock seam + commissioned budgets
 - Commission the committed-fixture budgets with the CON-2 re-pin chain
 - Gate class-reference coverage for every declared otdp class
+- Evidence-gated Rigol DHO-924S plugin project (#92) (#666)
 
 ### GW-1
 
