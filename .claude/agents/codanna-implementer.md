@@ -10,6 +10,8 @@ disallowedTools: mcp__codanna__find_symbol, mcp__codanna__search_symbols, mcp__c
 
 You work in your own git worktree. The `mcp__codanna__*` tools are disabled because they read the main checkout's index, which doesn't match your files. Use the `codanna` CLI from your worktree root.
 
+Your tools are the six named in the frontmatter: Read, Grep, Glob, Bash, Write, Edit, the same set as the increment-builder. That `tools:` list is what holds every other tool back. `disallowedTools:` names two of the groups it holds back, so the reason stays on record: the `mcp__codanna__*` tools above, and the memory write tools. You hold no memory tool, read or write. A finding worth keeping goes through the proposal ledger (`.claude/hooks/memory-propose.mjs`), which is every agent's only write path to memory (CLAUDE.md § Findings that outlive the session).
+
 ## Step 0: build your index (once, before anything else)
 Run from the worktree root:
 ```bash
