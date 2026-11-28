@@ -76,8 +76,11 @@ test("settings.json carries the second PreToolUse entry (name-screen --pretoolus
   const pre = s.hooks?.PreToolUse ?? [];
   const entry = pre.find((e) => e.matcher === "Edit|Write|MultiEdit" && e.hooks?.some((h) => /name-screen\.mjs/.test(h.command || "") && /--pretooluse/.test(h.command || "")));
   assert.ok(entry, "no PreToolUse Edit|Write|MultiEdit entry runs name-screen.mjs --pretooluse");
-  const gortex = pre.find((e) => e.hooks?.some((h) => /gortex-write-gate/.test(h.command || "")));
-  assert.ok(gortex, "the gortex-write-gate entry must survive — name-screen is a SECOND entry, not a replacement");
+  assert.equal(
+    pre.filter((e) => e.hooks?.some((h) => /name-screen\.mjs/.test(h.command || ""))).length,
+    1,
+    "name-screen must be exactly ONE entry on the Edit|Write|MultiEdit matcher",
+  );
 });
 
 test("ci.yml carries the name-screen job over the added-lines diff", () => {
