@@ -223,6 +223,7 @@ All notable changes to this project will be documented in this file.
 - Issue #513 poison terminal record design record
 - Fold the refute wave — correct the byte-identical claim, scope the audit surface
 - Re-issue the Q19 threat-catalogue entry in full (#662)
+- Accept Rigol DM858 integration ADR (#657)
 
 ### Features
 
