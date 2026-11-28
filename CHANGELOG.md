@@ -379,6 +379,12 @@ All notable changes to this project will be documented in this file.
 - Drop gortex from the project agents' tool lists
 - Retire the gortex write-gate's test and its wiring assertion
 - Bump axe-playwright-python from 0.1.8 to 0.1.9
+- Bump fastapi from 0.163.0 to 0.165.0
+- Bump ruff from 0.17.4 to 0.17.6
+- Bump actions/create-github-app-token from 3.3.0 to 3.4.0
+- Bump the codeql-action group with 2 updates
+- Bump fastmcp from 4.1.8 to 4.2.5
+- Bump astral-sh/setup-uv from 10.3.3 to 10.4.0
 
 ### Refactoring
 
