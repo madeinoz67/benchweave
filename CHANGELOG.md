@@ -90,6 +90,7 @@ All notable changes to this project will be documented in this file.
 - Register the guard test module in the win_core manifest
 - Fold the refute wave — reclaim on E1, correct the frame comment, disclose the setsid residual
 - #513 poison guard writes a recovery-shaped terminal record
+- Declare the model pin the review rubric requires
 
 ### Design
 
@@ -222,6 +223,9 @@ All notable changes to this project will be documented in this file.
 - Commit the demo-lattice de-timing design record
 - Issue #513 poison terminal record design record
 - Fold the refute wave — correct the byte-identical claim, scope the audit surface
+- Re-issue the Q19 threat-catalogue entry in full (#662)
+- Accept Rigol DM858 integration ADR (#657)
+- Drop the dangling gortex communities end marker
 
 ### Features
 
@@ -290,6 +294,7 @@ All notable changes to this project will be documented in this file.
 - The provider window gate, the seam pre-check, the provider_granted event
 - De-time the demo lattice control — clock seam + commissioned budgets
 - Commission the committed-fixture budgets with the CON-2 re-pin chain
+- Gate class-reference coverage for every declared otdp class
 
 ### GW-1
 
@@ -370,6 +375,10 @@ All notable changes to this project will be documented in this file.
 - Bump ruff from 0.17.3 to 0.17.4
 - Bump playwright from 1.64.1 to 1.65.0
 - Bump fastapi from 0.162.0 to 0.163.0
+- Replace gortex with Codanna code indexing
+- Drop gortex from the project agents' tool lists
+- Retire the gortex write-gate's test and its wiring assertion
+- Bump axe-playwright-python from 0.1.8 to 0.1.9
 
 ### Refactoring
 

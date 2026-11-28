@@ -194,7 +194,7 @@
     },
     "tests/contract/test_win_core_partition.py": {
       "core": 0,
-      "total": 11
+      "total": 14
     },
     "tests/contract/test_workflow_permissions.py": {
       "core": 0,
@@ -620,6 +620,10 @@
       "core": 0,
       "total": 36
     },
+    "tests/standards/test_coverage.py": {
+      "core": 0,
+      "total": 7
+    },
     "tests/standards/test_cross_constraints.py": {
       "core": 0,
       "total": 13
@@ -1023,6 +1027,10 @@
     "tests/unit/test_vendoring.py": {
       "core": 0,
       "total": 9
+    },
+    "tests/unit/test_windows_expected_failures.py": {
+      "core": 0,
+      "total": 21
     }
   },
   "schema": "benchweave.win-core-manifest/1",

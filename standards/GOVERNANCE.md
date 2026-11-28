@@ -293,6 +293,80 @@ yanked row is never called served (the #215 fold row 8 correction). Drift
 between the three surfaces is refused by name (`served_set_drift:`,
 `policy_mirror_drift:`).
 
+**G-6 (class-reference coverage, 2026-11-24):** every device class the ACTIVE
+`otdp` catalogue declares must have a class reference in the ACTIVE
+`plugin-ui-class-reference` family, or a row in the tracked sweep plan
+(`docs/internal/classref-sweep-plan.json`) naming the increment slot that will
+deliver it. Two shapes can lie about a class, and both refuse: a reference naming
+an undeclared profile is drift, and a coverage gap with neither a reference nor a
+row is a silence. Two shapes are deliberately ALLOWED, and both for the same
+reason — they are the roadmap state, not a claim about delivery:
+
+- a plan row naming a profile otdp has not declared yet. A slot may be named
+  before the class exists; the docs site renders such a row as "planned".
+- a slug that is BOTH referenced and planned. The plan is append-only by design:
+  the corpus wins for a slug both carry, so a class landing needs no edit to the
+  shared file and parallel sweep lanes never conflict on it. Four surfaces teach
+  that rule and all four are the evidence: `scripts/assemble_docs_site.py:756-758`
+  (the loader note), `scripts/assemble_docs_site.py:854-855` (the plan validator's
+  own docstring: "a landed slug may stay (append-only; the corpus wins)"),
+  `docs/adding-a-device-class.md:37` ("You do not edit the record") and
+  `docs/internal/drift-and-obligations.md:710-711`. The row is a historical plan entry,
+  not a live delivery claim. An arm refusing this pair was written, executed and
+  then removed for exactly that reason: it contradicted those four surfaces and
+  would have made every sweep increment edit one shared file. Enforced by
+`benchweave.standards.coverage`, composed into the `check` verb — so
+`make check-sdk-standards` and CI's `gates` job carry it, from tracked code
+alone; the register is tracked and not digest-pinned, and absence of
+the plan is a fail-closed refusal, never an empty plan. Its home is
+`docs/internal/` (taxonomy class 10), whose row reads "untracked by convention"
+while this file IS tracked — a pre-existing state, not one this ruling creates
+(the docs-site assembly already refuses its absence); recorded here rather than
+silently relied on, and a future taxonomy amendment may relocate it to
+`standards/classref-sweep-plan.json` beside the two manifests. That move is its own
+increment, not a fold: it carries the class-3 amendment to `docs/doc-taxonomy.md`,
+a root-scoped exemption in `repin` and the baseline corpus walks with its
+`tests/contract/test_baseline.py` arm (the `cross-constraints` exemption exists for
+exactly this reason), and every live path reference — the docs-site assembly, its
+contract test, the device-class guide, the drift obligations doc, this ruling,
+`coverage.py` and its tests. Deferred on that measured surface, not on convenience.
+
+**A delivered class can lose its reference without a red.** The removed arm
+existed so a standing row could not cover a later deletion of its reference. With
+the arm gone for the append-only reasons above, deleting a reference while its
+plan row stands leaves this gate GREEN: the row covers the gap, and the loss is
+visible only at that deletion's own review — which is a review-gated breaking
+corpus change (MINOR at least, copy-never-move, governor lane), not a silent one.
+Recorded so a green run is never read as "a class cannot lose its reference
+without a red".
+
+**What this does NOT catch, so a green run is
+never read as more than it is:** a descriptor may name any profile string
+(`otdp-device-descriptor.schema.json` `properties.profiles` is an unconstrained
+string array) and a `composed-member-declaration` may carry one vendor-profile
+row; neither is validated against the catalogue, so a class NAME can be claimed
+without existing. The catalogue stays the sole authority for what an `otdp.*`
+class IS: action ids are compiled from it, so an uncatalogued class yields no
+action surface, and `select_references` skips the unknown profile — the claim is
+metadata dishonesty, not a rendering lie. Closing that is an admission-surface
+increment, never a coverage rule; recorded here rather than left to a green
+run's silence. It is deliberately NOT a
+`cross-constraints.json` row: that table names one released version and what it
+requires of others and requires citable evidence per row, with a missing row
+standing as a deliberate honest negative (G-4) — a completeness assertion is a
+total map over a catalogue and carries no pairwise evidence. No bump is owed:
+this moves no corpus bytes (the rule is `src/` code, the register is taxonomy
+class 10, this paragraph is prose), the `dependency_policy` and `cross-constraints`
+precedent (G-3, G-4). A future batch that ADDS the missing references is one
+MINOR bump for the whole batch under "new normative file within an existing
+standard", taking the highest class it contains (#69). Design record:
+`.claude/deep-review/2026-11-24-classref-coverage-gate-design.md`.
+Reason the current gaps are unbuilt, recorded so the register is a commitment
+rather than a parking space: the class sweep delivers one class per increment
+with its own design record, mockup and fixture lattice, order L18
+`embedded_controller` → L19 `switch_matrix` → L20 `spectrum_analyser` → L21
+`vna` (`.claude/deep-review/2026-10-14-classref-logic-analyser-design.md`).
+
 **G-4 (cross-constraints, 2026-09-27, issue #216, parent #203 slice 2):**
 `standards/cross-constraints.json` is governance data in this same family — a
 committed side table beside the two manifests, moving no corpus rows and
@@ -377,6 +451,9 @@ that did not produce the bytes.
 4. SDK round-trip: `make check-sdk-standards` (manifest, bundle, lock and
    vendored tree agree)
 5. Compatibility matrix matches a fresh render (`matrix --check`)
+6. Class-reference coverage: every declared `otdp` device class is referenced or
+   planned, and no reference may name an undeclared profile (G-6). The plan is
+   append-only, so a slug being both referenced and planned is a valid state
 
 ## Direction
 

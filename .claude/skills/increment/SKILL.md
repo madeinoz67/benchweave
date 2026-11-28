@@ -58,10 +58,11 @@ or a public surface, run the loop.
    `origin/main` (`UV_PROJECT_ENVIRONMENT=venv`). For every behavior change: write the
    test, show it FAILS without the code, then implement. `tests/faults/` runs for
    anything touching `state/`, `control/`, or concurrency. Every worktree dispatch
-   brief carries the gortex fallback recipe: repo-prefixed MCP reads resolve to the
-   PRIMARY checkout, so branch-new files need absolute paths, and `git show`/`git diff`
-   is the evidence path when MCP reads stat-fail or serve stale primary bytes (two
-   #129 reviewers hit this independently). Every builder brief also carries the
+   brief carries the Codanna worktree recipe: `mcp__codanna__*` reads the PRIMARY
+   checkout's index, so the builder builds the worktree's own index (`codanna index`,
+   no path argument) and uses the CLI, and `git show`/`git diff` is the evidence path
+   when the index is stale or absent (two #129 reviewers hit the stale-primary-read
+   class of bug independently). Every builder brief also carries the
    standing gate line (#247, superseding retro 2026-09-25, R2): **per-commit FAST lane
    on EVERY commit, no test-only/docs-only exemption — bare `uv run ruff check .` +
    fresh-cache bare `uv run mypy` + focused touched-module pytest (+ `tests/faults/`

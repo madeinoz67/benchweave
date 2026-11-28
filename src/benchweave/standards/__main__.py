@@ -15,7 +15,11 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     export = sub.add_parser("export", help="write the SDK-facing bundle")
     export.add_argument("--out", type=Path, default=Path(".standards-bundle"))
-    sub.add_parser("check", help="verify the pinned SDK against a fresh export")
+    sub.add_parser(
+        "check",
+        help="verify the pinned SDK against a fresh export, and that every"
+        " declared otdp device class is referenced or planned",
+    )
     matrix = sub.add_parser("matrix", help="write or verify docs/compatibility-matrix.md")
     matrix.add_argument(
         "--check", action="store_true", help="compare the committed file; exit 1 when stale"
@@ -108,9 +112,13 @@ def main() -> int:
         return 0
     if arguments.command == "check":
         from .check import count_failures, run_check
+        from .coverage import check_class_coverage
 
         try:
-            lines = run_check(root)
+            # Composed, not folded into run_check: that function's contract is
+            # the SDK mirror, and its synthetic-root fixtures carry no otdp
+            # corpus (coverage.py's module docstring).
+            lines = run_check(root) + check_class_coverage(root)
         except ValueError as exc:
             print(f"standards check error: {exc}", file=sys.stderr)
             return 1
@@ -118,8 +126,10 @@ def main() -> int:
             print(line)
         if count_failures(lines):
             print(
+                # Neutral: a coverage failure is not fixed by a sync, so the
+                # summary names no single remediation.
                 f"{count_failures(lines)} standards check failure(s); "
-                "run make sync-sdk-standards",
+                "fix the named failures before merging",
                 file=sys.stderr,
             )
             return 1

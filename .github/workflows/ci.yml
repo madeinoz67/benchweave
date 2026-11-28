@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0 # train_window reads version-dir addition history (#97)
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -91,7 +91,7 @@ jobs:
           submodules: recursive
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -125,7 +125,7 @@ jobs:
           submodules: recursive
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -161,7 +161,7 @@ jobs:
           submodules: recursive
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -216,13 +216,14 @@ jobs:
     # scripts/ci/win_core_manifest.py --check in gates) makes every
     # selection change a visible diff; the complement rides the weekly
     # windows-full lane (R1) instead of every PR.
-    # EVIDENCE POSTURE (unchanged): continue-on-error on the test step
-    # only — a test red does not block merges (merge-verified.sh reads
-    # the job conclusion; its zero-red rollup rule is unchanged) and is
-    # carried instead by the warning annotation, the job summary, and the
-    # junitxml artifact. Setup failures have NO continue-on-error: a
-    # broken lane blocks like any broken CI. Graduation (slice 2) deletes
-    # one line.
+    # EVIDENCE POSTURE: continue-on-error on the pytest step only — a
+    # LISTED failing id does not block merges (merge-verified.sh reads the
+    # job conclusion; its zero-red rollup rule is unchanged) and is carried
+    # by the warning annotation, the job summary, and the junitxml artifact.
+    # An UNLISTED failing id, or a healed strict row, reds the comparison
+    # step below (#457's baseline: the lane sees new breakage). Setup
+    # failures have NO continue-on-error: a broken lane blocks like any
+    # broken CI. Graduation (slice 2) deletes one line.
     # TIMEOUT: 20m (R5, issue #471 — the core subset's measured expected
     # wall is ~4-5 min; 4x headroom. The old 45m covered the full
     # selection; the standing retro row about splitting lifecycle/diagnose
@@ -242,7 +243,7 @@ jobs:
           fetch-depth: 0 # train_window reads version-dir history (#97)
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -278,6 +279,20 @@ jobs:
           uv run pytest -q -n auto -m wincore
           --junitxml=windows-evidence.xml
 
+      - name: "Expected-failures baseline comparison (issue 457)"
+        # The strict half over the lane's own junit: a failing id NOT in
+        # tests/windows_expected_failures.json (new Windows breakage) or a
+        # strict row that ran and passed (healing) REDS HERE. Deliberately
+        # NOT continue-on-error — this is the hole #457 names closed; the
+        # pytest step above keeps its evidence-only forgiveness, and the
+        # annotation/summary/artifact surfaces still carry the red as data.
+        # Exit 2 (unreadable junit/manifest, zero collected testcases)
+        # blocks like any broken CI — a comparison that cannot read its
+        # inputs must never read as green.
+        run: >-
+          uv run python scripts/ci/windows_expected_failures.py
+          --junit windows-evidence.xml --lane windows
+
       - name: Evidence summary
         if: always()
         run: |
@@ -295,7 +310,7 @@ jobs:
                    f"- tests {counts['tests']} · failures {counts['failures']} "
                    f"· errors {counts['errors']} · skipped {counts['skipped']}"]
           if failed:
-              lines.append("- failing ids (evidence for #207 — non-blocking by design, slice 1):")
+              lines.append("- failing ids (evidence for #207 — listed ids non-blocking by design; unlisted ids red the comparison step, #457):")
               lines += [f"  - `{n}`" for n in failed]
               print(f"::warning::windows evidence lane: {len(failed)} failing id(s) — "
                     f"see summary; census discipline: record on #207")
@@ -317,9 +332,11 @@ jobs:
     # so the ~3,861-test complement (gates 4,075 − core 214, at the fold tip)
     # keeps a reproduction surface and the
     # #207 census's whole-run comparability survives the scoping. Same
-    # evidence posture: continue-on-error on the test step only, junitxml
-    # artifact, failing-id summary; setup failures block; the artifact
-    # name differs so both lanes' evidence never collides.
+    # evidence posture plus the same #457 expected-failures comparison:
+    # continue-on-error on the test step only, junitxml artifact,
+    # failing-id summary, and the strict baseline step over the weekly
+    # artifact; setup failures block; the artifact name differs so both
+    # lanes' evidence never collides.
     # TIMEOUT: 45m — the full selection's own measured wall is ~18-19 min.
     if: github.event_name == 'schedule'
     runs-on: windows-latest
@@ -336,7 +353,7 @@ jobs:
           fetch-depth: 0 # train_window reads version-dir history (#97)
 
       - name: Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           python-version: "3.13"
 
@@ -365,6 +382,15 @@ jobs:
           uv run pytest -q -n auto -m "not timing and not browser"
           --junitxml=windows-evidence-full.xml
 
+      - name: "Expected-failures baseline comparison (issue 457)"
+        # Same strict comparison over the weekly artifact, same manifest —
+        # rows the full selection does not collect are inert by design (the
+        # per-PR core lane judges only the ids it ran). NOT
+        # continue-on-error, for the same reason as the windows job.
+        run: >-
+          uv run python scripts/ci/windows_expected_failures.py
+          --junit windows-evidence-full.xml --lane windows-full
+
       - name: Evidence summary
         if: always()
         run: |
@@ -381,7 +407,7 @@ jobs:
                    f"- tests {counts['tests']} · failures {counts['failures']} "
                    f"· errors {counts['errors']} · skipped {counts['skipped']}"]
           if failed:
-              lines.append("- failing ids (evidence for #207 — non-blocking by design):")
+              lines.append("- failing ids (evidence for #207 — listed ids non-blocking by design; unlisted ids red the comparison step, #457):")
               lines += [f"  - `{n}`" for n in failed]
               print(f"::warning::windows-full lane: {len(failed)} failing id(s) — "
                     f"see summary; census discipline: record on #207")
