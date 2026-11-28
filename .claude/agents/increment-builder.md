@@ -8,7 +8,7 @@ description: >-
   deviation from the design comes back with evidence.
 model: opus
 tools: Read, Grep, Glob, Bash, Write, Edit
-disallowedTools: 
+disallowedTools:
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
