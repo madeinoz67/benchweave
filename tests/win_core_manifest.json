@@ -1027,6 +1027,10 @@
     "tests/unit/test_vendoring.py": {
       "core": 0,
       "total": 9
+    },
+    "tests/unit/test_windows_expected_failures.py": {
+      "core": 0,
+      "total": 18
     }
   },
   "schema": "benchweave.win-core-manifest/1",

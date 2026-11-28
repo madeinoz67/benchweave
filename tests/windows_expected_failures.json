@@ -1,0 +1,254 @@
+{
+  "census": {
+    "note": "rows are the union of these runs' junit failing ids; every reason is grounded in that run's failure text (issue #457; census home #207)",
+    "windows": 45557882139,
+    "windows-full": 45100708153
+  },
+  "rows": {
+    "tests/cli/test_atrest.py::test_credential_is_born_private_under_a_permissive_directory": {
+      "kind": "strict",
+      "reason": "Class 1 platform truth: permissive-directory ACL inheritance leaves four access entries on the born credential; the assert wants the single owner entry POSIX mode bits give."
+    },
+    "tests/cli/test_atrest.py::test_setup_creates_layout_migrations_and_0600_credential_file": {
+      "kind": "strict",
+      "reason": "Class 1 platform truth: the born Windows ACL on the credential file carries multiple access entries (OWNER RIGHTS, Administrators, SYSTEM, runner user) where the POSIX-shaped assert wants exactly one owner entry (0600 semantics)."
+    },
+    "tests/cli/test_diagnose.py::test_w2_env_file_stat_race_fails_the_row_and_triage_continues": {
+      "kind": "strict",
+      "reason": "Class 1 platform truth: the monkeypatched Path.stat race stub never fires on Windows (the owner-only check reaches the file through the ACL path), so doctor exits 0 all-pass instead of emitting the expected FAIL row."
+    },
+    "tests/cli/test_diagnose.py::test_x4_journal_destination_pins_the_fixed_argv_and_degrades": {
+      "kind": "strict",
+      "reason": "Class 1 platform truth: the journalctl stub path renders with backslashes on Windows, so the fixed-argv pin compares a POSIX-shaped path and refuses."
+    },
+    "tests/cli/test_lifecycle.py::test_g12_foreign_request_signal_path_is_bare_not_adoptive": {
+      "kind": "strict",
+      "reason": "Class 1/2: the signal-triggered decision records an adopted (status-carrying) decision on Windows instead of the bare shape \u2014 console-event signal delivery reaches a different decision path."
+    },
+    "tests/cli/test_lifecycle.py::test_pidfile_roundtrip_and_removal": {
+      "kind": "strict",
+      "reason": "Class 1 platform truth: the file is born 0o666 on Windows (st_mode 33206), where the assert wants POSIX 0o600 mode bits."
+    },
+    "tests/cli/test_lifecycle.py::test_s1twin_start_clears_unconsumed_stale_requests": {
+      "kind": "strict",
+      "reason": "Class 1/2 (timing-shaped): the detached spawn's readiness wait times out on the Windows runner ('no readiness within 30s'); unresolved whether spawn shape or pacing \u2014 row call: strict until weekly data shows flapping."
+    },
+    "tests/cli/test_lifecycle.py::test_start_spawns_detached_and_reports_readiness": {
+      "kind": "strict",
+      "reason": "Class 1/2 (timing-shaped): the detached spawn's readiness wait times out on the Windows runner ('no readiness within 30s'); unresolved whether spawn shape or pacing \u2014 row call: strict until weekly data shows flapping."
+    },
+    "tests/contract/test_registry_fixtures.py::test_builder_is_deterministic": {
+      "kind": "strict",
+      "reason": "Fixture determinism: built manifest bytes differ on Windows \u2014 platform line endings in fixture-written content shift the planted digests (LF-vs-CRLF family, the #237 repin-LF line)."
+    },
+    "tests/contract/test_win_core_partition.py::test_committed_manifest_is_check_green": {
+      "kind": "strict",
+      "reason": "Nested pytest collection fails on Windows: the anyio pytest11 plugin errors while loading, so the partition contract's collect legs cannot run on the Windows runner."
+    },
+    "tests/contract/test_win_core_partition.py::test_spaced_filename_collect_row_refuses_fail_closed": {
+      "kind": "strict",
+      "reason": "Nested pytest collection fails on Windows: the anyio pytest11 plugin errors while loading, so the partition contract's collect legs cannot run on the Windows runner."
+    },
+    "tests/contract/test_win_core_partition.py::test_teeth_added_fake_w1_map_row_refuses": {
+      "kind": "strict",
+      "reason": "Nested pytest collection fails on Windows: the anyio pytest11 plugin errors while loading, so the partition contract's collect legs cannot run on the Windows runner."
+    },
+    "tests/contract/test_win_core_partition.py::test_wincore_subset_of_gates_selection_and_disjoint_from_lanes": {
+      "kind": "strict",
+      "reason": "Nested pytest collection fails on Windows: the anyio pytest11 plugin errors while loading, so the partition contract's collect legs cannot run on the Windows runner."
+    },
+    "tests/faults/test_disposition_faults.py::test_ar5a_kill_mid_phase_a_leaves_store_untouched_whole_objects_only": {
+      "kind": "non-strict",
+      "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection on Windows runners; this family's ids drift between runs (Oct census carried test_kill_before_commit, the Nov 25 one test_kill_after_commit)."
+    },
+    "tests/faults/test_disposition_faults.py::test_ar5b_kill_inside_phase_b_rolls_back_store_keeps_destination": {
+      "kind": "non-strict",
+      "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection on Windows runners; this family's ids drift between runs (Oct census carried test_kill_before_commit, the Nov 25 one test_kill_after_commit)."
+    },
+    "tests/faults/test_disposition_faults.py::test_kill_mid_disposition_leaves_neither_audit_nor_deletion": {
+      "kind": "non-strict",
+      "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection on Windows runners; this family's ids drift between runs (Oct census carried test_kill_before_commit, the Nov 25 one test_kill_after_commit)."
+    },
+    "tests/faults/test_lifecycle_faults.py::test_pickup_gate_stops_dequeue_and_lets_the_active_job_finish": {
+      "kind": "strict",
+      "reason": "Teardown error, not the assertion: state.sqlite is still held when TemporaryDirectory cleanup runs (WinError 32). Failed both Nov 2026 runs, passed Oct \u2014 row call: strict, revisit if it flaps."
+    },
+    "tests/faults/test_recovery_sweep_faults.py::test_sweep_over_unreadable_then_repaired_corpus_recovers_on_second_boot": {
+      "kind": "strict",
+      "reason": "The unreadable-corpus fixture chmods 0o000, which on Windows only clears the write bit \u2014 the corpus stays readable and the first sweep recovers immediately instead of deferring."
+    },
+    "tests/faults/test_state_recovery.py::test_kill_after_commit_state_survives": {
+      "kind": "non-strict",
+      "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection \u2014 this exact id failed the Nov 25 wincore run and PASSED the Nov 23 full run two days earlier; the intermittence is observed, not assumed."
+    },
+    "tests/integration/test_run_activation.py::test_f5_measurement_seams_tick_times_and_saturated_polls": {
+      "kind": "strict",
+      "reason": "Timing-shaped: 'no events landed in the saturated window' \u2014 failed both observed full-lane runs (Oct 2 and Nov 23); row call: strict until weekly data shows flapping."
+    },
+    "tests/standards/test_dev_pins.py::test_an_added_head_file_trips_drift": {
+      "kind": "strict",
+      "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
+    },
+    "tests/standards/test_dev_pins.py::test_check_lane_refuses_a_moved_dev_head_naming_both_digests": {
+      "kind": "strict",
+      "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
+    },
+    "tests/standards/test_dev_pins.py::test_d1_wheel_posture_never_resolves_the_released_row": {
+      "kind": "strict",
+      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
+    },
+    "tests/standards/test_dev_pins.py::test_d1_wheel_posture_refuses_by_name_never_falling_back": {
+      "kind": "strict",
+      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
+    },
+    "tests/standards/test_dev_pins.py::test_d2_pre_edit_lock_validates_then_the_edit_refuses_naming_the_digest": {
+      "kind": "strict",
+      "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
+    },
+    "tests/standards/test_dev_pins.py::test_d2_repinning_at_the_moved_sha_heals_the_drift": {
+      "kind": "strict",
+      "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
+    },
+    "tests/standards/test_dev_pins.py::test_low5_upgrade_lock_runs_the_dev_head_state_check": {
+      "kind": "strict",
+      "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
+    },
+    "tests/standards/test_promotion.py::test_a_pending_record_without_a_successor_only_warns": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_d3_pending_record_with_a_successor_refuses": {
+      "kind": "strict",
+      "reason": "The spurious backslash-path sweep refusal fires before the expected refusal text, so the regex/name assert misses (same separator-sensitive sweep family as #237/#238; named follow-up)."
+    },
+    "tests/standards/test_promotion.py::test_d3_planted_non_version_edit_refuses_sweep_violation": {
+      "kind": "strict",
+      "reason": "The spurious backslash-path sweep refusal fires before the expected refusal text, so the regex/name assert misses (same separator-sensitive sweep family as #237/#238; named follow-up)."
+    },
+    "tests/standards/test_promotion.py::test_d4_the_dev_edit_sha_is_unreachable_from_main_and_still_passes": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_digest_line_deletion_refuses": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_intra_line_digest_swap_refuses": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_key_rename_on_a_digest_line_refuses": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_real_to_real_digest_swap_refuses": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_reordered_digest_swap_refuses": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_m1_semantic_edit_on_a_token_bearing_line_refuses": {
+      "kind": "strict",
+      "reason": "The spurious backslash-path sweep refusal fires before the expected refusal text, so the regex/name assert misses (same separator-sensitive sweep family as #237/#238; named follow-up)."
+    },
+    "tests/standards/test_promotion.py::test_m2_on_main_head_with_honest_record_stays_green": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_the_founded_real_tree_validates": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_promotion.py::test_the_honest_record_passes_all_gates": {
+      "kind": "strict",
+      "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
+    },
+    "tests/standards/test_why.py::test_m2_the_dev_refusal_propagates_verbatim": {
+      "kind": "strict",
+      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
+    },
+    "tests/standards/test_zero_literal_gate.py::TestDocsRatchet::test_a_planted_prose_literal_fails_the_ratchet": {
+      "kind": "strict",
+      "reason": "The child scan's captured stdout is empty on Windows \u2014 the output carries bytes the utf-8/charmap decode chokes on, so the expected refusal text never reaches the assert."
+    },
+    "tests/standards/test_zero_literal_gate.py::TestDocsRatchet::test_a_subtree_doc_is_inside_the_ratchet": {
+      "kind": "strict",
+      "reason": "The child scan's captured stdout is empty on Windows \u2014 the output carries bytes the utf-8/charmap decode chokes on, so the expected refusal text never reaches the assert."
+    },
+    "tests/standards/test_zero_literal_gate.py::TestDocsRatchet::test_refresh_is_an_explicit_flag_with_a_reviewable_diff": {
+      "kind": "strict",
+      "reason": "The refresh leg crashes scanning the scratch repo \u2014 a charmap-encoded write is read as utf-8 and the decode refuses; the child exits nonzero before the reviewable diff exists."
+    },
+    "tests/standards/test_zero_literal_gate.py::TestRegisterTeeth::test_a_plant_inside_a_registered_file_fails_via_expected_sites": {
+      "kind": "strict",
+      "reason": "The child scan dies on a charmap encode error (the arrow glyph cannot encode through the console codepage); the expected text never reaches the assert."
+    },
+    "tests/unit/test_assemble_run_guard.py::test_clean_exit_child_pays_no_grace_and_honors_the_real_code": {
+      "kind": "strict",
+      "reason": "Explicit POSIX-only surface: the mechanism under test refuses on win32 by design ('done_marker reclamation is unsupported on win32')."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_black_box_current_gitlink_exits_zero": {
+      "kind": "strict",
+      "reason": "Fixture .gitmodules written with CRLF on Windows; git config parsing refuses the file ('fatal: bad config line') and the gate reads INDETERMINATE (fail-closed) instead of the fixture's verdict."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_black_box_pin_without_the_mount_reads_drift": {
+      "kind": "strict",
+      "reason": "CRLF-broken .gitmodules config parse leaves the pin row unreadable \u2014 the gate reports pin_absent (fail-closed) instead of the fixture's declared state."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_black_box_sha_pin_declared_train_green": {
+      "kind": "strict",
+      "reason": "Fixture .gitmodules written with CRLF on Windows; git config parsing refuses the file ('fatal: bad config line') and the gate reads INDETERMINATE (fail-closed) instead of the fixture's verdict."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_black_box_trailing_pin_warns": {
+      "kind": "strict",
+      "reason": "CRLF-broken .gitmodules config parse leaves the pin row unreadable \u2014 the gate reports pin_absent (fail-closed) instead of the fixture's declared state."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_gitmodules_url_is_the_configured_remote": {
+      "kind": "strict",
+      "reason": "Fixture .gitmodules written with CRLF on Windows; git config parsing refuses the file ('fatal: bad config line') and the gate reads INDETERMINATE (fail-closed) instead of the fixture's verdict."
+    },
+    "tests/unit/test_check_sdk_submodule_drift.py::test_working_tree_pin_edit_cannot_green_a_committed_red_repo": {
+      "kind": "strict",
+      "reason": "CRLF-broken .gitmodules config parse leaves the pin row unreadable \u2014 the gate reports pin_absent (fail-closed) instead of the fixture's declared state."
+    },
+    "tests/unit/test_gate_wrapper.py::test_mypy_pass_path_reads_pass_on_a_clean_tree": {
+      "kind": "strict",
+      "reason": "The wrapped mypy gate fails on the Windows runner layout: VIRTUAL_ENV '.venv' does not match the project environment path 'venv'."
+    },
+    "tests/unit/test_gate_wrapper.py::test_piped_summary_cannot_false_green_a_failing_gate": {
+      "kind": "strict",
+      "reason": "WinError 2: the wrapped gate executable/path is absent on Windows."
+    },
+    "tests/unit/test_lane_park.py::test_arm_refuses_rearm_while_bound": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_check_active_without_ack": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_enforce_names_the_next_actions": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_t1_deaf_writer_committing_after_arm_is_active": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_t2_ack_and_no_commits_is_quiescent": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_t3_fold_removes_worktree_and_preserves_ref": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    },
+    "tests/unit/test_lane_park.py::test_t4_fold_succeeds_with_mid_write_partial_file": {
+      "kind": "strict",
+      "reason": "scripts/lane_park.sh under Windows bash exits 1 with UTF-16-encoded output \u2014 the lane-park shell mechanism is POSIX-shaped."
+    }
+  },
+  "schema": "benchweave.windows-expected-failures/1"
+}

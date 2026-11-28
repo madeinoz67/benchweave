@@ -148,11 +148,24 @@ Change propagation, end to end:
   windows-latest as an evidence lane — W1 platform-branching units, W2
   platform-sensitive semantics, W3 the digest canary; the selection is
   ratcheted by `tests/win_core_manifest.json`, checked by a contract test
-  in the default run. The evidence posture is unchanged: a test red is
-  carried by the warning annotation, the job summary and the junitxml
-  artifact. It does not block merges. Setup reds block. A weekly
-  **windows-full** job runs the full gates selection on a schedule (R1)
-  so the complement keeps Windows evidence. A **systemd**
+  in the default run. The evidence posture is unchanged for LISTED ids: a
+  known failing id is carried by the warning annotation, the job summary
+  and the junitxml artifact, and does not block merges. Setup reds block.
+  On top of that, the **expected-failures baseline** (issue #457) makes
+  the lane strict where it matters: `scripts/ci/windows_expected_failures.py`
+  compares each run's junit against the reviewed manifest
+  `tests/windows_expected_failures.json` and REDS the job on an unlisted
+  failing id (new Windows breakage) or a `strict` row that ran and passed
+  (healing). Manifest maintenance: when the comparison reds, fix the
+  breakage or add the reviewed row (id, `strict`/`non-strict` kind, a
+  one-line reason citing the census run) in the same change; when a strict
+  row heals, remove or update it in the same change. The kill-family
+  intermittents (sqlite `disk I/O error`) are `non-strict` rows — failing
+  or passing is data either way until ~50 executions exist (PR #343's
+  doctrine). A weekly **windows-full** job runs the full gates selection
+  on a schedule (R1) so the complement keeps Windows evidence, under the
+  same comparison over its own artifact (rows its selection does not
+  collect are inert by design). A **systemd**
   template-verification job runs on Linux. The former **ui** Node job was deleted at the G1e cutover with
   the React renderer it gated.
 - **Device plugins** checks independent plugin projects per manufacturer
