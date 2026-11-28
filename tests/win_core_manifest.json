@@ -80,6 +80,14 @@
       "core": 0,
       "total": 19
     },
+    "tests/contract/test_claude_config_hygiene.py": {
+      "core": 0,
+      "total": 37
+    },
+    "tests/contract/test_codanna_index_config.py": {
+      "core": 0,
+      "total": 17
+    },
     "tests/contract/test_decoder_declarations.py": {
       "core": 0,
       "total": 15
@@ -163,6 +171,10 @@
     "tests/contract/test_registry_unsigned.py": {
       "core": 0,
       "total": 10
+    },
+    "tests/contract/test_retired_tool_references.py": {
+      "core": 0,
+      "total": 9
     },
     "tests/contract/test_sign_release.py": {
       "core": 0,
