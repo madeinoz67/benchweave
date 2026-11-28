@@ -378,6 +378,7 @@ All notable changes to this project will be documented in this file.
 - Replace gortex with Codanna code indexing
 - Drop gortex from the project agents' tool lists
 - Retire the gortex write-gate's test and its wiring assertion
+- Bump axe-playwright-python from 0.1.8 to 0.1.9
 
 ### Refactoring
 
