@@ -389,10 +389,10 @@ def _poll_terminal(client: httpx.Client, run_id: str) -> dict[str, Any]:
 
 
 def _live_generation(gw: SimpleNamespace, bench_id: str = BENCH) -> int:
-    """The bench's live generation, read over REST (``bench_get`` →
-    ``data.generation``): the module's one reader for the generation fences
-    its pins present (#280 — the retry-honesty pin's own read, in one
-    place).
+    """Read the bench's live generation over REST: ``bench_get`` →
+    ``data.generation``. This is the module's one reader for the generation
+    fences its pins present (#280): the read the retry-honesty pin
+    introduced, now in one place.
 
     ``gateway`` is module-scoped, so whether an earlier test's apply has
     advanced a bench depends on which tests ran before on this worker. A
