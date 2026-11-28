@@ -390,18 +390,20 @@ def _poll_terminal(client: httpx.Client, run_id: str) -> dict[str, Any]:
 
 def _live_generation(gw: SimpleNamespace, bench_id: str = BENCH) -> int:
     """The bench's live generation, read over REST (``bench_get`` →
-    ``data.generation``): the module's one reader for every
-    ``expected_generation`` it presents as a fence (#280 — the
-    retry-honesty pin's own read, in one place).
+    ``data.generation``): the module's one reader for the generation fences
+    its pins present (#280 — the retry-honesty pin's own read, in one
+    place).
 
     ``gateway`` is module-scoped, so whether an earlier test's apply has
     advanced a bench depends on which tests ran before on this worker. A
     literal is right only in the orders that leave the bench where the
     literal assumes (the 2/2 shard flip on PR #277); a read is right in
     every order — it is taken from this worker's own gateway at the point
-    of use. The REST value is the bench ROW's copy: both production bump
-    sites (bootstrap, ``_dispatch_change``) refresh the row, so it equals
-    the canonical generations table every fence compares against.
+    of use. The fixture's own literals are construction, not pins: it seeds
+    each bench at generation 1 and fences its seeding calls against that.
+    The REST value is the bench ROW's copy: both production bump sites
+    (bootstrap, ``_dispatch_change``) refresh the row, so it equals the
+    canonical generations table every fence compares against.
 
     Not for the deliberately stale arms, where ``conflict`` is the thing
     under test and the literal stays: the ``conflict`` case of
