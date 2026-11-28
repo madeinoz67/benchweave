@@ -71,8 +71,17 @@ SCOPES (#221 §1.3):
   (``scripts/standards/docs-literal-baseline.json``) in EITHER direction —
   growth AND shrinkage refuse; only an explicit ``--refresh-docs-baseline``
   (whose diff is the review surface) moves the bound, and the scanned-file
-  census is checked in-gate the same way. The zero end-state for prose
-  rides the render-from-the-lock work D4/18(m) already own (deferral Z2).
+  census is checked in-gate the same way. The census is pinned TWICE
+  (issue #670): by its count and by the snapshot's ``file_set_sha256``, a
+  sha256 over the SORTED names of the files the scan counted — names only,
+  never contents, because a content digest would conflict every document
+  edit with every other. The count alone let two branches that each added
+  a different file merge with no conflict (both wrote the same number, and
+  the ``files`` map lists only documents that carry a literal), so git now
+  stops on that one line; the counter recomputes the digest from its own
+  scan on every run and refuses a mismatch or an absent field. The zero
+  end-state for prose rides the render-from-the-lock work D4/18(m) already
+  own (deferral Z2).
 - ``scripts`` (issue #269 §2): every ``*.py`` under ``scripts/`` with the
   environment filter applied — EXCLUDING the counter ITSELF by the named
   constant below (the register's ``expected_values`` tuples ARE the
@@ -152,6 +161,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import re
 import sys
@@ -477,6 +487,19 @@ PATTERN_DOCS = re.compile(r"(?<![\w.])(?:[vV])?\d+\.\d+\.\d+(?:-(?:dev|rc|alpha|
 DOCS_EXCLUDED_DIRS = ("docs/internal", "docs/implementation-planning", "docs/superpowers")
 DOCS_EXCLUDED_FILES = ("docs/compatibility-matrix.md",)
 DOCS_SNAPSHOT = Path(__file__).resolve().parent / "docs-literal-baseline.json"
+# The snapshot's file-set digest field (issue #670): sha256 over the sorted
+# names of EVERY file the docs scan counted — the set whose size file_count
+# is. Names only and never contents: a content digest would conflict every
+# document edit with every other. The count alone could not make git refuse
+# a colliding merge — two branches that each add one file write the SAME
+# number, and the ``files`` map lists only the documents that carry a
+# literal, so a plain new document moves nothing git can see. One line, two
+# values: a branch that changes the file set writes a value no other such
+# branch writes, and the merge stops on it. The counter recomputes the
+# digest from its own scan on every run. A mismatch refuses, and so does an
+# absent field: the count skips when absent for the sake of hand-made
+# snapshots, but a snapshot without its digest IS an un-regenerated baseline.
+DOCS_DIGEST_FIELD = "file_set_sha256"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SDK_ROOT = REPO_ROOT / "packages" / "sdk"
@@ -772,15 +795,19 @@ def _docs_files() -> list[Path]:
     return kept
 
 
-def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], int]:
+def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], int, list[str]]:
     """Every executable literal site in one scope, sorted for reproducibility.
 
-    Returns (sites, scanned_file_count); the census rides the same walk so
-    silent scope shrinkage is testable (#221 design risk 4).
+    Returns (sites, scanned_file_count, scanned_file_names); the census and
+    the names it counts ride the same walk, so silent scope shrinkage is
+    testable (#221 design risk 4) and the docs snapshot's file-set digest is
+    taken over exactly the files the census counts — the generator and the
+    verifier cannot disagree about what was counted (issue #670).
     """
     scan_root, display_root, pattern = scope_tree(scope)
     sites: list[dict[str, Any]] = []
     scanned = 0
+    scanned_names: list[str] = []
     for path in sorted(source_root.glob(pattern)) if scope != "docs" else _docs_files():
         relative_parts = path.relative_to(display_root).parts
         if not _in_scope(scope, display_root, relative_parts):
@@ -792,6 +819,7 @@ def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], in
             # counted: the census is 16, not 17.
             continue
         scanned += 1
+        scanned_names.append(relative)
         if scope == "docs":
             text = path.read_text(encoding="utf-8")
             for line_number, line in enumerate(text.splitlines(), start=1):
@@ -828,7 +856,17 @@ def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], in
                 )
         sites.extend(_fold_sites(tree, relative))
     sites.sort(key=lambda row: (row["file"], row["line"], row["pattern"]))
-    return sites, scanned
+    return sites, scanned, scanned_names
+
+
+def _file_set_digest(names: list[str]) -> str:
+    """sha256 over the SORTED scanned file names, NUL-separated (issue #670).
+
+    Names only, never contents: the digest moves when the SET of scanned
+    files moves and at no other time. NUL is the separator because no path
+    can carry one, so two different sets never share a preimage.
+    """
+    return hashlib.sha256("\0".join(sorted(names)).encode("utf-8")).hexdigest()
 
 
 def _snapshot_counts() -> dict[str, dict[str, int]]:
@@ -845,9 +883,17 @@ def _snapshot_file_count() -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _snapshot_file_set_digest() -> str | None:
+    """The digest the snapshot records for its scanned file set (None when
+    the field is absent or is not a string; the ratchet refuses that)."""
+    document = json.loads(DOCS_SNAPSHOT.read_text(encoding="utf-8"))
+    value = document.get(DOCS_DIGEST_FIELD)
+    return value if isinstance(value, str) else None
+
+
 def _refresh_snapshot() -> dict[str, dict[str, int]]:
     scan_root, _display_root, _pattern = scope_tree("docs")
-    sites, scanned = count_sites(scan_root, "docs")
+    sites, scanned, names = count_sites(scan_root, "docs")
     files: dict[str, dict[str, int]] = {}
     for row in sites:
         per_file = files.setdefault(row["file"], {})
@@ -856,9 +902,14 @@ def _refresh_snapshot() -> dict[str, dict[str, int]]:
         "comment": (
             "generated by scripts/standards/count_version_literals.py "
             "--refresh-docs-baseline; do not hand-edit — the diff of a "
-            "refresh is the review surface"
+            "refresh is the review surface; file_count and "
+            f"{DOCS_DIGEST_FIELD} are generated from the scanned file set "
+            "too — the digest covers file names, never file contents, and a "
+            "merge conflict on it means two branches changed the file set: "
+            "regenerate, never pick a side"
         ),
         "file_count": scanned,
+        DOCS_DIGEST_FIELD: _file_set_digest(names),
         "files": {name: dict(sorted(rows.items())) for name, rows in sorted(files.items())},
     }
     DOCS_SNAPSHOT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
@@ -866,7 +917,7 @@ def _refresh_snapshot() -> dict[str, dict[str, int]]:
 
 
 def _check_docs_ratchet(
-    sites: list[dict[str, Any]], scanned: int
+    sites: list[dict[str, Any]], scanned: int, names: list[str]
 ) -> list[str]:
     """Refuse any (file, literal) count that DIFFERS from the committed
     snapshot, in either direction (fold row 4): growth refuses because a new
@@ -874,7 +925,9 @@ def _check_docs_ratchet(
     exact-content bound, so deleting a literal is a content change that
     only an explicit ``--refresh-docs-baseline`` may bless (its diff is the
     review surface). The scanned-file census is checked in-gate the same
-    way: a silently added or removed file refuses.
+    way: a silently added or removed file refuses. So is the census DIGEST
+    (issue #670): the snapshot's ``file_set_sha256`` must equal the digest of
+    the names THIS scan counted, and an absent field refuses too.
     """
     snapshot = _snapshot_counts()
     observed: dict[str, dict[str, int]] = {}
@@ -910,13 +963,29 @@ def _check_docs_ratchet(
             f"files, found {scanned} — refresh with --refresh-docs-baseline "
             "if this change is intended"
         )
+    recorded_digest = _snapshot_file_set_digest()
+    computed_digest = _file_set_digest(names)
+    if recorded_digest is None:
+        violations.append(
+            f"docs census digest absent [{DOCS_DIGEST_FIELD}]: the snapshot "
+            f"carries no digest for its {scanned} scanned files — regenerate "
+            "with --refresh-docs-baseline (the snapshot is generated, never "
+            "hand-edited)"
+        )
+    elif recorded_digest != computed_digest:
+        violations.append(
+            f"docs census digest mismatch [{DOCS_DIGEST_FIELD}]: snapshot "
+            f"records {recorded_digest}, found {computed_digest} for "
+            f"{scanned} scanned files — refresh with --refresh-docs-baseline "
+            "if this change is intended"
+        )
     return violations
 
 
 def _check_scope(scope: str) -> tuple[bool, dict[str, Any]]:
     """Zero-mode for one scope. Returns (ok, report)."""
     scan_root, _display_root, _pattern = scope_tree(scope)
-    sites, scanned = count_sites(scan_root, scope)
+    sites, scanned, names = count_sites(scan_root, scope)
     register = REGISTER[scope]
     by_file: dict[str, list[dict[str, Any]]] = {}
     for row in sites:
@@ -956,7 +1025,7 @@ def _check_scope(scope: str) -> tuple[bool, dict[str, Any]]:
                     f"{sorted(expected_values)}, found {found_values} ({reason})"
                 )
     if scope == "docs":
-        violations.extend(_check_docs_ratchet(sites, scanned))
+        violations.extend(_check_docs_ratchet(sites, scanned, names))
 
     for row in sites:
         entry = register.get(row["file"])

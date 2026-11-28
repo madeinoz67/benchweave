@@ -652,6 +652,10 @@
       "core": 7,
       "total": 16
     },
+    "tests/standards/test_docs_baseline_digest.py": {
+      "core": 0,
+      "total": 9
+    },
     "tests/standards/test_docs_claims.py": {
       "core": 0,
       "total": 12
