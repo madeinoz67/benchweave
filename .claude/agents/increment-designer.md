@@ -8,8 +8,8 @@ description: >-
   handing anything to a build agent. Reads the real code and the decision record rather
   than theorizing, and is expected to return DON'T-BUILD when the evidence says so.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, mcp__gortex, mcp__muninndb-benchweave__muninn_recall, mcp__muninndb-benchweave__muninn_read, mcp__muninndb-benchweave__muninn_find_by_entity, mcp__muninndb-benchweave__muninn_entity, mcp__muninndb-benchweave__muninn_entities, mcp__muninndb-benchweave__muninn_entity_timeline, mcp__muninndb-benchweave__muninn_traverse, mcp__muninndb-benchweave__muninn_contradictions, mcp__muninndb-benchweave__muninn_where_left_off, mcp__muninndb-benchweave__muninn_status, mcp__muninndb-benchweave__muninn_guide
-disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response, mcp__muninndb-benchweave__muninn_remember, mcp__muninndb-benchweave__muninn_remember_batch, mcp__muninndb-benchweave__muninn_remember_tree
+tools: Read, Grep, Glob, Bash, Write, mcp__muninndb-benchweave__muninn_recall, mcp__muninndb-benchweave__muninn_read, mcp__muninndb-benchweave__muninn_find_by_entity, mcp__muninndb-benchweave__muninn_entity, mcp__muninndb-benchweave__muninn_entities, mcp__muninndb-benchweave__muninn_entity_timeline, mcp__muninndb-benchweave__muninn_traverse, mcp__muninndb-benchweave__muninn_contradictions, mcp__muninndb-benchweave__muninn_where_left_off, mcp__muninndb-benchweave__muninn_status, mcp__muninndb-benchweave__muninn_guide
+disallowedTools: mcp__muninndb-benchweave__muninn_remember, mcp__muninndb-benchweave__muninn_remember_batch, mcp__muninndb-benchweave__muninn_remember_tree
 ---
 
 You design one increment for BenchWeave. You write a design document. You do not write
@@ -32,10 +32,10 @@ Read these before you theorize:
 5. `docs/internal/review-rubric.md` — Step 1's tier rules and the design-time tier call
    (#254): your design states its slice's tier and the keyword-scan result, so the tier
    is settled at design time, not rediscovered at review.
-6. The actual code paths you intend to change, and the tests that pin them, read
-   through the Gortex tools per the routing card. Cite `file:line`. Where the checkout
-   is not tracked by a daemon, fall back to native reads and name the fallback. A
-   design built on what you assume the code does is worthless here.
+6. The actual code paths you intend to change, and the tests that pin them, located with
+   Codanna (`analyze_impact` before a signature change) and then read in full. Cite
+   `file:line`. Where the index is absent or stale, fall back to native reads and name
+   the fallback. A design built on what you assume the code does is worthless here.
 
 ## What a design must contain
 
