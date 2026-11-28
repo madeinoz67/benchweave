@@ -767,10 +767,18 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
     """§9 replay: the same request id + binding pin returns the ORIGINAL run
     (no second enqueue), so both transports answer byte-identically.
 
-    Order-independent (#280): the generation fence is READ live, once, for
-    the one logical request both transports fire. ``run_start`` fences the
-    bench generation BEFORE the §9 replay lookup, so a literal holds only
-    while no earlier test's apply has advanced the bench on this worker."""
+    Load-bearing (#280): the generation fence is READ live, once, for the
+    one logical request both transports fire. ``run_start`` fences the bench
+    generation BEFORE the §9 replay lookup, so the read decides this pin
+    only in an order that puts a change's apply to the bench before it.
+    Measured with the literal restored: red under the generation-advanced
+    arm (a real apply before the body) and under a flipped module order
+    (the approver-token pin's successful apply then runs before this pin;
+    serial, and sharded with a foreign module first). Green alone, in module
+    order and in 5 sharded orders, so no shard split run moves it. With the
+    read, every one of those orders is green, and reader sabotage (live +
+    1) reds it. The red-then-green proof exists for those orders and for no
+    other order run."""
     gen = _live_generation(gateway)
     status, rest_json = _rest(
         gateway,
@@ -810,9 +818,16 @@ def test_lease_create_parity(gateway: SimpleNamespace) -> None:
     released before the MCP twin mints — the same §9 key then re-issues the
     same lease id on the now-idle spare bench.
 
-    Order-independent (#280): the generation fence is READ live for the spare
-    bench — one read serves both transports (neither a lease nor its release
-    moves the generation)."""
+    Load-bearing under one order only (#280): the generation fence is READ
+    live for the spare bench, one read for both transports (neither a lease
+    nor its release moves the generation). Measured with the literal
+    restored: red under the generation-advanced arm alone (a real apply to
+    the spare bench before the body; 409 at the fence). Green alone, in
+    module order, in a flipped module order and in 5 sharded orders. No
+    test in this module applies a change to the spare bench, so no order of
+    its own tests produces that state. With the read, every one of those
+    orders is green, and reader sabotage (live + 1) reds it. The
+    red-then-green proof exists for that arm and for no other order run."""
     bench = "parity-create"
     body = {
         "request_id": "req-parity-lease-create",
@@ -2161,12 +2176,18 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
     succeeds end-to-end); a corpus-literal body without it stays valid and
     fails closed at approval verification.
 
-    Order-independent (#280): each change reads the live generation for its
-    submission, its apply and its approval binding — the successful apply is
-    fenced against the bench's CURRENT generation, so a literal holds only
-    while no earlier test's apply has advanced the bench on this worker. The
-    second read is fresh: the pin assumes nothing about whether a refused
-    apply moves the generation."""
+    Load-bearing under one order only (#280): each change reads the live
+    generation for its submission, its apply and its approval binding — the
+    successful apply is fenced against the bench's CURRENT generation.
+    Measured with the literal restored: red under the generation-advanced
+    arm alone (a real apply to the bench before the body; 409 at the
+    success leg). Green alone, in module order, in a flipped module order
+    and in 5 sharded orders. This pin's second apply is the only apply in
+    the module that advances the bench, so no order of its own tests puts
+    an apply before it. With the read, every one of those orders is green,
+    and reader sabotage (live + 1) reds it. The red-then-green proof exists
+    for that arm and for no other order run. The second read is fresh: the
+    pin assumes nothing about whether a refused apply moves the generation."""
     gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
@@ -2379,12 +2400,15 @@ def test_approver_token_requires_gateway_admin_audience(
     against the detached ``gateway-admin`` audience, so gateway scope alone
     authorizes nothing; the change records ``failed``.
 
-    #280: submission, apply and the approval binding read the live
-    generation — the literal this replaced (2) assumed an earlier test's
-    apply had advanced the bench. The read keeps the inputs truthful in any
-    order; it is not what reds here: ``change_apply`` authenticates the
-    approver BEFORE either generation fence, so this pin holds at any bench
-    generation."""
+    Inert for the generation (#280): this pin goes red under neither arm.
+    Measured with its literal restored: green in all 11 orders run, the
+    generation-advanced arm included. Measured with ``_live_generation``
+    returning live + 1: green. ``change_apply`` authenticates the approver
+    BEFORE either generation fence, so the 403 is decided before any
+    generation is compared. The read stays for its inputs only and claims
+    no kill: the literal assumed an earlier test's apply had advanced the
+    bench, and the read binds the approval at the bench's actual generation
+    in every order."""
     gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
