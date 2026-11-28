@@ -227,6 +227,7 @@ All notable changes to this project will be documented in this file.
 - Re-issue the Q19 threat-catalogue entry in full (#662)
 - Accept Rigol DM858 integration ADR (#657)
 - Drop the dangling gortex communities end marker
+- Record retry-stable timing belt decision (#241) (#659)
 
 ### Features
 
