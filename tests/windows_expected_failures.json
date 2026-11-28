@@ -1,6 +1,7 @@
 {
   "census": {
-    "note": "rows are the union of these runs' junit failing ids; every reason is grounded in that run's failure text (issue #457; census home #207)",
+    "drift-evidence": 36967753302,
+    "note": "rows are the union of the two Nov runs' junit failing ids, plus the kill-family members the Oct 2 drift run evidenced (the family's failing id drifts between runs); every reason is grounded in the named run's failure text (issue #457; census home #207)",
     "windows": 45557882139,
     "windows-full": 45100708153
   },
@@ -80,6 +81,10 @@
     "tests/faults/test_state_recovery.py::test_kill_after_commit_state_survives": {
       "kind": "non-strict",
       "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection \u2014 this exact id failed the Nov 25 wincore run and PASSED the Nov 23 full run two days earlier; the intermittence is observed, not assumed."
+    },
+    "tests/faults/test_state_recovery.py::test_kill_before_commit_loses_nothing_partial": {
+      "kind": "non-strict",
+      "reason": "Kill-family intermittent (non-strict per PR #343's 50-execution doctrine): sqlite3.OperationalError 'disk I/O error' under child-kill fault injection \u2014 THIS member failed the Oct 2 census (run 36967753302) while the Nov runs carried test_kill_after_commit instead; the family's failing id drifts, so both observed members are manifested."
     },
     "tests/integration/test_run_activation.py::test_f5_measurement_seams_tick_times_and_saturated_polls": {
       "kind": "strict",

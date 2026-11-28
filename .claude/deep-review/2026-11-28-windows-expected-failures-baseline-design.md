@@ -69,10 +69,13 @@ the ids a lane actually ran:
 ## 4. Row kinds
 
 - `strict` (default): deterministic platform truths and fixture-error rows — 57 of
-  61 at landing.
+  62 at landing.
 - `non-strict`: the kill-family intermittents — `sqlite3.OperationalError: disk
-  I/O error` under child-kill fault injection (4 rows: `test_disposition_faults`
-  ×3, `test_state_recovery::test_kill_after_commit_state_survives`). Failing or
+  I/O error` under child-kill fault injection (5 rows: `test_disposition_faults`
+  ×3, BOTH observed `test_state_recovery` members — `test_kill_after_commit_
+  state_survives` and `test_kill_before_commit_loses_nothing_partial`; the
+  family's failing id drifts between runs, so both census-evidenced members
+  are manifested). Failing or
   passing is data either way, per PR #343's "intermittents are pure data until 50
   executions" doctrine. **This is a deliberate, disclosed deviation from the letter
   of #457's xfail-strict shape, for exactly these rows.** Drift evidence: the
@@ -97,7 +100,14 @@ the ids a lane actually ran:
   census. Newest main-push run at build time.
 - `windows-full` job, run **45100708153** (scheduled 2026-11-23), artifact
   `windows-evidence-full-junit`: 4,786 tests, **60 failing ids**.
-- Union: **61 rows** — 43 fail-in-both-lanes, 1 core-lane-only failure
+- Union: **61 rows**, plus the Oct-evidenced kill-family member
+  `test_kill_before_commit_loses_nothing_partial` manifested non-strict
+  (**62 rows** total: 57 strict, 5 non-strict) — the family's failing id
+  drifts between runs (Oct carried kill_before_commit, Nov 25 carried
+  kill_after_commit), so manifesting only the latest member would red the
+  lane as "unlisted" whenever the drift recurs; the census header names
+  the drift run (36967753302) as that row's evidence — 43 fail-in-both-lanes,
+  1 core-lane-only failure
   (`test_kill_after_commit_state_survives`, collected by both lanes: it failed
   Nov 25 and passed Nov 23 — the intermittence evidence), 17 full-lane-only
   failures (the `windows` job's inert count for these is 17, matching the
@@ -180,7 +190,7 @@ are data in `tests/`, not literals in `scripts/`).
    inert strict row). Falsifier: the manifest generator refuses any id
    absent from the census artifacts' failing sets — every committed row
    traces to a real artifact id; re-derive with the replay (exit 0 on both
-   Nov artifacts exercises all 61 rows).
+   Nov artifacts exercises all 62 rows).
 2. **A canonicalization drift mis-reads future artifacts** (wrong id =
    false green or false red). Falsifier: the fail-closed duplicate-id arm
    plus the canonicalization unit tests; the real-artifact replay over
@@ -225,7 +235,7 @@ Each row: identifier · deferred · home · reopen trigger.
 ## 8b. Adversarial pass (Tier-3 G6) — findings folded
 
 The REFUTE pass (2026-11-28, pre-PR) confirmed the mechanism on every real
-and constructed artifact (all 61 rows re-derived exactly; canonicalization
+and constructed artifact (all 61 Nov-union rows re-derived exactly; canonicalization
 faithful across class chains, params, hostile ids, the markdown rows;
 fail-closed family holds incl. a billion-laughs DTD; CI wiring and fork-PR
 posture verified) and returned four findings, all folded:
