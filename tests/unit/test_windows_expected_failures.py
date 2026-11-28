@@ -78,6 +78,7 @@ def _manifest(rows: dict[str, dict[str, str]], tmp_path: Path) -> Path:
 
 
 ATREST = "tests/cli/test_atrest.py::test_setup_creates_layout"
+ATREST_JSON = json.dumps(ATREST)
 DEV_PIN = "tests/standards/test_dev_pins.py::test_d1_wheel_posture_refuses"
 RECOVERY_ROW = "tests/faults/test_state_recovery.py::test_kill_after_commit"
 
@@ -274,17 +275,58 @@ class TestFailClosed:
             module.load_manifest(path)
 
     def test_duplicate_json_key_fails_closed(self, tmp_path: Path) -> None:
-        """json last-wins would let a non-strict twin silently shadow a
-        strict row (the refute pass's F3) — a duplicated key is malformed."""
+        """json last-wins would silently keep one of two same-key entries
+        (the refute pass's F3) — a duplicated key is malformed.
+
+        The document must be VALID JSON (the malformed-JSON arm is a
+        different test); the message must name the duplicated key, so this
+        arm cannot pass through the generic unreadable path.
+        """
         module = _load()
         path = tmp_path / "dup.json"
+        schema = json.dumps("benchweave.windows-expected-failures/1")
         path.write_text(
-            '{"schema": "benchweave.windows-expected-failures/1",'
-            f' "rows": {{}}, "rows": {{{json.dumps(ATREST)}: '
-            '{"kind": "non-strict", "reason": "shadow"}}}}',
+            '{"schema": ' + schema + ', "rows": {}, "schema": ' + schema + "}",
             encoding="utf-8",
         )
-        with pytest.raises(module.FailClosed):
+        json.loads(path.read_text(encoding="utf-8"))
+        with pytest.raises(module.FailClosed, match="duplicate JSON key: 'schema'"):
+            module.load_manifest(path)
+
+    def test_duplicate_row_id_fails_closed(self, tmp_path: Path) -> None:
+        """The hazard where it bites: a strict row shadowed by a non-strict
+        twin of the same id — last-wins would disable the healing check."""
+        module = _load()
+        path = tmp_path / "dup-row.json"
+        strict_row = json.dumps({"kind": "strict", "reason": "r"})
+        loose_row = json.dumps({"kind": "non-strict", "reason": "shadow"})
+        path.write_text(
+            '{"schema": "benchweave.windows-expected-failures/1", "rows": {'
+            + ATREST_JSON
+            + ": "
+            + strict_row
+            + ", "
+            + ATREST_JSON
+            + ": "
+            + loose_row
+            + "}}",
+            encoding="utf-8",
+        )
+        json.loads(path.read_text(encoding="utf-8"))
+        with pytest.raises(module.FailClosed, match="duplicate JSON key"):
+            module.load_manifest(path)
+
+    def test_non_utf8_manifest_fails_closed(self, tmp_path: Path) -> None:
+        """A Windows editor saving UTF-16 must read fail-closed, not as a
+        drift-red traceback (review finding 3)."""
+        module = _load()
+        path = tmp_path / "utf16.json"
+        path.write_bytes(
+            json.dumps(
+                {"schema": "benchweave.windows-expected-failures/1", "rows": {}}
+            ).encode("utf-16")
+        )
+        with pytest.raises(module.FailClosed, match="UTF-8"):
             module.load_manifest(path)
 
 

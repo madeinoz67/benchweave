@@ -181,6 +181,74 @@ def _assert_windows_job_pins(job: str) -> None:
     )
 
 
+COMPARISON_STEP_NAME = '"Expected-failures baseline comparison (issue 457)"'
+
+
+def _comparison_step_text(job: str) -> str:
+    """The #457 comparison step's own block within a job's YAML text.
+
+    From the step's ``- name:`` line to the next step key at the same
+    indent. Scoping matters: the pytest step in the same job LEGITIMATELY
+    carries ``continue-on-error``, so the no-forgiveness assertion must
+    bind to this step's block, not the whole job.
+    """
+    match = re.search(
+        r"^      - name: "
+        + re.escape(COMPARISON_STEP_NAME)
+        + r"\n(.*?)(?=^      - (?:name|uses):|\Z)",
+        job,
+        re.S | re.M,
+    )
+    assert match is not None, (
+        f"the {COMPARISON_STEP_NAME} step is absent — the lane lost its "
+        "strict expected-failures verdict (#457)"
+    )
+    return match.group(0)
+
+
+def _assert_comparison_step_pin(job: str, junit_artifact: str) -> None:
+    """The comparison step exists, reads this lane's own artifact, and is
+    NOT forgiven (review finding 2: the whole-job posture pins cannot see
+    a comparison step deleted or given its own continue-on-error)."""
+    step = _comparison_step_text(job)
+    assert "windows_expected_failures.py" in step, (
+        "the comparison step no longer runs the baseline comparison script"
+    )
+    assert f"--junit {junit_artifact}" in step, (
+        f"the comparison step no longer reads the lane's own artifact "
+        f"({junit_artifact})"
+    )
+    assert not re.search(r"^\s*continue-on-error:", step, re.M), (
+        "the comparison step carries continue-on-error — #457's strict "
+        "verdict must not be forgiven (the pytest step's evidence-only "
+        "forgiveness is the only one the lane owes; comments MAY discuss "
+        "the concept, only a key line is a verdict)"
+    )
+
+
+def _with_comparison_step_forgiven(workflow_text: str, job_key: str) -> str:
+    """A copy with ONLY the comparison step's block given continue-on-error.
+
+    Line-scan surgery in the _without_windows_job_posture tradition: the
+    doctoring stays independent of the extraction machinery the arm
+    exercises.
+    """
+    lines = workflow_text.splitlines(keepends=True)
+    start = next(
+        i for i, line in enumerate(lines) if line.rstrip() == f"  {job_key}:"
+    )
+    step_name_line = next(
+        i
+        for i in range(start, len(lines))
+        if lines[i].rstrip() == f"      - name: {COMPARISON_STEP_NAME}"
+    )
+    return "".join(
+        lines[: step_name_line + 1]
+        + ["        continue-on-error: true\n"]
+        + lines[step_name_line + 1 :]
+    )
+
+
 def _without_windows_job_posture(workflow_text: str) -> str:
     """A copy of the workflow with ONLY the windows job's continue-on-error gone.
 
@@ -451,6 +519,10 @@ def test_workflow_windows_job_pins_the_core_selection() -> None:
     ci.yml (full selection, 45-minute timeout).
     """
     _assert_windows_job_pins(_windows_job_text(WORKFLOW.read_text(encoding="utf-8")))
+    _assert_comparison_step_pin(
+        _windows_job_text(WORKFLOW.read_text(encoding="utf-8")),
+        "windows-evidence.xml",
+    )
 
 
 def test_workflow_windows_job_posture_pin_fires_on_windows_only_posture_loss() -> None:
@@ -489,6 +561,7 @@ def test_workflow_weekly_full_lane_pins_the_complement_run() -> None:
     assert "windows-evidence-full-junit" in job, (
         "windows-full lost its junitxml artifact upload"
     )
+    _assert_comparison_step_pin(job, "windows-evidence-full.xml")
     # The schedule trigger exists and every OTHER job guards itself out of
     # the weekly run: schedule must execute exactly one job. The guard may
     # sit anywhere in the job's header block (the windows job's sits below
@@ -503,4 +576,35 @@ def test_workflow_weekly_full_lane_pins_the_complement_run() -> None:
         assert match is not None, f"job {name} vanished from ci.yml"
         assert "if: github.event_name != 'schedule'" in match.group(1), (
             f"job {name} lost its schedule guard — the weekly cron would run it"
+        )
+
+
+@pytest.mark.parametrize("job_key", ["windows", "windows-full"])
+def test_comparison_step_pin_fires_on_a_forgiven_verdict(job_key: str) -> None:
+    """Giving ONLY the comparison step its own continue-on-error must red
+    the step-scoped pin (#457, review finding 2: the whole-job posture
+    pins are blind to this — the pytest step legitimately keeps one)."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    doctored = _with_comparison_step_forgiven(text, job_key)
+    job = (
+        _windows_job_text(doctored)
+        if job_key == "windows"
+        else _windows_job_text_full(doctored)
+    )
+    artifact = (
+        "windows-evidence.xml" if job_key == "windows" else "windows-evidence-full.xml"
+    )
+    with pytest.raises(AssertionError, match="must not be forgiven"):
+        _assert_comparison_step_pin(job, artifact)
+
+
+def test_comparison_step_pin_fires_on_a_deleted_step() -> None:
+    """Deleting the comparison step reds the step-scoped pin at the
+    extraction assert — a lane without its strict verdict is not green."""
+    text = WORKFLOW.read_text(encoding="utf-8").replace(
+        f"      - name: {COMPARISON_STEP_NAME}\n", "      - name: \"DELETED\"\n"
+    )
+    with pytest.raises(AssertionError, match="strict expected-failures verdict"):
+        _assert_comparison_step_pin(
+            _windows_job_text(text), "windows-evidence.xml"
         )

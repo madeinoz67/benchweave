@@ -57,7 +57,7 @@ the ids a lane actually ran:
 
 - A `strict` row reds ONLY if its id appears in that lane's junit as a collected,
   non-skipped testcase AND did not fail. An id the lane's selection does not
-  collect (the 16 full-lane-only rows, from the `windows` job's view) is inert for
+  collect (the 17 full-lane-only rows, from the `windows` job's view) is inert for
   that lane — not "healed".
 - A **skipped** testcase is inert for both directions: skip ≠ fail and skip ≠ pass.
   This also keeps fork PRs green where the fixture-signing secrets are absent and
@@ -159,23 +159,68 @@ census (`test_zero_literal_gate.py`'s `scanned` pins, 20 → 21: the new
 script joins the scan carrying zero version literals — its manifest ids
 are data in `tests/`, not literals in `scripts/`).
 
+## 7c. Invariant impacts
+
+- **A06 evidence over assertion:** unchanged in direction, tightened in
+  degree — an ambiguous Windows outcome was previously invisible (any red
+  read as data); now only LISTED reds are data and everything else is a
+  refusal. The junit artifact remains the single evidence substrate.
+- **A07 audit failure constrains new work:** extended to the Windows
+  surface — the comparison's fail-closed exit 2 blocks the lane exactly
+  when its evidence cannot be read.
+- **Claim discipline (G4):** every manifest row names its class and
+  cause; the gate's own printed counts (inert rows, strict/non-strict
+  split) are the machine source the prose defers to.
+- No control-path, state, registry or standards-corpus surface is touched;
+  CON/CTL/REG invariants are unaffected by construction.
+
+## 7d. Top risks, each with its falsifier
+
+1. **A hand-typo'd row id silently never reds on healing** (permanently
+   inert strict row). Falsifier: the manifest generator refuses any id
+   absent from the census artifacts' failing sets — every committed row
+   traces to a real artifact id; re-derive with the replay (exit 0 on both
+   Nov artifacts exercises all 61 rows).
+2. **A canonicalization drift mis-reads future artifacts** (wrong id =
+   false green or false red). Falsifier: the fail-closed duplicate-id arm
+   plus the canonicalization unit tests; the real-artifact replay over
+   both lanes stays green only while ids derive exactly.
+3. **The gate becomes merge noise** (a flapping strict row reds every
+   PR). Falsifier: the non-strict kind exists for exactly this; a strict
+   row that flaps reds, the row moves to non-strict in the same change,
+   and the census note records why.
+4. **The lane's strictness is silently removed later** (a future edit adds
+   continue-on-error or deletes the step). Falsifier: the step-scoped
+   contract pins with doctored arms (test_comparison_step_pin_*).
+
 ## 8. Deferrals (each rides #207, the standing census home — no orphan deferrals)
 
-1. CRLF fixture repins (the `dev_pin_drift` digest family; `test_builder_is_
-   deterministic`) — the #237 "repin LF fixtures" line.
-2. Promotion-sweep separator handling (the 13-row `promotion_sweep_violation`
-   family) — possible product bug, same family as #237/#238.
-3. `.gitmodules` fixture CRLF (the 6-row `fatal: bad config line` family).
-4. Teardown chmod-before-delete for read-only `.git` objects (the WinError 5
-   family: `test_d1_wheel_posture_*`, `test_m2_the_dev_refusal_propagates_
-   verbatim`) — #457's own named class-2 fix, separable, NOT widened into here.
-5. Kill-family strict/non-strict reclassification once ~50 executions exist.
-6. The `windows-full` weekly comparison is wire-proven only by its first
-   post-merge scheduled run (it cannot fire at PR time; the step is identical
-   code over a sibling artifact).
-7. Coverage anchor (the refute pass's F4): assert the lane artifact's
-   collected count equals the ratchet-pinned selection count, so an
-   aborted-but-well-formed session cannot read green.
+Each row: identifier · deferred · home · reopen trigger.
+
+1. **CRLF-fixture-repins** · the `dev_pin_drift` digest family (5 rows) and
+   `test_builder_is_deterministic` · #207 (the #237 repin-LF line) · any
+   increment touching those fixtures' write paths.
+2. **Promotion-sweep-separators** · the 13-row `promotion_sweep_violation`
+   family (possible product bug, same family as #237/#238) · #207 · a
+   sweep-comparison change or a census run showing the family healed.
+3. **Gitmodules-fixture-CRLF** · the 6-row `fatal: bad config line` family ·
+   #207 · any increment touching `tests/unit/test_check_sdk_submodule_drift.py`
+   fixtures.
+4. **Teardown-chmod-before-delete** · the WinError 5 family (both
+   `test_d1_wheel_posture_*` rows, `test_m2_the_dev_refusal_propagates_
+   verbatim`) — #457's own named class-2 fix, separable, NOT widened into
+   here · #207 · any increment touching those teardowns.
+5. **Kill-family-classification** · strict/non-strict reclassification of
+   the disposition trio · #207 · ~50 cumulative lane executions exist.
+6. **Windows-full-wire-proof** · the weekly comparison's first real
+   scheduled run · #207 (verification note) · the first post-merge Monday
+   02:23 run.
+7. **Comparison-coverage-anchor** · assert the lane artifact's collected
+   count equals the ratchet-pinned selection count (refute F4) · #207 ·
+   any follow-up touching the comparison script.
+8. **Renamed-row-pruning** · a strict row whose test renames is inert
+   forever (review finding 9) · #207 · a gates-time collect-only row
+   existence check, if wanted.
 
 ## 8b. Adversarial pass (Tier-3 G6) — findings folded
 
@@ -201,6 +246,18 @@ posture verified) and returned four findings, all folded:
   win-core ratchet's pinned selection count) is follow-up scope; the
   zero-testcase fail-closed catches the coarser collapse.
 
+The resident code-reviewer pass (Tier 3, pre-PR, same day) returned
+NEEDS WORK with the mechanism verified end-to-end; its findings are folded
+in the review-fold commit: the duplicate-key test rebuilt as valid JSON
+with a genuine repeated key (RED-proven against the pre-hook script: the
+row-shadow document loads clean there), non-UTF-8 manifests fail closed
+(exit 2, not a drift traceback), skip-first duplicates detected, the two
+comparison steps pinned step-scoped with doctored arms (key-line regex, so
+comments may discuss the concept), the new script joined the strict-mypy
+build, census arithmetic and keyword counts restated regenerably, and the
+record gained the invariant-impacts and top-risks sections plus deferral
+triggers.
+
 ## 9. Review tier (design-time call, #254)
 
 Tier 3 — path rules: `.github/workflows/`, `tests/`, `scripts/` (Tier 2 triggers);
@@ -208,9 +265,12 @@ keyword rule (first-match-wins, text-based): the expected diff text carries
 `recovery` (the `tests/faults/test_state_recovery.py` and
 `tests/faults/test_recovery_sweep_faults.py` row ids — unavoidable, the ids are
 the manifest keys) and `subprocess` (the zero-literal-gate rows' reasons and the
-test file's black-box arms). Step-1 scan over the whole expected diff at commit
-time, this record included: `recovery` ×9, `subprocess` ×9, `threading` ×1,
-`asyncio` ×1, `sha256` ×1, `hashlib` ×1, `migrate` ×2, `protection` ×1 — the
-singles and the migrate pair are this §9's own quoting of the keyword list (the
-rubric's self-fire clause, intended). The Tier-3 second adversarial pass (G6) is
-dispatched before the PR opens.
+test file's black-box arms). Step-1 scan, re-derivable at any commit pair with
+`git diff <base>..HEAD | grep -o -E "threading|asyncio|subprocess|sha256|hashlib|migrate|recovery|protection" | sort | uniq -c`;
+over 4e375e3f..HEAD at the review fold: `recovery` ×10, `subprocess` ×7,
+`threading` ×1, `asyncio` ×1, `sha256` ×1, `hashlib` ×1, `migrate` ×2,
+`protection` ×1 — the singles and the migrate pair are this §9's own quoting of
+the keyword list (the rubric's self-fire clause, intended). The Tier-3 second
+adversarial pass (G6) ran pre-PR: the refute lane (adversary agent, REFUTE
+mode) returned the mechanism defended with four findings, folded in §8b and
+the review fold commit.

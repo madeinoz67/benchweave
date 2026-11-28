@@ -16,10 +16,12 @@ manifest; 1 drift — a failing id NOT in the manifest (new Windows
 breakage: fix it or add a reviewed row in the same change) or a ``strict``
 row whose id RAN in this lane and did not fail (healing is visible: remove
 or update the row in the same change); 2 fail-closed — junit absent or
-unreadable, zero collected testcases, duplicate ids, manifest absent,
-malformed (including a duplicate JSON key — last-wins would silently
-shadow a strict row), foreign-schema, or a bad row shape. A comparison
-step that cannot read its inputs must never read as green.
+unreadable, zero collected testcases, duplicate ids (skip-first included),
+a testcase without derivable id attributes, manifest absent, unreadable or
+non-UTF-8, malformed (including a duplicate JSON key — last-wins would
+silently shadow a strict row), foreign-schema, an empty rows object, or a
+bad row shape. A comparison step that cannot read its inputs must never
+read as green.
 
 Lane scoping (design record §3): one manifest serves two selections, so a
 ``strict`` row is judged ONLY over the ids the lane's junit actually
@@ -31,7 +33,11 @@ NOT catch: a test that goes failing→skipped (the win-core ratchet
 ``tests/win_core_manifest.json`` and the #207 census discipline carry
 selection changes); non-strict rows healing (pruning them is census-time
 maintenance, by design — the kill-family intermittents are pure data until
-50 executions, PR #343's doctrine).
+50 executions, PR #343's doctrine); a strict row whose test is RENAMED
+(same-count rename: the old id stops being collected and the stale row is
+inert forever — prune rows when tests rename); an aborted-but-well-formed
+session that contains only listed failures (the coverage-anchor follow-up
+under #207).
 
 Maintenance flow: the red IS the forcing function. Unlisted failing id →
 fix the breakage or add the row (id, kind, one-line reason citing the
@@ -104,6 +110,7 @@ def parse_junit(path: Path) -> tuple[set[str], set[str]]:
         raise FailClosed(f"junit unreadable at {path}: {exc}") from exc
     ran: set[str] = set()
     failed: set[str] = set()
+    seen: set[str] = set()
     for tc in root.iter("testcase"):
         file_attr = tc.get("file")
         name = tc.get("name")
@@ -113,8 +120,9 @@ def parse_junit(path: Path) -> tuple[set[str], set[str]]:
                 f"{tc.get('classname')!r}) — the id cannot be derived safely"
             )
         node = canonical_id(file_attr, tc.get("classname", ""), name)
-        if node in ran or node in failed:
+        if node in seen:
             raise FailClosed(f"duplicate testcase id in junit: {node}")
+        seen.add(node)
         if tc.find("skipped") is not None:
             continue
         if tc.find("failure") is not None or tc.find("error") is not None:
@@ -155,6 +163,13 @@ def load_manifest(path: Path) -> dict[str, dict[str, str]]:
             f"manifest absent at {path} — the baseline cannot be checked "
             "without it"
         ) from None
+    except UnicodeDecodeError as exc:
+        # A Windows editor saving the manifest as UTF-16 lands here; an
+        # unreadable manifest is fail-closed, not drift.
+        raise FailClosed(
+            f"manifest at {path} is not valid UTF-8 ({exc.reason} at byte "
+            f"{exc.start}) — re-save it as UTF-8"
+        ) from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise FailClosed(f"manifest unreadable at {path}: {exc}") from exc
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
@@ -234,8 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"windows-expected-failures [{args.lane}]: ok — {len(failed)} "
         f"failing id(s), all listed ({strict_rows} strict, "
-        f"{nonstrict_rows} non-strict rows; {inert} row(s) not collected "
-        "by this lane's selection, inert by design)"
+        f"{nonstrict_rows} non-strict rows; {inert} row(s) not exercised "
+        "by this run — not collected by this lane's selection, or "
+        "skipped — inert by design)"
     )
     return 0
 

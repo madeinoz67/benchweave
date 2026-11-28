@@ -204,6 +204,10 @@ files = [
     "scripts/gate.py",
     "scripts/check_sdk_submodule_drift.py",
     "scripts/architecture/_validation_report.py",
+    # CI-load-bearing since #457: the windows expected-failures comparison
+    # gate. scripts/ci/win_core_manifest.py keeps its historical exclusion
+    # (one pre-existing type-arg error; adding it here is a separate fold).
+    "scripts/ci/windows_expected_failures.py",
 ]
 # Independent manufacturer/model projects use their own environments and CI checks.
 exclude = ['^plugins/[^/]+/[^/]+/']
