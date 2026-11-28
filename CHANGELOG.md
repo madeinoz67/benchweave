@@ -385,6 +385,7 @@ All notable changes to this project will be documented in this file.
 - Bump the codeql-action group with 2 updates
 - Bump fastmcp from 4.1.8 to 4.2.5
 - Bump astral-sh/setup-uv from 10.3.3 to 10.4.0
+- Bump playwright from 1.65.0 to 1.65.2
 
 ### Refactoring
 
