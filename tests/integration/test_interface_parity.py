@@ -774,14 +774,17 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
     one logical request both transports fire. ``run_start`` fences the bench
     generation BEFORE the §9 replay lookup, so the read decides this pin
     only in an order that puts a change's apply to the bench before it.
-    Measured with the literal restored: red under the generation-advanced
-    arm (a real apply before the body) and under a flipped module order
-    (the approver-token pin's successful apply then runs before this pin;
-    serial, and sharded with a foreign module first). Green alone, in module
-    order and in 5 sharded orders, so no shard split run moves it. With the
-    read, every one of those orders is green, and reader sabotage (live +
-    1) reds it. The red-then-green proof exists for those orders and for no
-    other order run."""
+    Measured with the literal restored. Red under the generation-advanced
+    arm (a real apply before the body). Red under a flipped module order,
+    where the approver-token pin's successful apply runs before this pin:
+    4 of 4 serial runs and, sharded with a foreign module first, only the
+    splits that put that apply on this pin's worker (8 of 8 runs at -n 2,
+    1 of 13 at -n 4, 0 of 8 at -n auto). Green alone and in module order,
+    and green in 25 sharded runs that keep module order, where no split can
+    put that apply before this pin. With the read, every one of those
+    orders is green (8 of 8 in the flipped -n 2 shape), and reader
+    sabotage (live + 1) reds it. The red-then-green proof exists for the
+    advanced arm and the flipped order, and for no other order run."""
     gen = _live_generation(gateway)
     status, rest_json = _rest(
         gateway,
