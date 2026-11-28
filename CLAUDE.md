@@ -56,6 +56,7 @@ breadth (surveying many symbols); use full source for the few you are about to c
 ### Orca worktrees
 - In Orca, each agent is a full Claude Code session whose working directory is its own worktree. Orca's `scripts.setup` builds that worktree's Codanna index, and the `.mcp.json` server indexes the worktree, so `mcp__codanna__*` tools are correct there.
 - If a Codanna tool reports a missing or stale index (exit code 7) right after the worktree opens, setup may still be running: wait, or run `codanna index` once.
+- Worktree setup indexes **code only**. Document collections are not built per worktree (they cost minutes on a large repo), so `search_documents` returns "no collections indexed" there. Use `rg` for prose, or run `codanna documents index --collection <name> --no-progress` once in the worktree when a doc search is genuinely needed. The primary checkout keeps its document index.
 - Never share `.codanna/` between worktrees (symlink or `sharedDirectories`).
 
 ### Subagents and worktrees
