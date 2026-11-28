@@ -882,18 +882,19 @@ class TestZeroModeOverRealTrees:
             "four adc_wire modules) — update this pin in the same commit "
             "as the tree change (the ratchet discipline)"
         )
-        assert payload["scopes"]["docs"]["scanned"] == 35, (
+        assert payload["scopes"]["docs"]["scanned"] == 38, (
             "the docs class set moved (#393 added docs/adc-protocol.md and "
             "the device project's own docs join the scan; #499 adds "
             "docs/adding-a-device-class.md; #661 adds docs/adr/0661-root-"
             "ruff-format.md) — update this pin in the same commit as the "
             "tree change, or refresh the snapshot deliberately"
         )
-        assert payload["scopes"]["scripts"]["scanned"] == 20, (
-            "the scripts class set moved (20 .py minus the self-exempted "
+        assert payload["scopes"]["scripts"]["scanned"] == 21, (
+            "the scripts class set moved (21 .py minus the self-exempted "
             "counter — the sdk-drift gate joined at #347 WS1, the win-core "
             "manifest ratchet joined at #471, the train preflight joined at "
-            "#459) — update this pin in the same commit as the tree change "
+            "#459, the windows expected-failures comparison joined at #457) "
+            "— update this pin in the same commit as the tree change "
             "(the ratchet discipline)"
         )
         if "sdk" in payload["scopes"]:
@@ -1601,15 +1602,15 @@ class TestScriptsScope:
         check_registry grew 1 -> 3 and check_devices 1 -> 3, sum 22 -> 26),
         the 3 former literals DERIVED (no site — textual or assembled —
         in the adc control or the docs site), the counter self-exempted
-        (census 20 since the #347 drift gate joined and the #459 train
-        preflight followed; the preflight's expectations are manifest-
-        derived, so it carries zero literals and the file set below is
-        unchanged)."""
+        (census 21 since the #347 drift gate joined, the #459 train
+        preflight followed, and the #457 windows expected-failures
+        comparison joined carrying zero literals — its manifest ids are
+        data in tests/, not version literals in scripts/)."""
         result = _counter_run("--scope", "scripts", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
-        assert report["scanned"] == 20
+        assert report["scanned"] == 21
         assert report["count"] == 26
         carried = {row["file"] for row in report["sites"]}
         assert carried == {

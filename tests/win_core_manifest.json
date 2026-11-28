@@ -80,6 +80,14 @@
       "core": 0,
       "total": 19
     },
+    "tests/contract/test_claude_config_hygiene.py": {
+      "core": 0,
+      "total": 37
+    },
+    "tests/contract/test_codanna_index_config.py": {
+      "core": 0,
+      "total": 17
+    },
     "tests/contract/test_decoder_declarations.py": {
       "core": 0,
       "total": 15
@@ -164,6 +172,10 @@
       "core": 0,
       "total": 10
     },
+    "tests/contract/test_retired_tool_references.py": {
+      "core": 0,
+      "total": 9
+    },
     "tests/contract/test_sign_release.py": {
       "core": 0,
       "total": 18
@@ -194,7 +206,7 @@
     },
     "tests/contract/test_win_core_partition.py": {
       "core": 0,
-      "total": 11
+      "total": 14
     },
     "tests/contract/test_workflow_permissions.py": {
       "core": 0,
@@ -1027,6 +1039,10 @@
     "tests/unit/test_vendoring.py": {
       "core": 0,
       "total": 9
+    },
+    "tests/unit/test_windows_expected_failures.py": {
+      "core": 0,
+      "total": 21
     }
   },
   "schema": "benchweave.win-core-manifest/1",

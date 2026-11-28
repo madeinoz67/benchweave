@@ -55,8 +55,16 @@ src/benchweave/_vendored/
 .claude/memory-drain-receipts.jsonl.tmp
 .claude/settings.local.json
 
-# Gortex daemon state and generated skill shims (regenerated locally)
-.gortex/
+# Codanna code index — .codanna/settings.toml is committed, the built index is not.
+# The model cache is a symlink into the user's Codanna models directory, so the bare
+# name is required (a trailing slash matches directories only, and git would then see
+# the symlink as an untracked pointer into a home directory).
+.codanna/index/
+.codanna/.project-id
+.fastembed_cache
+.claude/worktrees/
+
+# Generated skill shims (regenerated locally)
 .claude/skills/generated/
 
 # Registry fixture SIGNING KEYS: public halves committed, private halves are
@@ -67,7 +75,7 @@ fixtures/registry/keys/originb.pem
 # Dev registry output (publish_dev.py): unsigned local releases, never committed
 .dev-registry/
 
-# Gortex-generated cross-harness instruction shims (regenerated locally)
+# Cross-harness instruction shims (local-only; no longer regenerated)
 GEMINI.md
 opencode.json
 .agents/
@@ -78,8 +86,7 @@ opencode.json
 .github/copilot-instructions.md
 .github/skills/
 
-# Gortex git-hook artifacts — the post-merge hook regenerates all three
-# (gortex export --format mermaid, gortex wiki, gortex docs); local-only.
+# Generated documentation artifacts (still local-only, never hand-edited).
 wiki/
 docs/architecture/
 CHANGELOG_AUTO.md
@@ -125,5 +132,5 @@ plugins/*/*/contracts/*-*.*.*/
 # Design records: private/ is the gitignored home for records that must carry one of the README's five triggers (see .claude/deep-review/README.md)
 .claude/deep-review/private/
 
-# Parallel-lane worktrees (session-CWD-anchored gortex overlays; see AGENTS.md)
+# Parallel-lane worktrees (see AGENTS.md)
 /.wt/

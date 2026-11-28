@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -125,6 +127,24 @@ def _git_root(tmp_path: Path, *, target: str = HEAD_LABEL) -> tuple[Path, str]:
     return root, _git(root, "rev-parse", "HEAD")
 
 
+def _drop_git_store(root: Path) -> None:
+    """The wheel posture: head bytes present, object store absent.
+
+    git marks its pack files read-only, and on Windows the read-only
+    attribute blocks deletion — a bare ``shutil.rmtree`` over the store
+    raises ``WinError 5`` there (the #457 census's class-2 teardown error;
+    the tests using this verb died in the teardown, never reaching their
+    assertions). chmod every file writable first, then remove: a no-op on
+    POSIX, the chmod-before-delete pattern on win32. Owner ruling, PR #655:
+    this fix lands in the same motion as the manifest rows it heals.
+    """
+    store = root / ".git"
+    for path in store.rglob("*"):
+        if path.is_file():
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    shutil.rmtree(store)
+
+
 def _package(
     root: Path,
     *,
@@ -188,7 +208,7 @@ def test_d1_wheel_posture_refuses_by_name_never_falling_back(tmp_path: Path) -> 
     existing is the point: resolution must not quietly read working-tree
     bytes, and it must not fall back to the released/active family either."""
     root, _sha = _git_root(tmp_path)
-    shutil.rmtree(root / ".git")  # the wheel posture: bytes present, store absent
+    _drop_git_store(root)  # the wheel posture: bytes present, store absent
     package = _package(root, opt_in={"otdp": f"{HEAD_LABEL}@{'a' * 40}"})
     with pytest.raises(StandardsError) as raised:
         resolve_package(root, package)
@@ -206,7 +226,7 @@ def test_d1_wheel_posture_never_resolves_the_released_row(tmp_path: Path) -> Non
     resolve leaves NO lock behind — the resolution raises rather than
     emitting a lock whose otdp row quietly names the released version."""
     root, _sha = _git_root(tmp_path)
-    shutil.rmtree(root / ".git")
+    _drop_git_store(root)
     package = _package(root, opt_in={"otdp": f"{HEAD_LABEL}@{'a' * 40}"})
     with pytest.raises(StandardsError):
         resolve_package(root, package)

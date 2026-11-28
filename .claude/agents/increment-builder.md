@@ -7,8 +7,8 @@ description: >-
   Every behavior change lands with a test proven to fail without the fix, and every
   deviation from the design comes back with evidence.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex
-disallowedTools: mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
+tools: Read, Grep, Glob, Bash, Write, Edit
+disallowedTools:
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
@@ -24,14 +24,14 @@ Confirm the commit you are on. Work in the worktree you were given (cut from
 `origin/main`, with `UV_PROJECT_ENVIRONMENT=venv` exported so uv does not create a stray
 `.venv/`). Never work in the maintainer's main checkout.
 
-## Gortex posture in the worktree
+## Codanna posture in the worktree
 
-Reads inside the worktree pass `require_exact: true` so an unserved view is a hard error,
-not silent primary-checkout evidence; an edit is granted only when the pre-edit read
-reported `freshness.exact: true` with `actual_view` naming this worktree — a response
-with no freshness object is unverified. Route edits through gortex `edit_file` items with
-absolute worktree paths; brand-new files go through native Write. The full routing table
-and the reconcile/explain-view mechanics: CLAUDE.md § Edit routing.
+This worktree has its own index, never the main checkout's: build it first with
+`codanna index` from the worktree root (no path argument). Use the `codanna` CLI through
+Bash — the `mcp__codanna__*` tools read the main checkout's index and are wrong here.
+Edits go through native Edit/Write as usual; the index follows via `serve --watch` or a
+re-run of `codanna index` for that file. The full posture: CLAUDE.md § Subagents and
+worktrees.
 
 ## RED-first is the whole job
 

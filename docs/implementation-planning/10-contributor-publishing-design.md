@@ -212,7 +212,7 @@ Carried by each slice's PR at the surface it lands, per the append-only conventi
 | D5 | Capability enforcement at deploy (Q13) | CR-45 declarations in records + index as discovery input; systemd-directive generation from operator config | The deploy-tooling train that consumes the declarations |
 | D6 | Isolation end-state, evidence MAC, plugin-independent safe state (Q16) | REG-5's disclosure clause + CR-46 interim posture | A structural isolation effort, if ever opened — its own train |
 | D7 | Egress allowlist population (Q18) | The CR-47 decision record (accepted risk, explicitly covering plugin-originated outbound) | The first publisher with nameable legitimate endpoints |
-| D8 | The truncated threat-catalogue entry (Q19) — re-issue and verdict owed | This record's §7 names it as a blocking condition on treating §5(l) complete | Before slices 4–6 acceptance (the ruling scopes it as blocking on the security section, not increments 1–3) |
+| D8 | The truncated threat-catalogue entry (Q19) — re-issued 2026-11-28 in full (text in §7); refute-lane verdict owed | This record's §7 carries the re-issued entry; the row stays open until the verdict lands | Before slices 4–6 acceptance (the ruling scopes it as blocking on the security section, not increments 1–3) |
 | D9 | Dev-origin production refusal (Q17) | Documented dev-loop guidance (`device-developer-guide.md:491` — keep dev roots local and disposable) | Slice 6 (tied to CR-40's trust-root work) |
 | D10 | The `scoped_transport` tier rule's activation record (Q15) | `lane-rules.json` carries the pre-committed rule and its refusal ships slice 1; the rule's live recording waits for the lane | #167's transport activation train |
 | D11 | CR-48 binding on instrument-plugin qualifications | Slice 1's records schema carries the field optional; the dogfooded entry discloses "not yet mechanized" | Slice 6's harness — from then on the field is required and a blocking-beyond-budget adapter records a failure |
@@ -232,6 +232,22 @@ The PRD's M1..M7 classes are the map; against THIS design the first attacks are:
 8. **The enum-arm schema change silently breaking old manifests.** A7's control runs the entire fixture catalogue through admission against the new active schema; the KILL direction is any outcome moving. This is the one place slice 1 could damage CR-13 by accident, so it is pinned hardest.
 
 **Q19 blocker, restated:** one threat-catalogue entry reached both refute lanes truncated and was never verdicted. Per the ruling it blocks treating §5(l) complete — this record's §7 and slices 4–6 acceptance carry that obligation (D8). The three status gates it references (expiry, future-time tolerance, sequence high-water) are verified real machinery (PRD §7.19); the design does not assume the entry's content.
+
+**Q19 entry, re-issued 2026-11-28 — full text for refute-lane verdict.** The original entry text is unrecoverable from the tree; this re-issue states it in full from the machinery the fragment referenced (PRD §7.19) and the requirements it bears on (CR-53, NFR-S2, PRD §5(l.4)).
+
+*Class:* M6 (response failure) — status-gate variant at the run-build consult.
+
+*Threat.* A superseded release status can be replayed across a gateway process restart and accepted at the run-build status consult, so a yanked, revoked or advisory-carrying release keeps executing after its revocation was published. All three status gates (expiry, future-time tolerance, sequence high-water) exist and run at every consult; the gap is the persistence scope of the sequence floor, not the gates themselves.
+
+*Mechanism.* (1) A release is admitted at sequence N and consulted in session A, which records N in its in-memory consult-water. (2) The origin publishes a yank at N+1; session A refuses the closure at its next consult. (3) The gateway restarts: the consult-water is empty again, and the only persisted floor (`<cache_root>/high-water.json`) still holds N, written by admission. (4) The origin, or a mirror the configured source resolves, serves the pre-yank status at sequence N again. The sequence gate compares N against the empty water and passes; the replayed status is unexpired and its timestamps sit inside the clock tolerance, so expiry and future-time tolerance pass by construction; the lifecycle reads `published`; the closure executes the revoked release. The advisory variant has the same shape: an advisory published at N+1 is invisible after a restart while N is re-served.
+
+*Gap.* The registry specification's client duty — "Clients persist the highest authenticated sequence per release and reject older status" — names durable persistence. As built, the consult's floor is session-scoped (slice 4, fold adv1-F1, commit 8ebab3a); across a restart only the admission floor persists, and admission does not consult. The replay window is bounded by the superseded status's own `expires_at`: a status replayed before expiry defeats the reach guarantee; one replayed after expiry does not.
+
+*Impact.* CR-53's response reach, and NFR-S2's stated bound over reachable gateways, is false for the restart case: a restarted gateway is reachable and accepts the replay. M6 is only partly closed by the consult. A revocation can be silently defeated for as long as the superseded status remains unexpired.
+
+*Current design state (2026-11-28).* PR #391 row R8 names the cross-restart residual and ties it to this re-issue; durable consult water is design work, not a fold. Slice 6's trust-root hardening (CR-40/41) strengthens status authenticity but does not change the floor's persistence scope. The slice 6 ADR owner gate is still open; this entry is checked against the recommended design state (staged loader restrictions and qualification, then a coordinated trust cutover on an independently provisioned signing root) and presumes no part of the ADR.
+
+*Controls and falsifier.* Candidate controls: persist the consult floor beside the admission floor (one high-water store; both admission and consult raise it; a malformed file stays `high_water_invalid`), or re-admit on restart. The entry's falsifier: a gateway that restarts between steps (2) and (4) still refuses the N-sequenced status replay; a run that accepts the replay confirms the gap.
 
 ## 8. Forks for the maintainer
 

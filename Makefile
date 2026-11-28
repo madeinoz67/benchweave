@@ -40,7 +40,7 @@ check-sdk-standards:
 # .githooks/pre-push, wired to .claude/hooks/name-screen.mjs, PLUS the chain
 # shims (post-commit/post-merge) that forward to a GLOBAL hooksPath when one
 # is configured — a bare local core.hooksPath override would silence the
-# global hooks (the gortex post-commit/post-merge on the owner machine).
+# global hooks (whatever post-commit/post-merge a developer runs there).
 # Run from the PRIMARY checkout: core.hooksPath is one setting shared across
 # every worktree of this repository family.
 hooks:

@@ -18,7 +18,7 @@
 //
 // Posture copied from drift-guard: WARNS, never blocks — always exit 0, silent when everything
 // holds. Deliberately says nothing about venv or path configuration (owner-machine specifics
-// stay out of the repo) and nothing about gortex state.
+// stay out of the repo).
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
