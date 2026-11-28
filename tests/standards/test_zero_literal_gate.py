@@ -887,7 +887,7 @@ class TestZeroModeOverRealTrees:
             "the docs class set moved (#393 added docs/adc-protocol.md and "
             "the device project's own docs join the scan; #499 adds "
             "docs/adding-a-device-class.md; #657 adds the DM858 ADR; #92 adds "
-            "the Rigol plugin README; #661 adds docs/adr/0661-root-ruff-"
+            "the Rigol plugin README; #661 adds docs/adr/0661-root-"
             "ruff-format.md) — update this pin in the same commit as the "
             "tree change, or refresh the snapshot deliberately"
         )
