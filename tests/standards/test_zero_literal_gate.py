@@ -882,11 +882,12 @@ class TestZeroModeOverRealTrees:
             "four adc_wire modules) — update this pin in the same commit "
             "as the tree change (the ratchet discipline)"
         )
-        assert payload["scopes"]["docs"]["scanned"] == 37, (
+        assert payload["scopes"]["docs"]["scanned"] == 38, (
             "the docs class set moved (#393 added docs/adc-protocol.md and "
             "the device project's own docs join the scan; #499 adds "
-            "docs/adding-a-device-class.md) — update this pin in the same "
-            "commit as the tree change, or refresh the snapshot deliberately"
+            "docs/adding-a-device-class.md; #661 adds docs/adr/0661-root-"
+            "ruff-format.md) — update this pin in the same commit as the "
+            "tree change, or refresh the snapshot deliberately"
         )
         assert payload["scopes"]["scripts"]["scanned"] == 21, (
             "the scripts class set moved (21 .py minus the self-exempted "
