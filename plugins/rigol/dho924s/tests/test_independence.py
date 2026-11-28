@@ -15,7 +15,8 @@ from pathlib import Path
 
 from benchweave_rigol_dho924s.descriptor import build_descriptor
 
-PACKAGE_DIR = Path(__file__).resolve().parents[1] / "src" / "benchweave_rigol_dho924s"
+PACKAGE = "benchweave_rigol_dho924s"
+PACKAGE_DIR = Path(__file__).resolve().parents[1] / "src" / PACKAGE
 CORE = "benchweave"
 
 
@@ -26,14 +27,21 @@ def test_core_is_not_a_development_or_runtime_dependency() -> None:
 
 
 def imported_roots(source: str) -> list[str]:
-    """The top-level package name of every import statement in one module."""
+    """The top-level package name of every import statement in one module.
+
+    A relative import cannot leave a top-level package, so it counts as an
+    import of the package itself.
+    """
     tree = ast.parse(source)
     roots: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             roots.extend(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            roots.append(node.module.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                roots.append(PACKAGE)
+            elif node.module:
+                roots.append(node.module.split(".")[0])
     return roots
 
 
@@ -45,7 +53,7 @@ def test_no_shipped_module_imports_a_core_implementation_module() -> None:
         for root in imported_roots(path.read_text(encoding="utf-8")):
             seen.append(root)
             assert root != CORE, f"{path.name} imports the BenchWeave core: {root}"
-    assert "benchweave_rigol_dho924s" in seen
+    assert PACKAGE in seen
 
 
 def test_descriptor_factory_and_packaged_vectors() -> None:

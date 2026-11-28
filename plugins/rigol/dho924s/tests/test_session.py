@@ -58,10 +58,12 @@ def client(transport: RecordingTransport, framing: Framing = IEEE488_2_NL) -> Sc
     return ScpiClient(transport, framing=framing)
 
 
-def query(transport: RecordingTransport, **overrides: Any) -> bytes:
+def query(
+    transport: RecordingTransport, framing: Framing = IEEE488_2_NL, **overrides: Any
+) -> bytes:
     arguments: dict[str, Any] = {"timeout": 1.0, "max_bytes": BOUND}
     arguments.update(overrides)
-    return run(client(transport).query("idn", **arguments))
+    return run(client(transport, framing).query("idn", **arguments))
 
 
 @pytest.mark.parametrize("name", UNEVIDENCED)

@@ -57,7 +57,8 @@ def simulator_row(key: str) -> str:
 
 
 def read_descriptor() -> dict[str, Any]:
-    return json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
+    descriptor: dict[str, Any] = json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
+    return descriptor
 
 
 def read_sheet() -> str:

@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
-import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +33,7 @@ def contracts_dir() -> Path:
 
 def vectors(name: str) -> dict[str, Any]:
     """A packaged vector file, asserting it names itself synthetic."""
-    document = json.loads((PACKAGE / name).read_text())
+    document: dict[str, Any] = json.loads((PACKAGE / name).read_text())
     assert document["provenance"] == SYNTHETIC_PROVENANCE
     return document
 
@@ -187,9 +186,3 @@ def validate_result(result: dict[str, Any]) -> None:
     schema["$ref"] = "#/$defs/operationResult"
     schema.pop("oneOf")
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(result)
-    assert result["operation_id"] == "host-op"
-
-
-@pytest.fixture
-def validate() -> Callable[[dict[str, Any]], None]:
-    return validate_result

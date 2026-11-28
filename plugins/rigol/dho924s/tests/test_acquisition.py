@@ -9,7 +9,7 @@ evidenced for the unit, so none is written and the plugin does not route
 these actions to the wire.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import pytest
@@ -106,6 +106,12 @@ def assert_refusal(result: dict[str, Any], code: str, message_part: str, validat
     assert "data" not in result
 
 
+def state_of(target: AcquisitionMachine, expected: AcquisitionState) -> None:
+    """Assert the state through a call, so a type narrowed by an earlier
+    assert cannot hide a later change."""
+    assert target.state is expected
+
+
 def test_arm_before_configure_refuses(validate: Any) -> None:
     backend = FakeBackend()
     target = machine(backend)
@@ -149,7 +155,7 @@ def test_fetch_before_arm_refuses(validate: Any) -> None:
         "unknown acquisition",
         validate,
     )
-    assert target.state is AcquisitionState.CONFIGURED
+    state_of(target, AcquisitionState.CONFIGURED)
     assert [name for name, _ in backend.calls] == ["apply"]
 
 
@@ -272,14 +278,14 @@ def test_a_failed_backend_call_leaves_the_state_unknown_and_blocks_reuse(
     elif failing == "start":
         assert configure(target)["status"] == "ok"
     backend.fail_at = failing
-    operation = {
+    operations: dict[str, Callable[[], dict[str, Any]]] = {
         "apply": lambda: configure(target),
         "start": lambda: arm(target),
         "read": lambda: run(target.fetch("op-fetch", acquisition_id="acq-1")),
         "stop": lambda: run(target.abort("op-abort", acquisition_id="acq-1")),
-    }[failing]
+    }
     with pytest.raises(ConnectionError):
-        operation()
+        operations[failing]()
     assert target.state is AcquisitionState.FAULTED
     assert_refusal(configure(target), "TRANSPORT_ERROR", "fresh instance", validate)
     assert_refusal(arm(target), "TRANSPORT_ERROR", "fresh instance", validate)
@@ -300,14 +306,26 @@ def test_a_failed_backend_call_leaves_the_state_unknown_and_blocks_reuse(
 def test_without_a_backend_no_acquisition_action_reaches_a_device(validate: Any) -> None:
     target = AcquisitionMachine(backend=None, supported_trigger_kinds=EDGE_ONLY)
     assert_refusal(configure(target), "UNSUPPORTED", "no acquisition backend", validate)
-    assert_refusal(arm(target), "DEVICE_REJECTED", "configure before arm", validate)
+    assert_refusal(arm(target), "UNSUPPORTED", "no acquisition backend", validate)
+    assert_refusal(
+        run(target.fetch("op-fetch", acquisition_id="acq-1")),
+        "UNSUPPORTED",
+        "no acquisition backend",
+        validate,
+    )
+    assert_refusal(
+        run(target.abort("op-abort", acquisition_id="acq-1")),
+        "UNSUPPORTED",
+        "no acquisition backend",
+        validate,
+    )
     assert target.state is AcquisitionState.IDLE
 
 
 def test_the_plugin_owns_an_inert_machine_and_does_not_route_actions_to_the_wire(
     validate: Any,
 ) -> None:
-    plugin = create_plugin()
+    plugin: Any = create_plugin()
     assert plugin.acquisition.backend is None
     assert plugin.acquisition.supported_trigger_kinds == frozenset()
     host = Host()

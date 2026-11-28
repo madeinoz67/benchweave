@@ -33,7 +33,7 @@ UNSUPPORTED_VERBS = [
 
 
 def opened(host: Host, descriptor: dict[str, Any] | None = None) -> Any:
-    plugin = create_plugin()
+    plugin: Any = create_plugin()
 
     async def scenario() -> None:
         await plugin.open(build_descriptor() if descriptor is None else descriptor, host, Context())
@@ -46,7 +46,10 @@ def opened(host: Host, descriptor: dict[str, Any] | None = None) -> Any:
 def execute(
     plugin: Any, operation: dict[str, Any], context: Context | None = None
 ) -> dict[str, Any]:
-    return run(plugin.execute(operation, Context() if context is None else context))
+    result: dict[str, Any] = run(
+        plugin.execute(operation, Context() if context is None else context)
+    )
+    return result
 
 
 def test_identify_through_the_mock_transport_returns_the_committed_identity_from_a_SYNTHETIC_vector(
@@ -156,7 +159,8 @@ def test_nothing_is_dispatched_after_close(validate: Any) -> None:
 
     async def scenario() -> dict[str, Any]:
         await plugin.close(Context())
-        return await plugin.execute(request("identify"), Context())
+        result: dict[str, Any] = await plugin.execute(request("identify"), Context())
+        return result
 
     result = run(scenario())
     validate(result)
@@ -180,7 +184,7 @@ def test_open_refuses_a_changed_descriptor_and_still_allows_close() -> None:
     host = Host()
     changed = build_descriptor()
     changed["capabilities"].append("read")
-    plugin = create_plugin()
+    plugin: Any = create_plugin()
 
     async def scenario() -> None:
         with pytest.raises(ValueError):
@@ -206,7 +210,6 @@ def test_open_twice_requires_a_fresh_instance() -> None:
         pytest.param({"operation_id": "other-op", "verb": "identify", "arguments": {}}),
         pytest.param({"operation_id": "host-op", "verb": "identify", "arguments": {}, "extra": 1}),
         pytest.param({"operation_id": "host-op", "verb": "identify"}),
-        pytest.param({"operation_id": "", "verb": "identify", "arguments": {}}),
         pytest.param(
             {"operation_id": "host-op", "verb": "identify", "arguments": {"parameter": "x"}}
         ),
@@ -227,12 +230,12 @@ def test_an_invalid_envelope_is_refused_before_io(operation: dict[str, Any], val
         pytest.param({"verb": "identify"}, id="no-operation-id"),
         pytest.param({"operation_id": "host-op", "arguments": {}}, id="no-verb"),
         pytest.param({"operation_id": "host-op", "verb": "no-such-verb", "arguments": {}}),
+        # An empty operation id cannot be echoed in a valid result.
+        pytest.param({"operation_id": "", "verb": "identify", "arguments": {}}, id="empty-id"),
         pytest.param("identify"),
     ],
 )
-def test_an_envelope_without_runtime_identity_cannot_be_answered(
-    operation: Any, validate: Any
-) -> None:
+def test_an_envelope_without_runtime_identity_cannot_be_answered(operation: Any) -> None:
     host = Host()
     plugin = opened(host)
     with pytest.raises(ValueError):

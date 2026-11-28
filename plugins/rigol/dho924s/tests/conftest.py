@@ -6,8 +6,11 @@ absent or altered."""
 
 import hashlib
 import json
+from collections.abc import Callable
+from typing import Any
 
-from support import ROOT, contracts_dir
+import pytest
+from support import ROOT, contracts_dir, validate_result
 
 
 def pytest_sessionstart() -> None:
@@ -19,3 +22,9 @@ def pytest_sessionstart() -> None:
             raise RuntimeError("Run python scripts/fetch_contracts.py before the offline tests")
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise RuntimeError(f"Pinned contract hash mismatch: {name}")
+
+
+@pytest.fixture
+def validate() -> Callable[[dict[str, Any]], None]:
+    """Assert that one result is a valid OTDP operationResult."""
+    return validate_result
