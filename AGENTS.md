@@ -10,7 +10,7 @@ Run once per clone, from the primary checkout — `core.hooksPath` is one settin
 across every worktree of this repo family. It installs the name-screen `pre-commit` and
 `pre-push` hooks (`.claude/hooks/name-screen.mjs`) plus chain shims that forward
 `post-commit`/`post-merge` to a global hooksPath when one is configured (a bare local
-override would silence the owner machine's gortex hooks). The screen refuses a real
+override would silence the hooks a developer configured globally). The screen refuses a real
 client/bench/operator name in staged content, commit messages and filenames; its optional
 local list lives OUTSIDE every repo of the family at `$BENCHWEAVE_NAME_LIST` (default
 `~/.config/benchweave/name-screen.list`) — never commit a list. Without the list, the
@@ -73,9 +73,5 @@ for mechanism-neutralization in RED runs.
 
 **Worktree placement (2026-09-28, owner directive):** parallel-lane worktrees
 live UNDER the repo root at `.wt/<lane>-<nonce>/` (gitignored) — never `/tmp` —
-and the lane's session CWD is that worktree. Gortex discovers a session-anchored
-in-family checkout as an automatic overlay of the primary graph, so parallel
-lanes keep graph access for the worktree's life and lose it on fold (the
-temporary tracking the owner requires); a `/tmp` worktree forfeits indexing
-entirely (the tourniquet rule) and is only for truly external scratch. Folding
-at run close: remove only your own worktree (CLAUDE.md §3.7).
+and the lane's session CWD is that worktree. `/tmp` is only for truly external
+scratch. Folding at run close: remove only your own worktree (CLAUDE.md §3.7).
