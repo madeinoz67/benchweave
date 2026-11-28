@@ -134,3 +134,6 @@ plugins/*/*/contracts/*-*.*.*/
 
 # Parallel-lane worktrees (see AGENTS.md)
 /.wt/
+.codanna/index.ready
+.codanna/setup-in-progress
+.codanna/setup.log
