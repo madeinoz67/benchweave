@@ -1,0 +1,59 @@
+# author: Stephen Eaton
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave-rigol-dho924s"
+version = "0.1.0"
+description = "Evidence-gated Rigol DHO-924S integration: identify over SCPI; no hardware qualification"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "jsonschema[format]==4.26.0",
+    "types-jsonschema==4.26.0.20260518",
+    "ruff==0.16.6",
+    "mypy==2.3.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave_rigol_dho924s"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"LICENSE" = "benchweave_rigol_dho924s/LICENSE"
+"README.md" = "benchweave_rigol_dho924s/README.md"
+"docs/device-evidence.md" = "benchweave_rigol_dho924s/device-evidence.md"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/scripts", "/contracts", "/docs", "/README.md", "/LICENSE", "/pyproject.toml", "/uv.lock", "/.gitignore"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider --import-mode=importlib"
+testpaths = ["tests"]
+# The shared test doubles live in tests/support.py. The importlib import mode
+# does not put the test directory on the path, so name it here.
+pythonpath = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = ["contracts", ".venv", "venv", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+# Name the package so that import sorting does not depend on whether its
+# directory currently carries its modules, and so that it agrees with the
+# repository root configuration, which also lints this project.
+known-first-party = ["benchweave_rigol_dho924s"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests", "scripts"]

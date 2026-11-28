@@ -1,0 +1,27 @@
+{
+  "provenance": "synthetic — not hardware-qualified (issue #92)",
+  "note": "Every case here was authored, not recorded. A fault names what the synthetic host or context does; it is not an observed instrument behaviour.",
+  "identity": [
+    {"id": "model-mismatch", "response_hex": "5249474F4C20544543484E4F4C4F474945532C44484F393134532C53594E5448455449432D53455249414C2C53594E5448455449432D4649524D574152450A", "response_ascii": "RIGOL TECHNOLOGIES,DHO914S,SYNTHETIC-SERIAL,SYNTHETIC-FIRMWARE\n", "fault": null, "status": "error", "code": "IDENTITY_MISMATCH", "dispatch_state": "dispatched"},
+    {"id": "malformed-three-fields", "response_hex": "5249474F4C20544543484E4F4C4F474945532C44484F393234532C53594E5448455449432D4649524D574152450A", "response_ascii": "RIGOL TECHNOLOGIES,DHO924S,SYNTHETIC-FIRMWARE\n", "fault": null, "status": "error", "code": "PROTOCOL_ERROR", "dispatch_state": "dispatched"},
+    {"id": "empty-serial-field", "response_hex": "5249474F4C20544543484E4F4C4F474945532C44484F393234532C2C53594E5448455449432D4649524D574152450A", "response_ascii": "RIGOL TECHNOLOGIES,DHO924S,,SYNTHETIC-FIRMWARE\n", "fault": null, "status": "error", "code": "PROTOCOL_ERROR", "dispatch_state": "dispatched"},
+    {"id": "missing-read-terminator", "response_hex": "5249474F4C20544543484E4F4C4F474945532C44484F393234532C53594E5448455449432D53455249414C2C53594E5448455449432D4649524D57415245", "response_ascii": "RIGOL TECHNOLOGIES,DHO924S,SYNTHETIC-SERIAL,SYNTHETIC-FIRMWARE", "fault": null, "status": "unknown", "code": "TIMEOUT", "dispatch_state": "dispatched"},
+    {"id": "timeout-before-send", "response_hex": "", "response_ascii": "", "fault": "deadline", "status": "error", "code": "TIMEOUT", "dispatch_state": "not_dispatched"},
+    {"id": "timeout-after-send", "response_hex": "", "response_ascii": "", "fault": "receive_timeout", "status": "unknown", "code": "TIMEOUT", "dispatch_state": "dispatched"},
+    {"id": "cancel-before-send", "response_hex": "", "response_ascii": "", "fault": "cancel", "status": "cancelled", "code": "CANCELLED", "dispatch_state": "not_dispatched"},
+    {"id": "cancel-after-send", "response_hex": "", "response_ascii": "", "fault": "cancel_after_send", "status": "unknown", "code": "CANCELLED", "dispatch_state": "dispatched"},
+    {"id": "send-loss", "response_hex": "", "response_ascii": "", "fault": "send_loss", "status": "unknown", "code": "TRANSPORT_ERROR", "dispatch_state": "unknown"},
+    {"id": "receive-link-loss", "response_hex": "", "response_ascii": "", "fault": "receive_loss", "status": "unknown", "code": "TRANSPORT_ERROR", "dispatch_state": "dispatched"}
+  ],
+  "waveform": [
+    {"id": "truncated-block", "note": "The header declares four bytes; two arrive.", "block_hex": "23393030303030303030340080", "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128", "reason": "WAV_TRUNCATED"},
+    {"id": "wrong-header", "note": "No block header identifier.", "block_hex": "583930303030303030303400808EFF", "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128", "reason": "WAV_HEADER"},
+    {"id": "trailing-bytes", "note": "The header declares three bytes; four arrive.", "block_hex": "233930303030303030303300808EFF", "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128", "reason": "WAV_TRAILING"},
+    {"id": "points-mismatch", "note": "The block carries four points; the preamble declares three.", "block_hex": "233930303030303030303400808EFF", "preamble": "0,0,3,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128", "reason": "WAV_POINTS"},
+    {"id": "non-finite-scaling", "note": "The vertical increment is not a number.", "block_hex": "233930303030303030303400808EFF", "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,NAN,0,128", "reason": "WAV_NONFINITE"},
+    {"id": "non-finite-product", "note": "A finite increment whose product with a point is not representable.", "block_hex": "233930303030303030303400808EFF", "preamble": "0,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,1.000000E+308,0,128", "reason": "WAV_NONFINITE"},
+    {"id": "word-format-unevidenced", "note": "The WORD format is documented without its byte order.", "block_hex": "233930303030303030303400808EFF", "preamble": "1,0,4,1,1.000000E-8,0.000000E+0,0.000000E+0,5.000000E-1,0,128", "reason": "WAV_FORMAT_UNSUPPORTED"},
+    {"id": "ascii-non-finite-sample", "note": "An ASCII waveform sample that is not a finite number.", "text": "-6.400000E+1,NaN,7.000000E+0", "reason": "WAV_NONFINITE"},
+    {"id": "ascii-malformed-sample", "note": "An ASCII waveform sample that is not a number.", "text": "-6.400000E+1,abc,7.000000E+0", "reason": "WAV_ASCII"}
+  ]
+}

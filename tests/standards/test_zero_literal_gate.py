@@ -876,16 +876,18 @@ class TestZeroModeOverRealTrees:
         result = _counter_run("--scope", scopes, "--json")
         assert result.returncode == 0
         payload = json.loads(result.stdout)
-        assert payload["scopes"]["plugins"]["scanned"] == 19, (
+        assert payload["scopes"]["plugins"]["scanned"] == 20, (
             "the plugins class set moved (issue #269 widened the rule to "
             "flat plugins: 13 + the two dps150 script files; #393 adds the "
-            "four adc_wire modules) — update this pin in the same commit "
+            "four adc_wire modules; #92 adds the Rigol plugin's bootstrap "
+            "script) — update this pin in the same commit "
             "as the tree change (the ratchet discipline)"
         )
-        assert payload["scopes"]["docs"]["scanned"] == 39, (
+        assert payload["scopes"]["docs"]["scanned"] == 40, (
             "the docs class set moved (#393 added docs/adc-protocol.md and "
             "the device project's own docs join the scan; #499 adds "
-            "docs/adding-a-device-class.md; #661 adds docs/adr/0661-root-"
+            "docs/adding-a-device-class.md; #657 adds the DM858 ADR; #92 adds "
+            "the Rigol plugin README; #661 adds docs/adr/0661-root-ruff-"
             "ruff-format.md) — update this pin in the same commit as the "
             "tree change, or refresh the snapshot deliberately"
         )
@@ -1337,12 +1339,14 @@ class TestScopeMembershipRules:
 
     def test_plugins_census_pins_nineteen_with_the_flat_scripts_inside(self) -> None:
         """Census 15 -> 19 (#393: the four adc_wire modules joined the
-        denominator, zero literals in any). The pin moves in the same
+        denominator, zero literals in any); 19 -> 20 (#92: the Rigol
+        plugin's bootstrap script joins the denominator, zero literals in
+        it). The pin moves in the same
         commit as the rule (the ratchet discipline the message
         instructs)."""
         result = _counter_run("--scope", "plugins", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout)["scopes"]["plugins"]["scanned"] == 19, (
+        assert json.loads(result.stdout)["scopes"]["plugins"]["scanned"] == 20, (
             "the plugins class set moved — update this pin in the same "
             "commit as the tree change (the ratchet discipline)"
         )
