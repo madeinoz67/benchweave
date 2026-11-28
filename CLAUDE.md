@@ -89,7 +89,6 @@ JSON
   `muninndb-benchweave` when approved; the ledger is the fallback that survives without it,
   and the drain delivers it.
 
-<!-- gortex:communities:end -->
 
 ---
 
