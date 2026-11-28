@@ -284,3 +284,22 @@ the keyword list (the rubric's self-fire clause, intended). The Tier-3 second
 adversarial pass (G6) ran pre-PR: the refute lane (adversary agent, REFUTE
 mode) returned the mechanism defended with four findings, folded in §8b and
 the review fold commit.
+
+## 10. Owner ruling addendum (2026-11-28, PR #655 fix attempt 1 of 2)
+
+The owner ruled the wheel-posture teardown fix INTO this increment,
+superseding §8's deferral row 4 (teardown-chmod-before-delete). The
+chmod-before-delete verb is `_drop_git_store` in
+`tests/standards/test_dev_pins.py`: it chmods every file under the
+planted `.git` store writable before `shutil.rmtree` — a POSIX no-op, the
+WinError 5 cure on win32. One helper covers all three teardowns: both
+`test_d1_wheel_posture_*` tests and `test_why.py`'s
+`test_m2_the_dev_refusal_propagates_verbatim` (which already imports its
+`_git_root` from the same module). The three rows left the manifest in
+the SAME change (62 → 59 rows; 57 → 54 strict, non-strict unchanged) —
+the strict shape's healing rule applied to this PR's own rows. §5's census
+arithmetic and the earlier row-call text stand as the historical record
+of the pre-ruling shape; §8 row 4 is discharged by this addendum (rows
+1–3, 5–8 stand). The fix's Windows proof is the PR's own `windows` run
+(contributor-attested POSIX-side only, doctrine W1: no Windows execution
+on this machine).

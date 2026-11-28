@@ -98,14 +98,6 @@
       "kind": "strict",
       "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
     },
-    "tests/standards/test_dev_pins.py::test_d1_wheel_posture_never_resolves_the_released_row": {
-      "kind": "strict",
-      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
-    },
-    "tests/standards/test_dev_pins.py::test_d1_wheel_posture_refuses_by_name_never_falling_back": {
-      "kind": "strict",
-      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
-    },
     "tests/standards/test_dev_pins.py::test_d2_pre_edit_lock_validates_then_the_edit_refuses_naming_the_digest": {
       "kind": "strict",
       "reason": "Fixture digests shift with platform line endings: the lock records the committed LF digest, the fixture head's bytes hash differently on Windows (CRLF family; the per-run sha noise in the message is the symptom)."
@@ -169,10 +161,6 @@
     "tests/standards/test_promotion.py::test_the_honest_record_passes_all_gates": {
       "kind": "strict",
       "reason": "Promotion sweep is path-separator sensitive: the compared path renders with a backslash ('examples\\class-action-vectors.json') so the sweep refuses spuriously \u2014 possible product bug, same family as #237/#238; separator handling is a named follow-up."
-    },
-    "tests/standards/test_why.py::test_m2_the_dev_refusal_propagates_verbatim": {
-      "kind": "strict",
-      "reason": "Class 2 fixture error: shutil.rmtree hits WinError 5 on the read-only .git pack files \u2014 the teardown needs the chmod-before-delete pattern (named follow-up under #207)."
     },
     "tests/standards/test_zero_literal_gate.py::TestDocsRatchet::test_a_planted_prose_literal_fails_the_ratchet": {
       "kind": "strict",
