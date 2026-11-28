@@ -405,10 +405,13 @@ def _live_generation(gw: SimpleNamespace, bench_id: str = BENCH) -> int:
     (bootstrap, ``_dispatch_change``) refresh the row, so it equals the
     canonical generations table every fence compares against.
 
-    Not for the deliberately stale arms, where ``conflict`` is the thing
-    under test and the literal stays: the ``conflict`` case of
-    ``test_failure_classes_match_on_both_transports`` and
-    ``test_change_apply_stored_generation_fence``."""
+    Two arms keep a literal instead (#280). The ``conflict`` case of
+    ``test_failure_classes_match_on_both_transports``: its ``999`` makes
+    the arm see the generation fence, but the arm would stay green on the
+    binding request-id refusal behind it, so a read there changes nothing
+    the arm can see. ``test_change_apply_stored_generation_fence``: its
+    apply presents a generation that differs from the change record's, and
+    the arm asserts that refusal's message."""
     resp = gw.client.get(f"/v1/benches/{bench_id}", headers=_bearer(ADMIN))
     assert resp.status_code == 200, resp.text
     return int(resp.json()["data"]["generation"])
@@ -1482,8 +1485,15 @@ def test_failure_classes_match_on_both_transports(
         body = {
             "request_id": "req-parity-conflict",
             "binding_ref": BINDING_REF,
-            # Deliberately stale (#280): the literal stays — this 409 is the
-            # pin, and a live read would disarm it.
+            # Stale on purpose (#280): the literal stays. With it, the 409
+            # this arm sees is the generation fence. ``run_start`` compares
+            # the presented generation before ``_assert_bench_acceptable``
+            # runs ("bench sim-bench is at generation 1, not 999"). The arm
+            # does not pin that fence on its own: its request id is not the
+            # one the binding document names, so the binding request-id
+            # refusal is a second 409 ``conflict`` behind the fence. Measured
+            # with a live read in place of the literal: still green, serving
+            # "binding document names request_id ...".
             "expected_generation": 999,
             "lease_id": None,
         }
