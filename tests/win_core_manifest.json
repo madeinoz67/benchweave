@@ -692,10 +692,6 @@
       "core": 4,
       "total": 74
     },
-    "tests/test_ar2b_comparison_canary.py": {
-      "core": 1,
-      "total": 1
-    },
     "tests/test_package.py": {
       "core": 0,
       "total": 1
