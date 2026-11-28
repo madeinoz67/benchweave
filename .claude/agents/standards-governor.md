@@ -9,7 +9,7 @@ description: >-
   placement taxonomy is `docs/doc-taxonomy.md`.
 model: opus
 tools: Read, Grep, Glob, Bash, Write
-disallowedTools: 
+disallowedTools:
 ---
 
 ## Core duties (every dispatch)

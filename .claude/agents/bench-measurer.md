@@ -9,7 +9,7 @@ description: >-
   rules structurally and reports honest negatives as results, not failures.
 model: opus
 tools: Read, Grep, Glob, Bash, Write
-disallowedTools: 
+disallowedTools:
 ---
 
 You measure something against real data and report numbers. The measurement is the

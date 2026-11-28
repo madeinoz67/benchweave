@@ -91,6 +91,7 @@ All notable changes to this project will be documented in this file.
 - Fold the refute wave — reclaim on E1, correct the frame comment, disclose the setsid residual
 - #513 poison guard writes a recovery-shaped terminal record
 - Declare the model pin the review rubric requires
+- #664 review fold and a marketplace pinned to one commit (#668)
 
 ### Design
 
@@ -378,6 +379,14 @@ All notable changes to this project will be documented in this file.
 - Replace gortex with Codanna code indexing
 - Drop gortex from the project agents' tool lists
 - Retire the gortex write-gate's test and its wiring assertion
+- Bump axe-playwright-python from 0.1.8 to 0.1.9
+- Bump fastapi from 0.163.0 to 0.165.0
+- Bump ruff from 0.17.4 to 0.17.6
+- Bump actions/create-github-app-token from 3.3.0 to 3.4.0
+- Bump the codeql-action group with 2 updates
+- Bump fastmcp from 4.1.8 to 4.2.5
+- Bump astral-sh/setup-uv from 10.3.3 to 10.4.0
+- Bump playwright from 1.65.0 to 1.65.2
 
 ### Refactoring
 
