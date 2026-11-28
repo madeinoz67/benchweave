@@ -1465,6 +1465,8 @@ def test_failure_classes_match_on_both_transports(
         body = {
             "request_id": "req-parity-conflict",
             "binding_ref": BINDING_REF,
+            # Deliberately stale (#280): the literal stays — this 409 is the
+            # pin, and a live read would disarm it.
             "expected_generation": 999,
             "lease_id": None,
         }
@@ -1552,6 +1554,12 @@ TYPE_CONFUSION_CASES: dict[str, dict[str, Any]] = {
     # by the RED run): 500 internal_error (AttributeError on the confused
     # binding), 409 conflict (string expected_generation compared
     # unequal), or a 201 with garbage stored (change_submit target_ref).
+    #
+    # #280: the integer ``expected_generation`` values here are typed-valid
+    # FILLERS, not fences — every case is refused at seam validation, before
+    # any generation is read, so no order can flip them (7/7 green with the
+    # bench generation advanced). They stay literal; ``_live_generation``
+    # is for pins that present a fence the gateway compares against.
     "run_start_binding": {
         "rest": ("post", f"/v1/benches/{BENCH}/runs", {
             "request_id": "req-tc-run-start",
@@ -1646,6 +1654,11 @@ SCHEMA_VIOLATION_CASES: dict[str, dict[str, Any]] = {
     # Violations on plain string params pass fastmcp's signature coercion
     # and reach the seam on BOTH transports — full envelope parity here.
     # Pre-D8 behavior (RED run): not_found 404 on both.
+    #
+    # #280: the ``lease_create`` case's ``expected_generation`` is a
+    # typed-valid filler against a bench id that never resolves — refused at
+    # validation before any generation is read (3/3 green with the bench
+    # generation advanced). It stays literal; see TYPE_CONFUSION_CASES.
     "bench_get": {
         "rest": ("get", "/v1/benches/BAD_ID", None),
         "mcp": {"bench_id": "BAD_ID"},  # violates ^[a-z][a-z0-9_.-]*$
@@ -2215,7 +2228,11 @@ def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> Non
 def test_change_apply_stored_generation_fence(gateway: SimpleNamespace) -> None:
     """Ledger item 5: right token, wrong stored generation — the change record
     was proposed at generation 2; apply presenting 3 (with a matching approval
-    binding) is a conflict and records ``failed``, not a silent apply."""
+    binding) is a conflict and records ``failed``, not a silent apply.
+
+    #280: both literals stay — a stale generation is the thing under test
+    here, and the stored fence fires before the live one, so the pin holds
+    in any order (green alone, and with the bench generation advanced)."""
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2358,7 +2375,15 @@ def test_approver_token_requires_gateway_admin_audience(
     """D7 twist on the D2 flow: an stg-audience admin token as
     ``approver_token`` fails closed 403 — approval authentication validates
     against the detached ``gateway-admin`` audience, so gateway scope alone
-    authorizes nothing; the change records ``failed``."""
+    authorizes nothing; the change records ``failed``.
+
+    #280: submission, apply and the approval binding read the live
+    generation — the literal this replaced (2) assumed an earlier test's
+    apply had advanced the bench. The read keeps the inputs truthful in any
+    order; it is not what reds here: ``change_apply`` authenticates the
+    approver BEFORE either generation fence, so this pin holds at any bench
+    generation."""
+    gen = _live_generation(gateway)
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -2367,7 +2392,7 @@ def test_approver_token_requires_gateway_admin_audience(
             "bench_id": BENCH,
             "kind": "trip_reset",
             "target_ref": TARGET_REF,
-            "expected_generation": 2,
+            "expected_generation": gen,
             "reason": "pin: approver token must be gateway-admin audience",
         },
     )
@@ -2378,8 +2403,8 @@ def test_approver_token_requires_gateway_admin_audience(
         headers=_bearer(ADMIN),
         json={
             "request_id": "req-pin-approver-audience-apply",
-            "expected_generation": 2,
-            "approval_ref": _store_approval(gateway.content, change_id, 2),
+            "expected_generation": gen,
+            "approval_ref": _store_approval(gateway.content, change_id, gen),
             "approver_token": ADMIN,  # stg audience + admin scope: not an approver
         },
     )
