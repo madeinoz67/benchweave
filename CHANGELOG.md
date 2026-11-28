@@ -230,6 +230,7 @@ All notable changes to this project will be documented in this file.
 - Record retry-stable timing belt decision (#241) (#659)
 - Investigate gates outcome divergences (#613) (#660)
 - Record root Ruff format gate decision (#663)
+- Record contributor execution and trust cutover design (#658)
 
 ### Features
 
