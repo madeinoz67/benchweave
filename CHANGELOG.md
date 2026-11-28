@@ -228,6 +228,7 @@ All notable changes to this project will be documented in this file.
 - Accept Rigol DM858 integration ADR (#657)
 - Drop the dangling gortex communities end marker
 - Record retry-stable timing belt decision (#241) (#659)
+- Investigate gates outcome divergences (#613) (#660)
 
 ### Features
 
