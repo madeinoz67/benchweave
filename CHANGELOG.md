@@ -92,6 +92,7 @@ All notable changes to this project will be documented in this file.
 - #513 poison guard writes a recovery-shaped terminal record
 - Declare the model pin the review rubric requires
 - #664 review fold and a marketplace pinned to one commit (#668)
+- Gate Codanna MCP on the worktree index
 
 ### Design
 
